@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider paths for the auto-update installer (UpdateChecker):
+     only the updates subfolder of the cache dir is exposed. -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>
