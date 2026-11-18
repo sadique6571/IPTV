@@ -25,8 +25,12 @@ jobs:
           java-version: '21'
       - name: Prepare Android SDK
         run: |
-          sdk_root="$ANDROID_HOME"
-          sdkmanager --sdk_root="$sdk_root" 'platforms;android-35' 'build-tools;35.0.0'
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          : "${sdk_root:?The runner did not provide an Android SDK path}"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          if [[ ! -f "$sdk_root/platforms/android-35/android.jar" || ! -x "$sdk_root/build-tools/35.0.0/aapt2" ]]; then
+            sdkmanager --sdk_root="$sdk_root" 'platforms;android-35' 'build-tools;35.0.0'
+          fi
       - name: Install Kotlin 2.4.21 from Maven Central
         run: |
           compiler_dir="$RUNNER_TEMP/iptv-kotlin"
