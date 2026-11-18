@@ -7,6 +7,7 @@ on:
       - 'app/**'
       - 'settings.gradle'
       - 'gradle.properties'
+      - 'build-apk.sh'
       - '.github/workflows/android.yml'
   workflow_dispatch:
 
@@ -22,10 +23,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-      - run: gradle --no-daemon :app:assembleDebug
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - run: bash build-apk.sh
       - uses: actions/upload-artifact@v4
         with:
           name: IPTV-debug

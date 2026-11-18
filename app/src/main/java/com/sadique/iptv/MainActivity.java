@@ -17,12 +17,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import androidx.media3.common.MediaItem;
-import androidx.media3.common.MimeTypes;
-import androidx.media3.common.PlaybackException;
-import androidx.media3.common.Player;
-import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.ui.PlayerView;
+import android.widget.VideoView;
 
 public final class MainActivity extends Activity {
     private static final int BACKGROUND = 0xff141218;
@@ -49,8 +44,7 @@ public final class MainActivity extends Activity {
     private FrameLayout screen;
     private TextView title;
     private TextView status;
-    private PlayerView video;
-    private ExoPlayer player;
+    private VideoView video;
     private WebView web;
     private String[] selected;
     private String filter = "All";
@@ -139,28 +133,18 @@ public final class MainActivity extends Activity {
 
     private void playStream(String url) {
         status.setText("Connecting to stream…");
-        player = new ExoPlayer.Builder(this).build();
-        video = new PlayerView(this);
-        video.setPlayer(player);
-        screen.addView(video, new FrameLayout.LayoutParams(-1, -1));
-        player.addListener(new Player.Listener() {
-            @Override public void onPlaybackStateChanged(int state) {
-                if (state == Player.STATE_READY) status.setText("Playing in IPTV");
-                if (state == Player.STATE_BUFFERING) status.setText("Buffering…");
-                if (state == Player.STATE_ENDED) status.setText("Playback ended");
-            }
-            @Override public void onPlayerError(PlaybackException error) {
-                status.setText("Stream unavailable. Select the channel to retry.");
-            }
+        video = new VideoView(this);
+        screen.addView(video, new FrameLayout.LayoutParams(-1, -1, android.view.Gravity.CENTER));
+        video.setOnPreparedListener(media -> {
+            status.setText("Playing in IPTV");
+            video.start();
         });
-
-        MediaItem.Builder media = new MediaItem.Builder().setUri(url);
-        String path = Uri.parse(url).getPath();
-        if (path != null && path.endsWith(".m3u8")) media.setMimeType(MimeTypes.APPLICATION_M3U8);
-        if (path != null && path.endsWith(".mpd")) media.setMimeType(MimeTypes.APPLICATION_MPD);
-        player.setMediaItem(media.build());
-        player.prepare();
-        player.play();
+        video.setOnCompletionListener(media -> status.setText("Playback ended"));
+        video.setOnErrorListener((media, what, extra) -> {
+            status.setText("Stream unavailable. Select the channel to retry.");
+            return true;
+        });
+        video.setVideoURI(Uri.parse(url));
     }
 
     private void playBroadcaster(String url) {
@@ -205,12 +189,8 @@ public final class MainActivity extends Activity {
 
     private void stopPlayback() {
         if (video != null) {
-            video.setPlayer(null);
+            video.stopPlayback();
             video = null;
-        }
-        if (player != null) {
-            player.release();
-            player = null;
         }
         if (web != null) {
             screen.removeView(web);
