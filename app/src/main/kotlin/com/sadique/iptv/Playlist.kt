@@ -13,6 +13,7 @@ internal object Playlist {
     private val group = Regex("""group-title="([^"]*)"""", RegexOption.IGNORE_CASE)
     private val country = Regex("""tvg-country="([^"]*)"""", RegexOption.IGNORE_CASE)
     private val channelId = Regex("""tvg-id="[^"]*\.([A-Za-z]{2})(?:@[^"]*)?"""")
+    private val languages = Regex("""tvg-language="([^"]*)"""", RegexOption.IGNORE_CASE)
     private val videoId = Regex("[A-Za-z0-9_-]{11}")
     private val youtubeChannel = Regex("UC[A-Za-z0-9_-]{22}")
 
@@ -34,6 +35,7 @@ internal object Playlist {
         var name = ""
         var category = "Imported"
         var region = ""
+        var languageTags = emptySet<String>()
         for (line in text.removePrefix("\uFEFF").lineSequence().map(String::trim)) {
             when {
                 line.startsWith("#EXT-X-") ->
@@ -46,6 +48,16 @@ internal object Playlist {
                     }
                     name = if (comma >= 0) line.substring(comma + 1).trim() else ""
                     val label = group.find(line)?.groupValues?.get(1).orEmpty()
+                    languageTags = languages.find(line)?.groupValues?.get(1).orEmpty()
+                        .split(',', ';').mapNotNull { value ->
+                            when (value.trim().lowercase(Locale.ROOT)) {
+                                "ur", "urd", "urdu" -> "urd"
+                                "hi", "hin", "hindi" -> "hin"
+                                "pa", "pan", "punjabi" -> "pan"
+                                "en", "eng", "english" -> "eng"
+                                else -> null
+                            }
+                        }.toSet()
                     val code = country.find(line)?.groupValues?.get(1).orEmpty()
                     val metadataCountry = code.split(';', ',').firstOrNull().orEmpty()
                     region = when {
@@ -65,7 +77,7 @@ internal object Playlist {
                     val uri = runCatching { base?.resolve(line) ?: URI.create(line) }.getOrNull()
                     if (name.isNotEmpty() && uri != null && validStream(uri) && seen.add(name to uri.toString())) {
                         val embed = embedSource(uri)
-                        channels += Channel(name, category, embed ?: uri.toString(), embed != null, region)
+                        channels += Channel(name, category, embed ?: uri.toString(), embed != null, region, languageTags)
                         if (channels.size == MAX_CHANNELS) break
                     }
                     name = ""

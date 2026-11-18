@@ -96,8 +96,8 @@ class MainActivity : Activity() {
         left.addView(filters)
         val moreFilters = LinearLayout(this)
         left.addView(moreFilters)
-        for (name in listOf("All", "PK", "IN", "Cricket", "Drama", "M3U")) {
-            val row = if (name == "Drama" || name == "M3U") moreFilters else filters
+        for (name in listOf("All", "Urdu", "Hindi", "Punjabi", "PK", "IN", "Cricket", "Drama", "M3U")) {
+            val row = if (name in setOf("All", "Urdu", "Hindi", "Punjabi")) filters else moreFilters
             row.addView(button(name) {
                 filter = name
                 page = 0
@@ -147,6 +147,9 @@ class MainActivity : Activity() {
         val matches = candidates.filter { channel ->
             val group = channel.group
             val accepted = when (filter) {
+                "Urdu" -> "urd" in channel.languages
+                "Hindi" -> "hin" in channel.languages
+                "Punjabi" -> "pan" in channel.languages
                 "PK" -> channel.country == "PK" || group == "Pakistan"
                 "IN" -> channel.country == "IN" || group == "India"
                 "Cricket" -> group == "Cricket" ||
@@ -351,7 +354,8 @@ class MainActivity : Activity() {
             for (channel in channels) {
                 val group = channel.group.replace('"', ' ')
                 val country = channel.country.takeIf { it.matches(Regex("[A-Z]{2}")) }.orEmpty()
-                appendLine("#EXTINF:-1 group-title=\"$group\" tvg-country=\"$country\",${channel.name}")
+                val languages = channel.languages.joinToString(";")
+                appendLine("#EXTINF:-1 group-title=\"$group\" tvg-country=\"$country\" tvg-language=\"$languages\",${channel.name}")
                 appendLine(Playlist.serializedUrl(channel))
             }
         }.toByteArray()
