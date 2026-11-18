@@ -2,8 +2,11 @@ package com.sadique.iptv
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.UiModeManager
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -23,6 +26,7 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -72,6 +76,12 @@ class MainActivity : Activity() {
     private var selected: Channel? = null
     private var imported = emptyList<Channel>()
     private var filter = "All"
+        set(value) {
+            field = value
+            // Keep the chip strip in sync when the filter changes from a
+            // dialog or a playlist action instead of a chip tap.
+            markActiveFilter()
+        }
     private var page = 0
     private var query = ""
     private var verifiedChannels = emptyList<Channel>()
@@ -86,6 +96,13 @@ class MainActivity : Activity() {
     private var numberTimeout: Runnable? = null
     private var speed = 1f
     private var stoppedForBackground = false
+
+    // Adaptive UI: TV (D-pad, 10-foot) vs touch devices, and orientation.
+    // Computed once in onCreate; rotation recreates the activity (no
+    // configChanges in the manifest), so the layout rebuilds for the new mode.
+    private var isTv = false
+    private var isLandscape = false
+    private val filterChips = mutableMapOf<String, Button>()
 
     private val seekUpdater = object : Runnable {
         override fun run() {
@@ -124,52 +141,110 @@ class MainActivity : Activity() {
         }
         imported = playlistStore.active()?.let { playlistStore.channelsOf(it) } ?: emptyList()
 
+        isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        isTv = detectTv()
+
+        // TV and landscape phones/tablets sit side by side; portrait phones
+        // and tablets stack the player above the channel list.
+        val sideBySide = isTv || isLandscape
+        val rootPaddingDp = if (isTv) 16 else 12
+        val rootPadding = dp(rootPaddingDp)
+        val libraryWidthDp = if (isTv) 320 else 300
+        val paneGapDp = if (isTv) 14 else 12
         val root = column().apply {
-            setPadding(dp(16), dp(10), dp(16), dp(12))
+            setPadding(rootPadding, dp(if (isTv) 10 else 8), rootPadding, dp(if (isTv) 12 else 8))
             setBackgroundColor(this@MainActivity.background)
         }
-        root.addView(label("IPTV", 26, accent))
-        val wide = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        // The header is hidden on phones in landscape: vertical space is
+        // tight there and the playing row already shows what is on.
+        val header = label("IPTV", if (isTv) 28 else 22, accent).apply {
+            if (!isTv && isLandscape) visibility = View.GONE
+        }
+        root.addView(header)
         val split = LinearLayout(this).apply {
-            orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+            orientation = if (sideBySide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         }
         root.addView(split, LinearLayout.LayoutParams(-1, 0, 1f))
         val left = column().also { libraryPane = it }
         val right = column()
-        if (wide) {
-            split.addView(left, LinearLayout.LayoutParams(dp(260), -1))
-            right.setPadding(dp(14), 0, 0, 0)
+        if (sideBySide) {
+            // Library on the left, player filling the rest. The library is
+            // wider than before so the larger text fits comfortably.
+            split.addView(left, LinearLayout.LayoutParams(dp(libraryWidthDp), -1))
+            right.setPadding(dp(paneGapDp), 0, 0, 0)
             split.addView(right, LinearLayout.LayoutParams(0, -1, 1f))
         } else {
-            split.addView(right, LinearLayout.LayoutParams(-1, 0, 1f))
+            // Portrait phone/tablet: player pane on top (wrap content, the
+            // screen itself is fixed 16:9 below), library filling the rest.
+            split.addView(right, LinearLayout.LayoutParams(-1, -2))
             split.addView(left, LinearLayout.LayoutParams(-1, 0, 1f))
         }
 
-        val filters = LinearLayout(this)
-        left.addView(filters)
-        val moreFilters = LinearLayout(this)
-        left.addView(moreFilters)
-        val extraFilters = LinearLayout(this)
-        left.addView(extraFilters)
-        for (name in listOf("All", "Urdu", "Hindi", "Punjabi", "PK", "IN", "Cricket", "Drama", "M3U", "Favs", "Recent")) {
-            val row = when (name) {
-                "All", "Urdu", "Hindi", "Punjabi" -> filters
-                "Favs", "Recent" -> extraFilters
-                else -> moreFilters
-            }
-            row.addView(button(name) {
-                filter = name
-                page = 0
-                populate()
-            }, LinearLayout.LayoutParams(0, -2, 1f))
+        val filterNames = listOf("All", "Urdu", "Hindi", "Punjabi", "PK", "IN", "Cricket", "Drama", "M3U", "Favs", "Recent")
+        val chipAction: (String) -> Unit = { name ->
+            filter = name
+            page = 0
+            populate()
         }
-        catalogTitle = label("", 12, accent)
-        left.addView(catalogTitle)
+        if (isTv) {
+            // TV: every chip visible in three rows, D-pad navigable.
+            val filters = LinearLayout(this)
+            left.addView(filters)
+            val moreFilters = LinearLayout(this)
+            left.addView(moreFilters)
+            val extraFilters = LinearLayout(this)
+            left.addView(extraFilters)
+            for (name in filterNames) {
+                val row = when (name) {
+                    "All", "Urdu", "Hindi", "Punjabi" -> filters
+                    "Favs", "Recent" -> extraFilters
+                    else -> moreFilters
+                }
+                val chipView = chip(name) { chipAction(name) }
+                filterChips[name] = chipView
+                row.addView(chipView, LinearLayout.LayoutParams(-2, -2).apply {
+                    marginEnd = dp(6)
+                    topMargin = dp(3)
+                    bottomMargin = dp(3)
+                })
+            }
+        } else {
+            // Touch: one horizontally scrolling chip strip. The old three
+            // stretched rows looked odd on narrow screens (two giant
+            // Favs/Recent buttons), and the strip scrolls naturally by swipe.
+            val chipRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+            for (name in filterNames) {
+                val chipView = chip(name) { chipAction(name) }
+                filterChips[name] = chipView
+                chipRow.addView(chipView, LinearLayout.LayoutParams(-2, -2).apply {
+                    marginEnd = dp(8)
+                })
+            }
+            val strip = HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                overScrollMode = View.OVER_SCROLL_NEVER
+                addView(chipRow)
+            }
+            left.addView(strip, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(4)
+            })
+        }
+        markActiveFilter()
+        catalogTitle = label("", if (isTv) 14 else 12, accent)
+        left.addView(catalogTitle, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(6)
+            bottomMargin = dp(2)
+        })
         list = column()
         listScroll = ScrollView(this).apply { addView(list) }
         left.addView(listScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         val actions = LinearLayout(this)
-        left.addView(actions)
+        left.addView(actions, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(8)
+        })
         actions.addView(button("Search") {
             askText("Search channels", "Channel name") { value ->
                 query = value
@@ -177,51 +252,89 @@ class MainActivity : Activity() {
                 populate()
                 list.getChildAt(0)?.requestFocus()
             }
-        }, LinearLayout.LayoutParams(0, -2, 1f))
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            marginEnd = dp(4)
+        })
         actions.addView(button("Playlists") { showPlaylists() },
-            LinearLayout.LayoutParams(0, -2, 1f))
-        left.addView(button("Import M3U or play URL", ::choosePlaylist))
-        left.addView(button("Xtream login", ::askXtream))
+            LinearLayout.LayoutParams(0, -2, 1f).apply {
+                marginStart = dp(4)
+            })
+        left.addView(button("Import M3U or play URL", ::choosePlaylist),
+            LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(6)
+            })
+        left.addView(button("Xtream login", ::askXtream),
+            LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(6)
+            })
 
-        titleText = label("Select a channel", 23, Color.WHITE)
-        status = label("", 14, accent)
-        numberOverlay = label("", 20, accent).apply { visibility = View.GONE }
+        // On phones in landscape the title is hidden with the header: the
+        // playing row already shows the channel, and the player needs the
+        // vertical space. Status stays visible (buffering/errors).
+        titleText = label("Select a channel", if (isTv) 26 else 20, Color.WHITE).apply {
+            if (!isTv && isLandscape) visibility = View.GONE
+        }
+        status = label("", if (isTv) 15 else 13, accent)
+        numberOverlay = label("", if (isTv) 22 else 18, accent).apply { visibility = View.GONE }
         screen = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         buffering = ProgressBar(this, null, android.R.attr.progressBarStyleLarge).apply {
             visibility = View.GONE
         }
         screen.addView(buffering, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
         playerControls = column().apply { visibility = View.GONE }
-        val controlsRow1 = LinearLayout(this)
         playPauseButton = button("Play") { playerController?.togglePlayPause() }
         fullscreenButton = button("Full screen") { setFullScreen(!fullScreen) }
         val retryButton = button("Retry") { retryPlayback() }
         qualityButton = button("Quality") { showQualityDialog() }
         speedButton = button("Speed 1x") { showSpeedDialog() }
-        controlsRow1.addView(playPauseButton)
-        controlsRow1.addView(fullscreenButton)
-        controlsRow1.addView(retryButton)
-        controlsRow1.addView(qualityButton)
-        controlsRow1.addView(speedButton)
-        playerControls.addView(controlsRow1)
-        val controlsRow2 = LinearLayout(this)
         volumeDownButton = button("Vol −") { changeVolume(-0.1f) }
-        volumeLabel = label("Vol ${(store.volume * 100).toInt()}%", 13, Color.WHITE).apply {
+        volumeLabel = label("Vol ${(store.volume * 100).toInt()}%", if (isTv) 14 else 13, Color.WHITE).apply {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(4), 0, dp(4), 0)
         }
         volumeUpButton = button("Vol +") { changeVolume(0.1f) }
         favoriteButton = button("☆ Favorite") { toggleFavorite() }
         val sleepButton = button("Sleep timer") { showSleepDialog() }
-        controlsRow2.addView(volumeDownButton)
-        controlsRow2.addView(volumeLabel)
-        controlsRow2.addView(volumeUpButton)
-        controlsRow2.addView(favoriteButton)
-        controlsRow2.addView(sleepButton)
-        playerControls.addView(controlsRow2)
+        // Five wrap-content buttons overflowed a narrow phone row and the
+        // labels wrapped mid-word. Below ~560dp of player width the controls
+        // split into three compact rows instead of two wide ones; the
+        // fullscreen button gets extra weight because its text grows to
+        // "Exit full screen" when active. Weight 0 means wrap content.
+        val screenWidthDp =
+            (resources.displayMetrics.widthPixels / resources.displayMetrics.density).toInt()
+        val playerPaneWidthDp = if (sideBySide) {
+            screenWidthDp - 2 * rootPaddingDp - libraryWidthDp - paneGapDp
+        } else {
+            screenWidthDp - 2 * rootPaddingDp
+        }
+        val compactControls = !isTv && playerPaneWidthDp < 560
+        val controlRows: List<List<Pair<View, Float>>> = if (compactControls) {
+            listOf(
+                listOf(playPauseButton to 1f, fullscreenButton to 2f, retryButton to 1f),
+                listOf(qualityButton to 1f, speedButton to 1f, favoriteButton to 1f),
+                listOf(volumeDownButton to 1f, volumeLabel to 0f, volumeUpButton to 1f, sleepButton to 2f),
+            )
+        } else {
+            listOf(
+                listOf(playPauseButton to 1f, fullscreenButton to 1f, retryButton to 1f, qualityButton to 1f, speedButton to 1f),
+                listOf(volumeDownButton to 1f, volumeLabel to 0f, volumeUpButton to 1f, favoriteButton to 1f, sleepButton to 1f),
+            )
+        }
+        for ((rowIndex, row) in controlRows.withIndex()) {
+            val rowLayout = LinearLayout(this)
+            for ((view, weight) in row) {
+                rowLayout.addView(view, if (weight > 0f) controlParams(weight) else
+                    LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_VERTICAL })
+            }
+            playerControls.addView(rowLayout, LinearLayout.LayoutParams(-1, -2).apply {
+                if (rowIndex > 0) topMargin = dp(6)
+            })
+        }
         seekRow = LinearLayout(this).apply { visibility = View.GONE }
         seekBar = SeekBar(this).apply {
             isFocusable = true
+            // A taller seek bar is easier to drag by touch.
+            if (!isTv) minimumHeight = dp(48)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
                     if (fromUser) {
@@ -238,15 +351,30 @@ class MainActivity : Activity() {
                 }
             })
         }
-        seekLabel = label("0:00 / 0:00", 13, Color.WHITE)
+        seekLabel = label("0:00 / 0:00", if (isTv) 14 else 13, Color.WHITE)
         seekRow.addView(seekBar, LinearLayout.LayoutParams(0, -2, 1f))
-        seekRow.addView(seekLabel)
-        playerControls.addView(seekRow)
+        seekRow.addView(seekLabel, LinearLayout.LayoutParams(-2, -2).apply {
+            gravity = Gravity.CENTER_VERTICAL
+        })
+        playerControls.addView(seekRow, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(6)
+        })
         right.addView(titleText)
         right.addView(status)
         right.addView(numberOverlay)
-        right.addView(playerControls)
-        right.addView(screen, LinearLayout.LayoutParams(-1, 0, 1f))
+        right.addView(playerControls, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(4)
+            bottomMargin = dp(6)
+        })
+        if (sideBySide) {
+            right.addView(screen, LinearLayout.LayoutParams(-1, 0, 1f))
+        } else {
+            // Portrait phone/tablet: fixed 16:9 player under the controls,
+            // capped so very wide screens do not push the list off-screen.
+            val playerWidthPx = resources.displayMetrics.widthPixels - 2 * rootPadding
+            val playerHeight = (playerWidthPx * 9 / 16).coerceAtMost(dp(320))
+            right.addView(screen, LinearLayout.LayoutParams(-1, playerHeight))
+        }
 
         playerController = PlayerController(this, screen, store.volume,
             object : PlayerController.Listener {
@@ -279,7 +407,9 @@ class MainActivity : Activity() {
                     selectedVideoIndex = selectedIndex
                     applyControlVisibility()
                     qualityButton.text = if (selectedIndex in options.indices) {
-                        "Quality: ${options[selectedIndex].label}"
+                        // Just the track label ("720p"): the full "Quality:
+                        // 720p" wrapped mid-word on narrow phone rows.
+                        options[selectedIndex].label
                     } else {
                         "Quality"
                     }
@@ -337,15 +467,27 @@ class MainActivity : Activity() {
         }
         catalogTitle.text = "$sourceName · ${matches.size}" +
             if (query.isEmpty()) "" else " · $query"
-        if (page > 0) list.addView(button("Previous page") { showPage(page - 1) })
+        if (page > 0) list.addView(button("Previous page") { showPage(page - 1) },
+            LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(4)
+            })
         matches.drop(start).take(pageSize).forEach { channel ->
-            list.addView(channelRow(channel))
+            list.addView(channelRow(channel), LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(2)
+                bottomMargin = dp(2)
+            })
         }
         if (start + pageSize < matches.size) {
-            list.addView(button("Next page") { showPage(page + 1) })
+            list.addView(button("Next page") { showPage(page + 1) },
+                LinearLayout.LayoutParams(-1, -2).apply {
+                    topMargin = dp(4)
+                    bottomMargin = dp(4)
+                })
         }
-        if (matches.isEmpty()) list.addView(label("No matching channels.", 14, accent))
+        if (matches.isEmpty()) list.addView(label("No matching channels.", if (isTv) 16 else 14, accent))
         listScroll.post { listScroll.scrollTo(0, 0) }
+        markPlayingRow()
     }
 
     private fun channelRow(channel: Channel): View {
@@ -354,20 +496,21 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             isFocusable = true
             isClickable = true
-            setPadding(dp(4), dp(4), dp(4), dp(4))
-            background = StateListDrawable().apply {
-                addState(intArrayOf(android.R.attr.state_focused), shape(0xff563a29.toInt(), accent))
-                addState(intArrayOf(), shape(surface, this@MainActivity.background))
-            }
+            // 48dp+ touch target on phones; roomier on TV for the 10-foot UI.
+            minimumHeight = dp(if (isTv) 56 else 52)
+            setPadding(dp(12), dp(4), dp(12), dp(4))
+            tag = channel.key
+            background = rowBackground(channel.key == selected?.key)
             setOnClickListener { play(channel) }
         }
+        val tileSize = dp(if (isTv) 48 else 44)
         val tileView = FrameLayout(this)
         val initial = TextView(this).apply {
             text = channel.name.take(1).uppercase()
-            textSize = 18f
+            textSize = if (isTv) 20f else 18f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            setBackgroundColor(tile)
+            background = shape(tile, tile, 8)
         }
         tileView.addView(initial, FrameLayout.LayoutParams(-1, -1))
         if (channel.logo.isNotEmpty()) {
@@ -377,12 +520,12 @@ class MainActivity : Activity() {
             tileView.addView(logoView, FrameLayout.LayoutParams(-1, -1))
             LogoLoader.load(this, channel.logo, logoView)
         }
-        row.addView(tileView, LinearLayout.LayoutParams(dp(40), dp(40)))
+        row.addView(tileView, LinearLayout.LayoutParams(tileSize, tileSize))
         val nameView = TextView(this).apply {
             text = (if (store.isFavorite(channel)) "★ " else "") + channel.name
-            textSize = 13f
+            textSize = if (isTv) 16f else 15f
             setTextColor(Color.WHITE)
-            setPadding(dp(8), 0, 0, 0)
+            setPadding(dp(12), 0, 0, 0)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
@@ -431,6 +574,7 @@ class MainActivity : Activity() {
         stopSeekUpdates()
         updateFavoriteButton()
         applyControlVisibility()
+        markPlayingRow()
         when {
             channel.url.isEmpty() -> status.text = "No verified player feed available."
             channel.web -> {
@@ -503,7 +647,7 @@ class MainActivity : Activity() {
                 } else {
                     val option = videoOptions[which - 1]
                     playerController?.selectTrack(option)
-                    qualityButton.text = "Quality: ${option.label}"
+                    qualityButton.text = option.label
                 }
                 dialog.dismiss()
             }.show()
@@ -1035,21 +1179,100 @@ class MainActivity : Activity() {
         text = value
         isAllCaps = false
         setTextColor(Color.WHITE)
-        textSize = 13f
+        textSize = if (isTv) 15f else 14f
         minimumWidth = 0
         minWidth = 0
-        setPadding(dp(4), dp(4), dp(4), dp(4))
+        // 48dp touch target on phones/tablets; generous on TV too.
+        minimumHeight = dp(if (isTv) 46 else 48)
+        val sidePadding = dp(if (isTv) 14 else 10)
+        setPadding(sidePadding, dp(8), sidePadding, dp(8))
         background = StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused), shape(0xff563a29.toInt(), accent))
+            addState(intArrayOf(android.R.attr.state_focused),
+                shape(0xff563a29.toInt(), accent, 10, if (isTv) 3 else 2))
+            // Pressed state: without it taps on a phone gave no feedback.
+            addState(intArrayOf(android.R.attr.state_pressed), shape(tile, accent))
             addState(intArrayOf(), shape(surface, this@MainActivity.background))
         }
         setOnClickListener { action() }
     }
 
-    private fun shape(color: Int, stroke: Int) = GradientDrawable().apply {
-        setColor(color)
-        setStroke(dp(2), stroke)
-        cornerRadius = dp(8).toFloat()
+    /** Pill-shaped filter chip with a visible selected state (amber fill). */
+    private fun chip(value: String, action: () -> Unit) = Button(this).apply {
+        text = value
+        isAllCaps = false
+        setTextColor(Color.WHITE)
+        textSize = if (isTv) 15f else 14f
+        minimumWidth = 0
+        minWidth = 0
+        minimumHeight = dp(if (isTv) 44 else 48)
+        setPadding(dp(16), dp(8), dp(16), dp(8))
+        background = StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused),
+                shape(0xff563a29.toInt(), accent, 24, if (isTv) 3 else 2))
+            addState(intArrayOf(android.R.attr.state_pressed), shape(0xffe8b96f.toInt(), accent, 24))
+            addState(intArrayOf(android.R.attr.state_selected), shape(accent, accent, 24))
+            addState(intArrayOf(), shape(surface, this@MainActivity.background, 24))
+        }
+        setOnFocusChangeListener { _, _ -> refreshChipText(this) }
+        setOnClickListener { action() }
+    }
+
+    /** Dark text on the amber selected chip, white everywhere else. */
+    private fun refreshChipText(chip: Button) {
+        chip.setTextColor(if (chip.isSelected && !chip.isFocused) background else Color.WHITE)
+    }
+
+    private fun markActiveFilter() {
+        for ((name, chipView) in filterChips) {
+            chipView.isSelected = name == filter
+            refreshChipText(chipView)
+        }
+    }
+
+    /** Channel-row background: amber-tinted when this row is playing. */
+    private fun rowBackground(playing: Boolean) = StateListDrawable().apply {
+        addState(intArrayOf(android.R.attr.state_focused),
+            shape(0xff563a29.toInt(), accent, 10, if (isTv) 3 else 2))
+        addState(intArrayOf(android.R.attr.state_pressed), shape(tile, accent))
+        addState(intArrayOf(), if (playing) shape(0xff4a3a22.toInt(), accent)
+            else shape(surface, this@MainActivity.background))
+    }
+
+    /** Highlights the playing row (rows carry the channel key as their tag). */
+    private fun markPlayingRow() {
+        val playingKey = selected?.key
+        for (index in 0 until list.childCount) {
+            val child = list.getChildAt(index)
+            if (child is LinearLayout) {
+                val key = child.tag as? String ?: continue
+                child.background = rowBackground(key == playingKey)
+            }
+        }
+    }
+
+    /** Layout params shared by the player-control buttons: even widths, gaps. */
+    private fun controlParams(weight: Float = 1f) =
+        LinearLayout.LayoutParams(0, -2, weight).apply {
+            marginEnd = dp(4)
+        }
+
+    private fun shape(color: Int, stroke: Int, radiusDp: Int = 10, strokeDp: Int = 2) =
+        GradientDrawable().apply {
+            setColor(color)
+            setStroke(dp(strokeDp), stroke)
+            cornerRadius = dp(radiusDp).toFloat()
+        }
+
+    /** TV (Leanback) detection: UI mode first, hardware features as fallback. */
+    private fun detectTv(): Boolean {
+        val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+        val modeType = uiModeManager?.currentModeType
+            ?: (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK)
+        if (modeType == Configuration.UI_MODE_TYPE_TELEVISION) return true
+        // Some boxes report a generic UI mode: Leanback without a touchscreen
+        // is a TV for layout purposes.
+        return packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) &&
+            !packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density + 0.5f).toInt()
