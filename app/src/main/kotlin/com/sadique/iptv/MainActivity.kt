@@ -267,7 +267,6 @@ class MainActivity : Activity() {
             setTypeface(null, Typeface.BOLD)
             textSize = if (isTv) 17f else 15f
             minimumWidth = 0
-            minWidth = 0
             minimumHeight = dp(if (isTv) 48 else 44)
             setPadding(dp(18), dp(8), dp(18), dp(8))
             background = StateListDrawable().apply {
@@ -515,7 +514,6 @@ class MainActivity : Activity() {
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = "Fullscreen"
             minimumWidth = 0
-            minWidth = 0
             minimumHeight = 0
             setPadding(dp(10), dp(10), dp(10), dp(10))
             background = overlayButtonBackground()
@@ -860,7 +858,6 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             isFocusable = false
             minimumWidth = 0
-            minWidth = 0
             minimumHeight = 0
             setPadding(0, 0, 0, 0)
             background = shape(0x9904081a.toInt(), 0x1affffff.toInt(), 18, 1)
@@ -1754,7 +1751,6 @@ class MainActivity : Activity() {
         setTextColor(textColor)
         textSize = if (isTv) 15f else 14f
         minimumWidth = 0
-        minWidth = 0
         // 48dp touch target on phones/tablets; generous on TV too.
         minimumHeight = dp(if (isTv) 46 else 48)
         val sidePadding = dp(if (isTv) 14 else 10)
@@ -1777,7 +1773,6 @@ class MainActivity : Activity() {
         setTextColor(muted)
         textSize = if (isTv) 15f else 14f
         minimumWidth = 0
-        minWidth = 0
         minimumHeight = dp(if (isTv) 44 else 48)
         setPadding(dp(16), dp(8), dp(16), dp(8))
         background = StateListDrawable().apply {
@@ -1911,7 +1906,6 @@ class MainActivity : Activity() {
         textSize = 16f
         gravity = Gravity.START or Gravity.CENTER_VERTICAL
         minimumWidth = 0
-        minWidth = 0
         minimumHeight = dp(48)
         setPadding(dp(19), dp(12), dp(19), dp(12))
         background = navItemBackground()
@@ -1968,7 +1962,6 @@ class MainActivity : Activity() {
         textSize = if (isTv) 20f else 18f
         gravity = Gravity.CENTER
         minimumWidth = 0
-        minWidth = 0
         minimumHeight = 0
         setPadding(0, 0, 0, 0)
         background = overlayButtonBackground()
