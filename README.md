@@ -43,3 +43,9 @@ old build command still works.
   in PiP mode.
 - Xtream credentials are stored in the app-private playlist metadata file, in
   the clear, like the stream URLs themselves.
+- Signing: every build uses the fixed debug key in `app/debug.keystore`
+  (PKCS12, alias `androiddebugkey`, password `android`), wired in
+  `app/build.gradle.kts`, so updates install cleanly over older builds. It is
+  a DEBUG key only — never use it for a release build, and never replace it
+  without expecting an uninstall first: Android refuses to update an app
+  whose signature changed.
