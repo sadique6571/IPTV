@@ -33,10 +33,6 @@ https://samitaorigin.tangotv.in/PAIGAMTV/SAMITAORIGIN/index.m3u8
 https://video.primexsports.com/suchnews/live/playlist.m3u8
 #EXTINF:-1 group-title="Undefined" tvg-country="PK" tvg-language="urd",Zindagi TV
 https://5ad386ff92705.streamlock.net/live_transcoder/ngrp:zindagitv.stream_all/chunklist.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Aastha International
-https://aasthaott.akamaized.net/110923/smil:aasthausa.smil/playlist.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Aastha UK
-https://aasthaott.akamaized.net/110923/smil:aasthauk.smil/playlist.m3u8
 #EXTINF:-1 group-title="News" tvg-country="IN" tvg-language="pan",ABP Sanjha
 https://fta.ektv.in/live/641/master.m3u8
 #EXTINF:-1 group-title="Movies" tvg-country="IN" tvg-language="hin",All Time Movies
@@ -57,8 +53,6 @@ https://d1msejlow1t3l4.cloudfront.net/fta/argusnews/playlist.m3u8
 https://yuppnimrestreammum.akamaized.net/181224/smil:astrotech.smil/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
 #EXTINF:-1 group-title="News" tvg-country="IN" tvg-language="hin",Awaaz India TV
 https://awaazindia.livebox.co.in/AwaazIndaTVhls/Live.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Awakening TV
-https://d2gvyg6lvauoko.cloudfront.net/230226/awakeningtv/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
 #EXTINF:-1 group-title="Movies" tvg-country="IN" tvg-language="hin",B4U Kadak
 https://amg00877-b4unew-amg00877c4-xiaomi-in-5473.playouts.now.amagi.tv/playlist.m3u8
 #EXTINF:-1 group-title="Movies" tvg-country="IN" tvg-language="hin",B4U Movies
@@ -73,8 +67,6 @@ https://mcncdndigital.com/balleballetv/index.m3u8
 https://yuppnimrestreammum.akamaized.net/181224/smil:bogglebollywood.smil/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
 #EXTINF:-1 group-title="Education" tvg-country="IN" tvg-language="hin",BVG
 https://mumt05.tangotv.in/87NeALx2BVG/index.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Channel Divya
-https://d2lk5u59tns74c.cloudfront.net/out/v1/40f46fa036df45ee9d28b6eda42eb27c/index.m3u8
 #EXTINF:-1 group-title="News" tvg-country="IN" tvg-language="pan",Chardikla Gurbaani TV
 https://chardikalatimestv.gigabitcdn.net/in-chardikala/chardikala-gurbani-tv/playlist.m3u8
 #EXTINF:-1 group-title="News" tvg-country="IN" tvg-language="pan",Chardikla Time TV
@@ -129,10 +121,6 @@ https://cdn.pishow.tv/ott/live/36/master.m3u8
 https://cdn.pishow.tv/ott/live/17/master.m3u8
 #EXTINF:-1 group-title="Entertainment" tvg-country="IN" tvg-language="pan",Desi Channel
 https://desichannel.kableone.com/desichannel/master.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Dharm Sandesh
-https://d2lk5u59tns74c.cloudfront.net/out/v1/aed713462c734923aac946a547265288/index.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Dheeran TV
-https://live.we2live.in/dheerantv/dheerantv/playlist.m3u8
 #EXTINF:-1 group-title="Undefined" tvg-country="IN" tvg-language="hin",Disha TV
 https://d1msejlow1t3l4.cloudfront.net/fta/dishatv/playlist.m3u8
 #EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="pan",Divya Bhajan
@@ -193,14 +181,10 @@ https://samitaorigin.tangotv.in/INDIATALKIES/SAMITAORIGIN/index.m3u8
 https://vg-indiatv-waves.vgcdn.net/vglive-sk-394591/playlist.m3u8
 #EXTINF:-1 group-title="News" tvg-country="IN" tvg-language="hin",INH 24x7
 https://fta.ektv.in/live/99/99_0.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Ishwar Bhakti TV
-https://6n3yow8pl9ok-hls-live.5centscdn.com/ishwartvlive/tv.stream/playlist.m3u8
 #EXTINF:-1 group-title="News" tvg-country="IN" tvg-language="hin",Janta TV
 https://live.jswk.online/IK_RTPM/live/index.m3u8
 #EXTINF:-1 group-title="News" tvg-country="IN" tvg-language="hin",Jantantra TV
 https://d1msejlow1t3l4.cloudfront.net/fta/jantantratv/playlist.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Jinvani Channel
-https://cdn.pishow.tv/ott/live/989/master.m3u8
 #EXTINF:-1 group-title="News" tvg-country="IN" tvg-language="hin",JK 24x7 News
 https://samitaorigin.tangotv.in/JKL24X7NEWS/SAMITAORIGIN/index.m3u8
 #EXTINF:-1 group-title="News" tvg-country="IN" tvg-language="hin",K News India
@@ -221,8 +205,6 @@ https://knocktv2.wiseplayout.com/Knock_Bhakti_EST/master.m3u8
 https://stream.ottlive.co.in/livetimetv/index.m3u8
 #EXTINF:-1 group-title="Movies" tvg-country="IN" tvg-language="hin",Maha Movie
 https://fta.ektv.in/live/48/48_0.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Mangalmay TV
-https://yupplivegcpusa.yuppcdn.net/100823/mangalmay_1800/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
 #EXTINF:-1 group-title="Entertainment" tvg-country="IN" tvg-language="hin",Mango (India)
 https://stmv6.voxtvhd.com.br/cinehindi/cinehindi/playlist.m3u8
 #EXTINF:-1 group-title="Entertainment" tvg-country="IN" tvg-language="hin",Manoranjan TV
@@ -241,8 +223,6 @@ https://mumt04.tangotv.in/m18aqlK4MHONE/index.m3u8
 https://fta.ektv.in/live/351/master.m3u8
 #EXTINF:-1 group-title="Movies" tvg-country="IN" tvg-language="hin",MH One Movies
 https://fta.ektv.in/live/639/master.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",MH One Shraddha
-https://fta.ektv.in/live/344/master.m3u8
 #EXTINF:-1 group-title="Movies" tvg-country="IN" tvg-language="pan",Movie Punjab
 https://mumt01.tangotv.in/O5aw8Zn3MOVIEPUNJAB/index.m3u8
 #EXTINF:-1 group-title="Music" tvg-country="IN" tvg-language="hin",Music India
@@ -293,14 +273,8 @@ https://n18syndication.akamaized.net/bpk-tv/News18_Rajasthan_NW18_MOB/output01/m
 https://n18syndication.akamaized.net/bpk-tv/News18_UP_Uttarakhand_NW18_MOB/output01/master.m3u8
 #EXTINF:-1 group-title="Movies" tvg-country="IN" tvg-language="hin",NH BollyFlix
 https://jmp2.uk/stvp-IN46000140Q
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Padharo SA
-https://samitaorigin.tangotv.in/PADHAROSA/SAMITAORIGIN/index.m3u8
 #EXTINF:-1 group-title="Music" tvg-country="IN" tvg-language="pan",Pankh
 https://samitaorigin.tangotv.in/PANKH/SAMITAORIGIN/index.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Paras Gold
-https://fta.ektv.in/live/167/master.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Peace of Mind TV
-https://fta.ektv.in/live/170/master.m3u8
 #EXTINF:-1 group-title="Movies" tvg-country="IN" tvg-language="pan",Pitaara
 https://d2lk5u59tns74c.cloudfront.net/out/v1/500a6b45f5ae41dda445d912b59eaa09/index.m3u8
 #EXTINF:-1 group-title="Comedy" tvg-country="IN" tvg-language="pan",Pitaara Comedy
@@ -343,12 +317,8 @@ https://fta.ektv.in/live/589/master.m3u8
 https://cdn.pishow.tv/ott/live/39/master.m3u8
 #EXTINF:-1 group-title="Legislative" tvg-country="IN" tvg-language="hin",Sansad TV 2 HD
 https://d2lk5u59tns74c.cloudfront.net/out/v1/e4182054dce340da9e0ff38b6b3658a4/index.m3u8
-#EXTINF:-1 group-title="Culture;Religious" tvg-country="IN" tvg-language="hin",Sanskar TV
-https://d2lk5u59tns74c.cloudfront.net/out/v1/bc57af15b4df4200af5fa4c1d6ab0a72/index.m3u8
 #EXTINF:-1 group-title="Undefined" tvg-country="IN" tvg-language="hin",Sarv Dharm Sangam
 https://d1msejlow1t3l4.cloudfront.net/fta/sarvdharmsangam/playlist.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Satsang TV
-https://d2lk5u59tns74c.cloudfront.net/out/v1/e903e03c2b414ee0b74db68d7779ccad/index.m3u8
 #EXTINF:-1 group-title="Undefined" tvg-country="IN" tvg-language="hin",Sharnam TV
 https://d1msejlow1t3l4.cloudfront.net/fta/sharanamtv/playlist.m3u8
 #EXTINF:-1 group-title="Movies" tvg-country="IN" tvg-language="hin",Shemaroo Josh
@@ -387,8 +357,6 @@ https://fta.ektv.in/live/310/master.m3u8
 https://stream.ottlive.co.in/tv27/index.m3u8
 #EXTINF:-1 group-title="News" tvg-country="IN" tvg-language="hin",TV7 National
 https://stream.ottlive.co.in/tv7national/index.m3u8
-#EXTINF:-1 group-title="Religious" tvg-country="IN" tvg-language="hin",Vedic
-https://d2lk5u59tns74c.cloudfront.net/out/v1/5812b1a12b62482f83c38f9c8d34cb5a/index.m3u8
 #EXTINF:-1 group-title="News" tvg-country="IN" tvg-language="hin",Vistaar News
 https://stream.ottlive.co.in/vistaartv/index.m3u8
 #EXTINF:-1 group-title="Music" tvg-country="IN" tvg-language="pan",Wah Punjabi
