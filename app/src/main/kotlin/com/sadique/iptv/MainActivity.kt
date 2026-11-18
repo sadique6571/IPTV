@@ -235,6 +235,9 @@ class MainActivity : Activity() {
     private var playingMovieHeaders: Map<String, String> = emptyMap()
     private var savedMoviePosition = 0L
     private var movieSearchRequest = 0
+    // Index of the movie row the details pane opened from — Back from
+    // details returns focus to it instead of the search box (-1: none).
+    private var moviesReturnRow = -1
     private var movieDetailsRequest = 0
     private var movieStreamsRequest = 0
     private var currentMovieDetails: MovieBox.Details? = null
@@ -1061,8 +1064,11 @@ class MainActivity : Activity() {
         // Restored fullscreen (after the rotation it triggered): hide the
         // library, header and controls again and re-hide the system UI.
         if (fullScreen) updateFullscreenUi()
-        refreshStalePlaylists()
-        checkForUpdateSilently()
+        // Playlist refresh + update check run after the first frame is up
+        // (3s) — they are background network jobs and must not compete
+        // with the app opening on a 1.5 GB TV.
+        mainHandler.postDelayed({ refreshStalePlaylists() }, 3000)
+        mainHandler.postDelayed({ checkForUpdateSilently() }, 3000)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1467,12 +1473,16 @@ class MainActivity : Activity() {
     }
 
     private fun play(channel: Channel) {
-        // Tapping the channel that is already playing must not restart
-        // it — on TV, pressing OK on the playing row re-buffered the
-        // stream. (Web channels are exempt: a WebView cannot report
-        // whether it is actually playing, so re-tap stays the retry.)
-        if (!channel.web && channel.key == selected?.key && playerController?.isPlaying() == true) {
+        // Pressing OK on the channel that is already playing does NOT
+        // restart it — it takes it fullscreen. The channel screen has
+        // no controls anymore, so OK is the fullscreen switch (Back
+        // leaves fullscreen). Web channels join in: the selected-key
+        // match is the only signal a WebView gives; Retry stays
+        // available as a quick-actions tile.
+        if (channel.key == selected?.key &&
+            (channel.web || playerController?.isPlaying() == true)) {
             focusChannel(channel)
+            if (!fullScreen) setFullScreen(true)
             return
         }
         // Switching to a channel must not lose the movie's place in
@@ -1592,6 +1602,9 @@ class MainActivity : Activity() {
      * visible it is first, and when play is gone the web rules hide
      * volume and mute too, so fullscreen is what's left.) */
     private fun firstOverlayControlId(): Int {
+        // Channels play on a clean screen (no overlay pill) — RIGHT from
+        // a row goes to the quick-actions tiles instead (Fav first).
+        if (overlayBar.visibility != View.VISIBLE) return favoriteTile.id
         return when {
             playPauseButton.visibility == View.VISIBLE -> playPauseButton.id
             volumeSeekBar.visibility == View.VISIBLE -> volumeSeekBar.id
@@ -1614,6 +1627,12 @@ class MainActivity : Activity() {
         // the ExoPlayer controls (play/pause, volume, speed, seek) stay
         // hidden for it too — the WebView consumes its own touches.
         val webChannel = selected?.web == true || playingDrama != null
+        // A channel plays on a clean screen: no overlay pill, no meta
+        // chip — the video is just the video. Movies keep their controls
+        // (play/pause, seek); dramas keep the fullscreen button.
+        val channelPlaying = selected != null && playingMovie == null && playingDrama == null
+        overlayBar.visibility = if (channelPlaying) View.GONE else View.VISIBLE
+        metaChip.visibility = if (channelPlaying || isTv) View.GONE else View.VISIBLE
         playPauseButton.visibility = if (webChannel) View.GONE else View.VISIBLE
         volumeSeekBar.visibility = if (webChannel) View.GONE else View.VISIBLE
         muteButton.visibility = if (webChannel) View.GONE else View.VISIBLE
@@ -2773,7 +2792,26 @@ class MainActivity : Activity() {
         return view
     }
 
+    /** Stops the currently playing channel (if any) — the Movies browser
+     * opens over a silent screen instead of a channel that keeps playing
+     * behind a movie search. Movies and dramas keep playing underneath. */
+    private fun stopPlayingChannel() {
+        if (selected == null) return
+        stopPlayback()
+        selected = null
+        quickActions.visibility = View.GONE
+        infoBar.visibility = View.GONE
+        playPauseButton.text = "▶"
+        setChannelMeta(null)
+        status.text = ""
+        applyControlVisibility()
+        markPlayingRow()
+        updateBrowseVisibility()
+    }
+
     private fun openMovies() {
+        // A channel must not keep playing behind the Movies browser.
+        stopPlayingChannel()
         moviesOpen = true
         moviesView.visibility = View.VISIBLE
         // Now-playing bar: show it only when a movie is actually playing.
@@ -2800,7 +2838,17 @@ class MainActivity : Activity() {
         // No search on screen — show (and refresh) the Movies home:
         // Continue Watching + Fav Movies. A search result stays as it is.
         if (!movieResultsAreSearch) showMoviesHome()
-        movieSearchInput.requestFocus()
+        // Back from a movie's details returns to the row it came from —
+        // not to the search box (losing your place in a long result list).
+        val returnRow = moviesReturnRow
+        moviesReturnRow = -1
+        val target = if (returnRow in 0 until movieResults.childCount) {
+            movieResults.getChildAt(returnRow)?.takeIf { it.isFocusable }
+        } else {
+            null
+        }
+        if (target != null) target.post { target.requestFocus() }
+        else movieSearchInput.requestFocus()
     }
 
     private fun showMoviesDetails() {
@@ -2858,14 +2906,32 @@ class MainActivity : Activity() {
 
     private fun showMovieResults(movies: List<MovieBox.Movie>) {
         movieResults.removeAllViews()
+        val rows = mutableListOf<View>()
         for (movie in movies) {
-            movieResults.addView(movieRow(movie), LinearLayout.LayoutParams(-1, -2).apply {
+            val row = movieRow(movie)
+            rows += row
+            movieResults.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
                 topMargin = dp(4)
                 bottomMargin = dp(4)
             })
         }
+        linkMovieRowActions(rows)
         movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
         movieResults.getChildAt(0)?.requestFocus()
+    }
+
+    /** Links each movie row's action button (♥ fav / ✕ remove) up and down
+     * to the neighbouring ROWS — without this, D-pad focus falls down the
+     * action column and the rows become unreachable. LEFT/RIGHT between a
+     * row and its own action is wired in movieRow/continueRow. */
+    private fun linkMovieRowActions(rows: List<View>) {
+        for (i in rows.indices) {
+            val row = rows[i] as? LinearLayout ?: continue
+            val action = (0 until row.childCount).mapNotNull { row.getChildAt(it) }
+                .firstOrNull { it.tag == "rowAction" } ?: continue
+            if (i > 0) action.nextFocusUpId = rows[i - 1].id
+            if (i < rows.size - 1) action.nextFocusDownId = rows[i + 1].id
+        }
     }
 
     /** Movies home: Continue Watching (top) + Fav Movies, shown when the
@@ -2874,6 +2940,7 @@ class MainActivity : Activity() {
         movieResultsAreSearch = false
         movieProgress.visibility = View.GONE
         movieResults.removeAllViews()
+        val rows = mutableListOf<View>()
         val continuing = movieStore.continueWatching()
         val favs = movieStore.favoritesList()
         if (continuing.isEmpty() && favs.isEmpty()) {
@@ -2884,7 +2951,9 @@ class MainActivity : Activity() {
         if (continuing.isNotEmpty()) {
             movieResults.addView(sectionLabel("▶ Continue Watching"))
             for (entry in continuing) {
-                movieResults.addView(continueRow(entry),
+                val row = continueRow(entry)
+                rows += row
+                movieResults.addView(row,
                     LinearLayout.LayoutParams(-1, -2).apply {
                         topMargin = dp(4)
                         bottomMargin = dp(4)
@@ -2894,13 +2963,16 @@ class MainActivity : Activity() {
         if (favs.isNotEmpty()) {
             movieResults.addView(sectionLabel("♥ Fav Movies"))
             for (movie in favs) {
-                movieResults.addView(movieRow(movie),
+                val row = movieRow(movie)
+                rows += row
+                movieResults.addView(row,
                     LinearLayout.LayoutParams(-1, -2).apply {
                         topMargin = dp(4)
                         bottomMargin = dp(4)
                     })
             }
         }
+        linkMovieRowActions(rows)
         movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
     }
 
@@ -2917,6 +2989,7 @@ class MainActivity : Activity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            id = View.generateViewId()
             isFocusable = true
             isClickable = true
             minimumHeight = dp(if (isTv) 96 else 88)
@@ -2960,11 +3033,19 @@ class MainActivity : Activity() {
         row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f).apply {
             marginStart = dp(12)
         })
-        row.addView(iconButton("✕") {
+        val removeButton = iconButton("✕") {
             movieStore.removeContinue(entry.subjectId)
             toast("Continue Watching se nikal di.")
             showMoviesHome()
-        }, LinearLayout.LayoutParams(-2, -2).apply {
+        }
+        // D-pad: RIGHT from the row reaches the remove button (it sits
+        // INSIDE the row, so geometry alone never finds it); UP/DOWN
+        // from the button go to the neighbouring rows (linkMovieRowActions).
+        removeButton.id = View.generateViewId()
+        removeButton.tag = "rowAction"
+        row.nextFocusRightId = removeButton.id
+        removeButton.nextFocusLeftId = row.id
+        row.addView(removeButton, LinearLayout.LayoutParams(-2, -2).apply {
             marginStart = dp(8)
         })
         return row
@@ -3091,6 +3172,7 @@ class MainActivity : Activity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            id = View.generateViewId()
             isFocusable = true
             isClickable = true
             minimumHeight = dp(if (isTv) 96 else 88)
@@ -3098,7 +3180,11 @@ class MainActivity : Activity() {
             background = rowBackground(false)
             elevation = dp(3).toFloat()
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
-            setOnClickListener { openMovieDetails(movie) }
+            // Remember this row so Back from the details pane returns to it.
+            setOnClickListener {
+                moviesReturnRow = movieResults.indexOfChild(this)
+                openMovieDetails(movie)
+            }
         }
         val posterWidth = dp(if (isTv) 60 else 56)
         val posterHeight = dp(if (isTv) 90 else 84)
@@ -3147,6 +3233,13 @@ class MainActivity : Activity() {
             if (moviesOpen && !movieResultsAreSearch) showMoviesHome()
         }
         heart.setTextColor(if (movieStore.isFavorite(movie)) liveRed else muted)
+        // D-pad: RIGHT from the row reaches the heart (it sits INSIDE the
+        // row, so geometry alone never finds it); UP/DOWN from the heart
+        // go to the neighbouring rows (linkMovieRowActions).
+        heart.id = View.generateViewId()
+        heart.tag = "rowAction"
+        row.nextFocusRightId = heart.id
+        heart.nextFocusLeftId = row.id
         row.addView(heart, LinearLayout.LayoutParams(-2, -2).apply {
             marginStart = dp(8)
         })
@@ -4266,7 +4359,7 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        private const val PAGE_SIZE = 60
+        private const val PAGE_SIZE = 30 // Rows per page: a ScrollView measures every row, so 60 made each populate — and the app opening — visibly slower on the 1.5 GB TV.
         private const val AUTO_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000L
         private const val DRAMA_REFRESH_AFTER_MS = 6 * 60 * 60 * 1000L
         private const val CONTROLS_HIDE_DELAY_MS = 3000L
