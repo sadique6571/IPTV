@@ -46,4 +46,11 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
     implementation("androidx.media3:media3-common:$media3Version")
+    // HLS and DASH are SEPARATE Media3 modules — the core exoplayer artifact does
+    // NOT include them. Without exoplayer-hls, opening any .m3u8 URL crashes the
+    // app instantly: DefaultMediaSourceFactory throws when the module is missing
+    // (verified 2026-11-18: MUN TV played only because its extensionless URL fell
+    // back to the progressive MPEG-TS path).
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
 }
