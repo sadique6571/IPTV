@@ -146,6 +146,7 @@ class MainActivity : Activity() {
     private var numberTimeout: Runnable? = null
     private var speed = 1f
     private var stoppedForBackground = false
+    private var updateDownloadDialog: AlertDialog? = null
 
     // Adaptive UI: TV (D-pad, 10-foot) vs touch devices, and orientation.
     // Computed once in onCreate; rotation recreates the activity (no
@@ -392,6 +393,14 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(0, -2, 1f).apply {
                 marginStart = dp(4)
             })
+        // Manual update check (UpdateChecker): compares the installed build
+        // with the latest GitHub release and offers to install it.
+        val updateRow = LinearLayout(this)
+        left.addView(updateRow, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(6)
+        })
+        updateRow.addView(button("⟳ Update", ::checkForUpdateManually),
+            LinearLayout.LayoutParams(-1, -2))
 
         // Player card (Qwen PlayerCard): 16:9, 24dp rounded corners, 1dp
         // stroke. The meta chip (LIVE + channel name) sits ON the video
@@ -701,6 +710,7 @@ class MainActivity : Activity() {
         // library, header and controls again and re-hide the system UI.
         if (fullScreen) updateFullscreenUi()
         refreshStalePlaylists()
+        checkForUpdateSilently()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1513,6 +1523,104 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Silent once-a-day update check: only shows anything when a newer
+     * release is actually available. Network/parse failures stay silent. */
+    private fun checkForUpdateSilently() {
+        if (!UpdateChecker.isCheckDue(this)) return
+        imports.execute {
+            try {
+                val update = UpdateChecker.fetchLatest(this)
+                UpdateChecker.markChecked(this)
+                if (update != null) {
+                    runOnUiThread { if (!isDestroyed) showUpdateDialog(update) }
+                }
+            } catch (_: IOException) {
+                // Silent: no network or bad response — try again next launch.
+            }
+        }
+    }
+
+    private fun checkForUpdateManually() {
+        toast("Update check ho raha hai…")
+        imports.execute {
+            try {
+                val update = UpdateChecker.fetchLatest(this)
+                UpdateChecker.markChecked(this)
+                runOnUiThread {
+                    if (isDestroyed) return@runOnUiThread
+                    if (update != null) showUpdateDialog(update)
+                    else toast("App up to date hai.")
+                }
+            } catch (_: IOException) {
+                runOnUiThread {
+                    if (!isDestroyed) toast("Update check nahi ho saka — internet check karein.")
+                }
+            }
+        }
+    }
+
+    private fun showUpdateDialog(update: UpdateChecker.Update) {
+        AlertDialog.Builder(this)
+            .setTitle("App Update")
+            .setMessage("Naya version aa gaya hai (${update.tag}). Download kar ke install karna hai?")
+            .setPositiveButton("Download") { _, _ -> downloadAndInstallUpdate(update) }
+            .setNegativeButton("Baad mein", null)
+            .show()
+    }
+
+    private fun downloadAndInstallUpdate(update: UpdateChecker.Update) {
+        val progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            isIndeterminate = true
+        }
+        val progressText = label("Download ho raha hai… 0%", 14, textColor)
+        val layout = column().apply {
+            setPadding(dp(24), dp(16), dp(24), dp(8))
+            addView(progressBar, LinearLayout.LayoutParams(-1, -2))
+            addView(progressText)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Update download ho raha hai")
+            .setView(layout)
+            .setCancelable(false)
+            .create()
+        updateDownloadDialog = dialog
+        dialog.show()
+        imports.execute {
+            try {
+                val apk = UpdateChecker.downloadApk(this, update) { percent ->
+                    runOnUiThread {
+                        if (isDestroyed) return@runOnUiThread
+                        if (percent >= 0) {
+                            progressBar.isIndeterminate = false
+                            progressBar.progress = percent
+                            progressText.text = "Download ho raha hai… $percent%"
+                        }
+                    }
+                }
+                runOnUiThread {
+                    if (!isDestroyed) {
+                        dialog.dismiss()
+                        updateDownloadDialog = null
+                        try {
+                            UpdateChecker.installApk(this, apk)
+                        } catch (error: ActivityNotFoundException) {
+                            toast("Installer nahi mila.")
+                        }
+                    }
+                }
+            } catch (error: IOException) {
+                runOnUiThread {
+                    if (!isDestroyed) {
+                        dialog.dismiss()
+                        updateDownloadDialog = null
+                        toast("Download fail ho gaya: ${error.message}")
+                    }
+                }
+            }
+        }
+    }
+
     @Deprecated("The document picker delivers its result through this Android callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -1598,6 +1706,9 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        // Never leak the update download dialog across a rotation/destroy.
+        updateDownloadDialog?.dismiss()
+        updateDownloadDialog = null
         imports.shutdownNow()
         // LogoLoader's pool is shared across activity instances: killing it
         // on a rotation would crash the recreated activity the first time it
