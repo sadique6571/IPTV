@@ -17,6 +17,7 @@ import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
@@ -190,6 +191,18 @@ class MainActivity : Activity() {
     private val ytLivePollRunnable = Runnable { pollYtLive() }
     private var fullScreen = false
     private var currentMatches = emptyList<Channel>()
+    // Pakistani entertainment channels pinned to the top of the All /
+    // General lists in the user's own order — 1-5 are his picks, the
+    // rest by popularity. Names must match the M3U exactly.
+    private val pinnedPkOrder = listOf(
+        "Green Entertainment", "ARY Digital", "Hum TV", "Aan TV", "MUN TV",
+        "Express Entertainment", "Hum Sitaray", "A Plus", "TV One", "PTV Home",
+        "Play Entertainment", "Bol Entertainment HD", "Apna Channel", "8XM",
+        "aurLife HD", "LTN Family", "M Entertainment", "PTV Global",
+        "InPlus Pakistan", "Falak TV", "JooMusic", "Discover Pakistan",
+        "Paigham Television",
+    )
+    private val pinnedPkRank = pinnedPkOrder.withIndex().associate { it.value to it.index }
     private var videoOptions = emptyList<PlayerController.VideoOption>()
     private var selectedVideoIndex = -1
     private var seekable = false
@@ -1323,17 +1336,22 @@ class MainActivity : Activity() {
             }
             accepted && (query.isEmpty() || channel.name.contains(query, ignoreCase = true))
         }.let { filtered ->
-            // Pakistani channels first, Indian last (stable sort keeps the
-            // M3U order inside each group). Favorites/Recent keep their
-            // own order; imported playlists keep theirs.
+            // Pinned Pakistani entertainment first (the user's own 1-5,
+            // then the rest by popularity), then Pakistani channels,
+            // Indian last (stable sort keeps the M3U order inside each
+            // group). Favorites/Recent keep their own order; imported
+            // playlists keep theirs.
             if (filter == "Favs" || filter == "Recent" || filter == "M3U") filtered
-            else filtered.sortedWith(compareBy { channel ->
-                when (channel.country.uppercase(Locale.ROOT)) {
-                    "PK" -> 0
-                    "IN" -> 2
-                    else -> 1
-                }
-            })
+            else filtered.sortedWith(
+                compareBy<Channel> { pinnedPkRank[it.name] ?: Int.MAX_VALUE }
+                    .thenBy {
+                        when (it.country.uppercase(Locale.ROOT)) {
+                            "PK" -> 0
+                            "IN" -> 2
+                            else -> 1
+                        }
+                    },
+            )
         }
         currentMatches = matches
         val sourceName = when (filter) {
@@ -1606,13 +1624,16 @@ class MainActivity : Activity() {
         // The list is one list now — the playing channel's row is always
         // on screen, so focus just goes to it.
         val matchIndex = currentMatches.indexOfFirst { it.key == channel.key }
-        if (matchIndex >= 0) focusChannel(channel)
+        // In fullscreen the list is hidden — pulling focus onto a hidden
+        // row leaves OK doing nothing; focus stays where it is instead.
+        if (matchIndex >= 0 && !fullScreen) focusChannel(channel)
         store.addRecent(channel)
         store.lastChannel = channel
         setChannelMeta(channel)
-        // In phone fullscreen the bars stay hidden (Back exits first);
-        // a channel change must not pop them back over the video.
-        val showBars = !(fullScreen && !isTv)
+        // In fullscreen the bars stay hidden (Back exits first) — on TV
+        // too: a channel change must not pop the name bar back over
+        // the video.
+        val showBars = !fullScreen
         infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
         playPauseButton.text = "❚❚"
         // A fresh player starts at the stored volume, so a muted session
@@ -1913,14 +1934,8 @@ class MainActivity : Activity() {
             }
             return super.onKeyDown(keyCode, event)
         }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-            if (channelSwitchKeysActive()) {
-                if (event.repeatCount == 0) {
-                    stepChannel(if (keyCode == KeyEvent.KEYCODE_DPAD_UP) -1 else 1)
-                }
-                return true
-            }
-        }
+        // DPAD_UP/DOWN channel zapping lives in dispatchKeyEvent (the
+        // list's ScrollView would eat the keys before onKeyDown runs).
         return super.onKeyDown(keyCode, event)
     }
 
@@ -1951,14 +1966,13 @@ class MainActivity : Activity() {
     }
 
     /** Up/down switch channels whenever the Live TV screen is in charge
-     * — the remote's channel +/-. The first press used to zap and the
-     * rest did nothing: the zap only fired while focus sat on the video
-     * surface, and play() pulled focus into the list right after it.
-     * Now a channel row zaps too (focus follows the new channel, so the
-     * next press zaps again). The only exceptions keep their own D-pad
-     * navigation: the categories pane, the TopBar, the on-screen corner
-     * buttons, the overlay pill and any text field. Movies and dramas
-     * never zap — their up/down belongs to the player controls. */
+     * — the remote's channel +/-. Consulted from dispatchKeyEvent (see
+     * there for why onKeyDown can never see these keys). A channel row
+     * zaps too (focus follows the new channel, so the next press zaps
+     * again). The only exceptions keep their own D-pad navigation: the
+     * categories pane, the TopBar, the on-screen corner buttons, the
+     * overlay pill and any text field. Movies and dramas never zap —
+     * their up/down belongs to the player controls. */
     private fun channelSwitchKeysActive(): Boolean {
         if (fullScreen) return true
         if (playingMovie != null || playingDrama != null) return false
@@ -2439,33 +2453,99 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Themed dialog shell: navy gradient card with rounded corners, so
+     * the update dialogs match the app instead of the system dialog
+     * look. The window background goes transparent so the card's own
+     * corners show. */
+    private fun themedDialogView(): LinearLayout = column().apply {
+        background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(0xff0a1245.toInt(), 0xff2a1b6b.toInt()),
+        ).apply {
+            cornerRadius = dp(24).toFloat()
+            setStroke(dp(1), 0x6696acff.toInt())
+        }
+        setPadding(dp(24), dp(20), dp(24), dp(20))
+    }
+
+    private fun showThemedDialog(view: View, cancelable: Boolean = true): AlertDialog {
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(cancelable)
+            .create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.show()
+        return dialog
+    }
+
     private fun showUpdateDialog(update: UpdateChecker.Update) {
-        AlertDialog.Builder(this)
-            .setTitle("App Update")
-            .setMessage("Naya version aa gaya hai (${update.tag}). Download kar ke install karna hai?")
-            .setPositiveButton("Download") { _, _ -> downloadAndInstallUpdate(update) }
-            .setNegativeButton("Baad mein", null)
-            .show()
+        val layout = themedDialogView()
+        layout.addView(label("⬆ App Update", if (isTv) 20 else 18, cyan).apply {
+            setTypeface(null, Typeface.BOLD)
+        })
+        layout.addView(label(
+            "Naya version aa gaya hai (${update.tag}). Download kar ke install karna hai?",
+            if (isTv) 16 else 14, textColor,
+        ), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        var dialog: AlertDialog? = null
+        val downloadButton = button("Download") {
+            dialog?.dismiss()
+            downloadAndInstallUpdate(update)
+        }.apply {
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_focused),
+                    GradientDrawable(
+                        GradientDrawable.Orientation.LEFT_RIGHT,
+                        intArrayOf(cyan, blue),
+                    ).apply {
+                        cornerRadius = dp(10).toFloat()
+                        setStroke(dp(2), Color.WHITE)
+                    })
+                addState(intArrayOf(android.R.attr.state_pressed), shape(blue, cyan, 10))
+                addState(intArrayOf(), gradientPill(10))
+            }
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+        }
+        val laterButton = button("Baad mein") { dialog?.dismiss() }
+        val buttons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+        buttons.addView(laterButton, LinearLayout.LayoutParams(-2, -2).apply {
+            marginEnd = dp(12)
+        })
+        buttons.addView(downloadButton)
+        layout.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(18)
+        })
+        dialog = showThemedDialog(layout)
+        downloadButton.post { downloadButton.requestFocus() }
     }
 
     private fun downloadAndInstallUpdate(update: UpdateChecker.Update) {
         val progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             isIndeterminate = true
+            indeterminateTintList = ColorStateList.valueOf(cyan)
+            progressTintList = ColorStateList.valueOf(cyan)
+            progressBackgroundTintList = ColorStateList.valueOf(0x33ffffff.toInt())
         }
         val progressText = label("Download ho raha hai… 0%", 14, textColor)
-        val layout = column().apply {
-            setPadding(dp(24), dp(16), dp(24), dp(8))
-            addView(progressBar, LinearLayout.LayoutParams(-1, -2))
-            addView(progressText)
+        val layout = themedDialogView().apply {
+            addView(label("⬆ Update download ho raha hai", if (isTv) 18 else 16, cyan).apply {
+                setTypeface(null, Typeface.BOLD)
+            })
+            addView(progressBar, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(16)
+            })
+            addView(progressText, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(12)
+            })
         }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Update download ho raha hai")
-            .setView(layout)
-            .setCancelable(false)
-            .create()
+        val dialog = showThemedDialog(layout, cancelable = false)
         updateDownloadDialog = dialog
-        dialog.show()
         imports.execute {
             try {
                 val apk = UpdateChecker.downloadApk(this, update) { percent ->
@@ -2668,13 +2748,33 @@ class MainActivity : Activity() {
         }
     }
 
-    /** D-pad LEFT/RIGHT during a movie seek 10 seconds per press — but
-     * only when focus sits on the play/pause button or the seek bar.
+    /** D-pad intercepts that must run before any view sees the key.
+     * UP/DOWN zap channels: this lives here, not in onKeyDown, because
+     * the channel list sits in a ScrollView — and ScrollView consumes
+     * DPAD_UP/DOWN for scrolling before the Activity ever sees them, so
+     * a focused row could never zap (and in fullscreen the hidden
+     * ScrollView swallowed the keys whenever it could still scroll,
+     * which is why zapping worked only sometimes). The guards below
+     * keep D-pad navigation for the surfaces that own it.
+     * LEFT/RIGHT during a movie seek 10 seconds per press — but only
+     * when focus sits on the play/pause button or the seek bar.
      * Everywhere else LEFT/RIGHT keep navigating (corner buttons, pill
      * buttons, header), and a focused volume bar keeps adjusting volume.
      * The intercept runs in dispatchKeyEvent so the seek bar's own ±1s
      * key handling never fires alongside it. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            (event.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+                event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) &&
+            !moviesOpen && !dramasOpen && currentFocus !is EditText &&
+            channelSwitchKeysActive()
+        ) {
+            // Held keys stay consumed (no focus jump) but zap once.
+            if (event.repeatCount == 0) {
+                stepChannel(if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP) -1 else 1)
+            }
+            return true
+        }
         if (playingMovie != null && !movieEnded && event.action == KeyEvent.ACTION_DOWN) {
             val code = event.keyCode
             if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
@@ -3646,7 +3746,7 @@ class MainActivity : Activity() {
         playingDrama = null
         movieEnded = false
         setMovieMeta(movie)
-        val showBars = !(fullScreen && !isTv)
+        val showBars = !fullScreen
         infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
         playPauseButton.text = "❚❚"
         mutedVolume = false
@@ -4136,7 +4236,7 @@ class MainActivity : Activity() {
         playingDrama = episode
         playingDramaTitle = dramaTitle
         setDramaMeta(episode, dramaTitle)
-        val showBars = !(fullScreen && !isTv)
+        val showBars = !fullScreen
         infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
         playPauseButton.text = "❚❚"
         mutedVolume = false
