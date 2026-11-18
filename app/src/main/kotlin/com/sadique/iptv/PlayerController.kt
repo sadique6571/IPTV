@@ -12,7 +12,9 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 
@@ -47,6 +49,11 @@ internal class PlayerController(
     private var trackSelector: DefaultTrackSelector? = null
     private var currentTracks: Tracks? = null
     private var currentUrl: String? = null
+    // Request headers for the current stream (MovieBox files need a
+    // User-Agent, DASH manifests also Referer + Cookie). They live on the
+    // player's HTTP data source factory, so a header change rebuilds the
+    // player; plain channel switches (no headers) reuse the same player.
+    private var currentHeaders: Map<String, String> = emptyMap()
     private var retryCount = 0
     private var triedHlsFallback = false
     private val retryHandler = Handler(Looper.getMainLooper())
@@ -85,8 +92,12 @@ internal class PlayerController(
 
     fun isPlaying(): Boolean = player?.isPlaying == true
 
-    fun play(url: String) {
+    fun play(url: String, headers: Map<String, String> = emptyMap()) {
         retryHandler.removeCallbacksAndMessages(null)
+        if (headers != currentHeaders) {
+            currentHeaders = headers
+            stop()
+        }
         currentUrl = url
         retryCount = 0
         triedHlsFallback = false
@@ -170,7 +181,13 @@ internal class PlayerController(
         if (player != null) return
         val selector = DefaultTrackSelector(context)
         trackSelector = selector
-        val active = ExoPlayer.Builder(context).setTrackSelector(selector).build()
+        val httpFactory = DefaultHttpDataSource.Factory().apply {
+            if (currentHeaders.isNotEmpty()) setDefaultRequestProperties(currentHeaders)
+        }
+        val mediaSourceFactory = DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(httpFactory)
+        val active = ExoPlayer.Builder(context).setTrackSelector(selector)
+            .setMediaSourceFactory(mediaSourceFactory).build()
         player = active
         active.volume = initialVolume.coerceIn(0f, 1f)
         active.addListener(playerListener)

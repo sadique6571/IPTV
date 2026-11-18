@@ -32,6 +32,8 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -50,6 +52,7 @@ import android.widget.Toast
 import java.io.File
 import java.io.IOException
 import java.net.URI
+import java.util.Locale
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
@@ -90,6 +93,10 @@ class MainActivity : Activity() {
     private lateinit var metaChip: LinearLayout
     private lateinit var metaName: TextView
     private lateinit var metaCategory: TextView
+    // The LIVE badges (meta chip + info bar) are hidden while a movie plays
+    // — a movie is not live — and shown again for channels.
+    private lateinit var metaLiveBadge: TextView
+    private lateinit var infoLiveBadge: TextView
     private lateinit var overlayBar: LinearLayout
     private lateinit var status: TextView
     private lateinit var buffering: ProgressBar
@@ -148,6 +155,40 @@ class MainActivity : Activity() {
     private var stoppedForBackground = false
     private var updateDownloadDialog: AlertDialog? = null
 
+    // MovieBox movies (v1): a full-screen overlay over the Live TV layout.
+    // Movies play in the SAME ExoPlayer and never touch the channel store —
+    // a signed movie URL must never land in Recent or last-channel, or the
+    // app would auto-play an expired link on the next launch.
+    private lateinit var movieBox: MovieBox
+    private lateinit var moviesView: LinearLayout
+    private lateinit var moviesListPane: LinearLayout
+    private lateinit var moviesDetailsPane: LinearLayout
+    private lateinit var movieSearchInput: EditText
+    private lateinit var movieStatus: TextView
+    private lateinit var movieProgress: ProgressBar
+    private lateinit var movieResults: LinearLayout
+    private lateinit var movieResultsScroll: ScrollView
+    private lateinit var movieDetailsTitle: TextView
+    private lateinit var movieDetailsMeta: TextView
+    private lateinit var movieDetailsDesc: TextView
+    private lateinit var movieDubRow: LinearLayout
+    private lateinit var movieQualityRow: LinearLayout
+    private lateinit var moviePlayButton: Button
+    private lateinit var movieDetailsStatus: TextView
+    private var moviesOpen = false
+    private var playingMovie: MovieBox.Movie? = null
+    private var playingMovieUrl: String? = null
+    private var playingMovieHeaders: Map<String, String> = emptyMap()
+    private var savedMoviePosition = 0L
+    private var movieSearchRequest = 0
+    private var movieDetailsRequest = 0
+    private var movieStreamsRequest = 0
+    private var currentMovieDetails: MovieBox.Details? = null
+    private var currentMovieStreams: List<MovieBox.MovieStream> = emptyList()
+    private var currentPlayTitle = ""
+    private var selectedDubId: String? = null
+    private var selectedQuality = 0
+
     // Adaptive UI: TV (D-pad, 10-foot) vs touch devices, and orientation.
     // Computed once in onCreate; rotation recreates the activity (no
     // configChanges in the manifest), so the layout rebuilds for the new mode.
@@ -179,6 +220,9 @@ class MainActivity : Activity() {
         sleepTimer = SleepTimer {
             stopPlayback()
             selected = null
+            playingMovie = null
+            playingMovieUrl = null
+            playingMovieHeaders = emptyMap()
             quickActions.visibility = View.GONE
             infoBar.visibility = View.GONE
             playPauseButton.text = "▶"
@@ -311,6 +355,12 @@ class MainActivity : Activity() {
                     bottomMargin = dp(6)
                 })
             }
+            // Movies live outside the channel filters — a plain nav item
+            // (not in filterChips, so it never becomes the active filter).
+            sidebarItems.addView(navItem("🎬 Movies") { openMovies() },
+                LinearLayout.LayoutParams(-1, -2).apply {
+                    topMargin = dp(8)
+                })
             val sidebarScroll = ScrollView(this).apply { addView(sidebarItems) }
             val sidebar = column().apply {
                 background = glassShape(28)
@@ -398,8 +448,21 @@ class MainActivity : Activity() {
         left.addView(updateRow, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(6)
         })
-        updateRow.addView(button("⟳ Update", ::checkForUpdateManually),
-            LinearLayout.LayoutParams(-1, -2))
+        if (isTv) {
+            updateRow.addView(button("⟳ Update", ::checkForUpdateManually),
+                LinearLayout.LayoutParams(-1, -2))
+        } else {
+            // Touch devices have no sidebar, so Movies gets a footer button
+            // next to Update (on TV it is a sidebar item instead).
+            updateRow.addView(button("⟳ Update", ::checkForUpdateManually),
+                LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginEnd = dp(4)
+                })
+            updateRow.addView(button("🎬 Movies") { openMovies() },
+                LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginStart = dp(4)
+                })
+        }
 
         // Player card (Qwen PlayerCard): 16:9, 24dp rounded corners, 1dp
         // stroke. The meta chip (LIVE + channel name) sits ON the video
@@ -442,7 +505,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        metaRow.addView(liveBadge())
+        metaRow.addView(liveBadge().also { metaLiveBadge = it })
         metaName = TextView(this).apply {
             text = "Select a channel"
             textSize = if (isTv) 18f else 16f
@@ -596,7 +659,7 @@ class MainActivity : Activity() {
                 marginStart = dp(18)
                 marginEnd = dp(18)
             })
-        infoBar.addView(liveBadge())
+        infoBar.addView(liveBadge().also { infoLiveBadge = it })
         // Quick Actions glass tiles (Qwen RightPanel style, real actions
         // only — no Cast, Subtitles, Audio Track or PiP tiles): favorite,
         // quality (mobile landscape only — the TopBar chip covers the rest),
@@ -696,13 +759,27 @@ class MainActivity : Activity() {
                     if (isSeekable) startSeekUpdates() else stopSeekUpdates()
                 }
             })
-        setContentView(rootView)
+        // The Movies overlay sits on top of the Live TV layout in a frame,
+        // so opening it never detaches the player view underneath.
+        movieBox = MovieBox(applicationContext)
+        moviesView = buildMoviesView()
+        val contentFrame = FrameLayout(this)
+        contentFrame.addView(rootView, FrameLayout.LayoutParams(-1, -1))
+        contentFrame.addView(moviesView, FrameLayout.LayoutParams(-1, -1))
+        setContentView(contentFrame)
         populate()
         list.getChildAt(0)?.requestFocus()
-        store.lastChannel?.let { last ->
-            val match = (verifiedChannels + imported + store.favoritesList() + store.recentList())
-                .firstOrNull { it.key == last.key } ?: last
-            play(match)
+        // A movie playing across a rotation (or a process death) restores
+        // from its saved signed URL instead of auto-playing the last channel.
+        val savedMovieUrl = savedInstanceState?.getString(STATE_MOVIE_URL)
+        if (savedMovieUrl != null) {
+            restoreMoviePlayback(savedInstanceState)
+        } else {
+            store.lastChannel?.let { last ->
+                val match = (verifiedChannels + imported + store.favoritesList() + store.recentList())
+                    .firstOrNull { it.key == last.key } ?: last
+                play(match)
+            }
         }
         // Restored fullscreen (after the rotation it triggered): hide the
         // library, header and controls again and re-hide the system UI.
@@ -714,6 +791,20 @@ class MainActivity : Activity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putBoolean(STATE_FULLSCREEN, fullScreen)
+        // Save a playing movie (URL + headers + position) so a rotation —
+        // including the one the fullscreen toggle triggers — resumes it.
+        // The signed URL stays valid for hours, so this is safe.
+        val movie = playingMovie
+        val url = playingMovieUrl
+        if (movie != null && url != null) {
+            outState.putString(STATE_MOVIE_URL, url)
+            outState.putString(STATE_MOVIE_TITLE, movie.title)
+            outState.putLong(STATE_MOVIE_POS, playerController?.position() ?: 0L)
+            outState.putStringArrayList(
+                STATE_MOVIE_HEADERS,
+                ArrayList(playingMovieHeaders.map { (k, v) -> "$k\u0001$v" }),
+            )
+        }
     }
 
     private fun populate() {
@@ -923,7 +1014,7 @@ class MainActivity : Activity() {
             showSystemUi()
             headerView.visibility = if (!isTv && isLandscape) View.GONE else View.VISIBLE
             libraryPane.visibility = View.VISIBLE
-            val showBars = selected != null
+            val showBars = selected != null || playingMovie != null
             infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
             quickActions.visibility = if (showBars) View.VISIBLE else View.GONE
             status.visibility = if (status.text.isEmpty()) View.GONE else View.VISIBLE
@@ -953,6 +1044,9 @@ class MainActivity : Activity() {
     private fun play(channel: Channel) {
         stopWeb()
         selected = channel
+        playingMovie = null
+        playingMovieUrl = null
+        playingMovieHeaders = emptyMap()
         // Keep the list on the page the playing channel belongs to.
         val matchIndex = currentMatches.indexOfFirst { it.key == channel.key }
         if (matchIndex >= 0) {
@@ -1013,6 +1107,10 @@ class MainActivity : Activity() {
     }
 
     private fun retryPlayback() {
+        if (playingMovie != null) {
+            playerController?.retry()
+            return
+        }
         val channel = selected ?: return
         if (channel.web) play(channel) else playerController?.retry()
     }
@@ -1158,6 +1256,10 @@ class MainActivity : Activity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // While the Movies browser is open, channel number jumps and
+        // up/down channel switching stay off — D-pad navigation belongs to
+        // the movie list.
+        if (moviesOpen) return super.onKeyDown(keyCode, event)
         if (currentFocus is EditText) return super.onKeyDown(keyCode, event)
         val digit = when (keyCode) {
             KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_NUMPAD_0 -> 0
@@ -1691,12 +1793,21 @@ class MainActivity : Activity() {
         super.onStart()
         if (stoppedForBackground) {
             stoppedForBackground = false
-            selected?.let(::play)
+            val movie = playingMovie
+            val url = playingMovieUrl
+            if (movie != null && url != null) {
+                playMovieStream(movie, url, playingMovieHeaders, savedMoviePosition)
+            } else {
+                selected?.let(::play)
+            }
         }
     }
 
     override fun onStop() {
         sleepTimer.cancel()
+        // Capture the movie position BEFORE stopPlayback releases the player,
+        // so coming back from background resumes the movie where it left off.
+        if (playingMovie != null) savedMoviePosition = playerController?.position() ?: 0L
         stopPlayback()
         stoppedForBackground = true
         super.onStop()
@@ -1717,14 +1828,23 @@ class MainActivity : Activity() {
 
     @Deprecated("Use the system back gesture callback on newer Android versions")
     override fun onBackPressed() {
-        if (fullScreen) {
+        if (moviesOpen) {
+            if (moviesDetailsPane.visibility == View.VISIBLE) {
+                showMoviesList()
+            } else {
+                closeMovies()
+            }
+        } else if (fullScreen) {
             setFullScreen(false)
-        } else if (selected == null) {
+        } else if (selected == null && playingMovie == null) {
             super.onBackPressed()
         } else {
             sleepTimer.cancel()
             stopPlayback()
             selected = null
+            playingMovie = null
+            playingMovieUrl = null
+            playingMovieHeaders = emptyMap()
             quickActions.visibility = View.GONE
             infoBar.visibility = View.GONE
             playPauseButton.text = "▶"
@@ -1732,6 +1852,540 @@ class MainActivity : Activity() {
             status.text = ""
             list.getChildAt(0)?.requestFocus()
         }
+    }
+
+    // ---- MovieBox movies (v1) ----
+    //
+    // A full-screen overlay (same Qwen navy-glass look) over the Live TV
+    // layout: search → results (poster + name + year + HINDI badge) →
+    // details → audio (dub) + quality pickers → Play in the main player.
+    // All MovieBox calls run on the `imports` executor; stale results are
+    // dropped with a per-request counter, the same pattern as playEmbed.
+
+    private fun buildMoviesView(): LinearLayout {
+        val view = column().apply {
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(bg0, bg1, bg2),
+            )
+            isClickable = true
+            isFocusable = true
+            visibility = View.GONE
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(button("‹ Back") { closeMovies() },
+            LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(12) })
+        header.addView(label("🎬 Movies", if (isTv) 26 else 22, textColor).apply {
+            setTypeface(null, Typeface.BOLD)
+        })
+        view.addView(header)
+
+        // ---- Search + results pane ----
+        moviesListPane = column()
+        val searchRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        movieSearchInput = EditText(this).apply {
+            isSingleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT
+            imeOptions = EditorInfo.IME_ACTION_SEARCH
+            hint = "Movie ka naam…"
+            setHintTextColor(muted2)
+            setTextColor(textColor)
+            textSize = if (isTv) 17f else 15f
+            minimumHeight = dp(if (isTv) 56 else 52)
+            setPadding(dp(18), dp(8), dp(18), dp(8))
+            background = glassStateList(28)
+            setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                    searchMovies()
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+        searchRow.addView(movieSearchInput, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            marginEnd = dp(8)
+        })
+        searchRow.addView(button("Search") { searchMovies() })
+        moviesListPane.addView(searchRow, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(12)
+            bottomMargin = dp(8)
+        })
+        movieStatus = label(
+            "Movie ka naam likh kar search karein — Hindi dubbed bhi milti hai.",
+            if (isTv) 15 else 13, muted,
+        )
+        moviesListPane.addView(movieStatus)
+        movieProgress = ProgressBar(this).apply {
+            visibility = View.GONE
+            indeterminateTintList = ColorStateList.valueOf(cyan)
+        }
+        moviesListPane.addView(movieProgress, LinearLayout.LayoutParams(-2, -2).apply {
+            topMargin = dp(8)
+            bottomMargin = dp(8)
+        })
+        movieResults = column()
+        movieResultsScroll = ScrollView(this).apply { addView(movieResults) }
+        moviesListPane.addView(movieResultsScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        view.addView(moviesListPane, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        // ---- Details pane ----
+        moviesDetailsPane = column().apply { visibility = View.GONE }
+        val detailsScroll = ScrollView(this)
+        val detailsInner = column()
+        detailsScroll.addView(detailsInner)
+        movieDetailsTitle = TextView(this).apply {
+            textSize = if (isTv) 24f else 20f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(textColor)
+        }
+        detailsInner.addView(movieDetailsTitle)
+        movieDetailsMeta = label("", if (isTv) 15 else 13, muted)
+        detailsInner.addView(movieDetailsMeta)
+        movieDetailsDesc = TextView(this).apply {
+            textSize = if (isTv) 15f else 14f
+            setTextColor(muted)
+        }
+        detailsInner.addView(movieDetailsDesc, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(8)
+            bottomMargin = dp(12)
+        })
+        detailsInner.addView(label("Audio", if (isTv) 15 else 13, textColor).apply {
+            setTypeface(null, Typeface.BOLD)
+        })
+        val dubScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        movieDubRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        dubScroll.addView(movieDubRow)
+        detailsInner.addView(dubScroll, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(12)
+        })
+        detailsInner.addView(label("Quality", if (isTv) 15 else 13, textColor).apply {
+            setTypeface(null, Typeface.BOLD)
+        })
+        val qualityScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        movieQualityRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        qualityScroll.addView(movieQualityRow)
+        detailsInner.addView(qualityScroll, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(12)
+        })
+        movieDetailsStatus = label("", if (isTv) 15 else 13, muted)
+        detailsInner.addView(movieDetailsStatus)
+        moviePlayButton = Button(this).apply {
+            text = "▶ Play"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            textSize = if (isTv) 18f else 16f
+            minimumHeight = dp(if (isTv) 56 else 52)
+            background = gradientPill(28)
+            isEnabled = false
+            setOnClickListener { playSelectedMovie() }
+        }
+        detailsInner.addView(moviePlayButton, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(12)
+        })
+        detailsInner.addView(button("‹ Back to results") { showMoviesList() },
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        moviesDetailsPane.addView(detailsScroll, LinearLayout.LayoutParams(-1, -1))
+        view.addView(moviesDetailsPane, LinearLayout.LayoutParams(-1, 0, 1f))
+        return view
+    }
+
+    private fun openMovies() {
+        moviesOpen = true
+        moviesView.visibility = View.VISIBLE
+        showMoviesList()
+    }
+
+    private fun closeMovies() {
+        moviesOpen = false
+        moviesView.visibility = View.GONE
+        // A movie keeps playing underneath when the browser is closed.
+        list.getChildAt(0)?.requestFocus()
+    }
+
+    private fun showMoviesList() {
+        moviesDetailsPane.visibility = View.GONE
+        moviesListPane.visibility = View.VISIBLE
+        movieSearchInput.requestFocus()
+    }
+
+    private fun showMoviesDetails() {
+        moviesListPane.visibility = View.GONE
+        moviesDetailsPane.visibility = View.VISIBLE
+    }
+
+    private fun searchMovies() {
+        val query = movieSearchInput.text.toString().trim()
+        if (query.isEmpty()) {
+            toast("Movie ka naam likhein.")
+            return
+        }
+        val request = ++movieSearchRequest
+        // Hide the keyboard so the results are visible on phones.
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.hideSoftInputFromWindow(movieSearchInput.windowToken, 0)
+        movieProgress.visibility = View.VISIBLE
+        movieStatus.text = "Search ho raha hai…"
+        movieResults.removeAllViews()
+        imports.execute {
+            try {
+                val results = movieBox.search(query)
+                runOnUiThread {
+                    if (isDestroyed || request != movieSearchRequest) return@runOnUiThread
+                    movieProgress.visibility = View.GONE
+                    if (results.isEmpty()) {
+                        movieStatus.text = "Koi movie nahi mili — naam badal kar dobara try karein."
+                    } else {
+                        movieStatus.text = "${results.size} movies mili."
+                        showMovieResults(results)
+                    }
+                }
+            } catch (error: IOException) {
+                runOnUiThread {
+                    if (isDestroyed || request != movieSearchRequest) return@runOnUiThread
+                    movieProgress.visibility = View.GONE
+                    movieStatus.text = "Search nahi ho saka: ${error.message}"
+                }
+            }
+        }
+    }
+
+    private fun showMovieResults(movies: List<MovieBox.Movie>) {
+        movieResults.removeAllViews()
+        for (movie in movies) {
+            movieResults.addView(movieRow(movie), LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(4)
+            })
+        }
+        movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
+        movieResults.getChildAt(0)?.requestFocus()
+    }
+
+    /** Glass movie card: 2:3 poster (letter tile behind it while it loads),
+     * bold title + year, and a cyan HINDI badge for Hindi-dubbed titles. */
+    private fun movieRow(movie: MovieBox.Movie): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isFocusable = true
+            isClickable = true
+            minimumHeight = dp(if (isTv) 96 else 88)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = rowBackground(false)
+            setOnClickListener { openMovieDetails(movie) }
+        }
+        val posterWidth = dp(if (isTv) 60 else 56)
+        val posterHeight = dp(if (isTv) 90 else 84)
+        val tileView = FrameLayout(this)
+        val initial = TextView(this).apply {
+            text = movie.title.take(1).uppercase()
+            textSize = if (isTv) 22f else 20f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = shape(glassHi, glassHi, 12)
+        }
+        tileView.addView(initial, FrameLayout.LayoutParams(-1, -1))
+        if (movie.posterUrl.isNotEmpty()) {
+            val posterView = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+            }
+            tileView.addView(posterView, FrameLayout.LayoutParams(-1, -1))
+            LogoLoader.load(this, movie.posterUrl, posterView)
+        }
+        row.addView(tileView, LinearLayout.LayoutParams(posterWidth, posterHeight))
+        val texts = column()
+        texts.addView(TextView(this).apply {
+            text = movie.title
+            textSize = if (isTv) 17f else 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(textColor)
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        })
+        if (movie.year.isNotEmpty()) {
+            texts.addView(TextView(this).apply {
+                text = movie.year
+                textSize = 13f
+                setTextColor(muted)
+            })
+        }
+        row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            marginStart = dp(12)
+        })
+        if (movie.isHindi) {
+            row.addView(TextView(this).apply {
+                text = "HINDI"
+                textSize = 11f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+                background = shape(cyan, cyan, 8, 0)
+            })
+        }
+        return row
+    }
+
+    private fun openMovieDetails(movie: MovieBox.Movie) {
+        val request = ++movieDetailsRequest
+        currentMovieDetails = null
+        currentMovieStreams = emptyList()
+        currentPlayTitle = movie.title
+        selectedDubId = movie.subjectId
+        selectedQuality = 0
+        movieDetailsTitle.text = movie.title
+        movieDetailsMeta.text = ""
+        movieDetailsDesc.text = ""
+        movieDubRow.removeAllViews()
+        movieQualityRow.removeAllViews()
+        moviePlayButton.isEnabled = false
+        movieDetailsStatus.text = "Details load ho rahe hain…"
+        showMoviesDetails()
+        imports.execute {
+            try {
+                val details = movieBox.details(movie.subjectId)
+                runOnUiThread {
+                    if (isDestroyed || request != movieDetailsRequest) return@runOnUiThread
+                    showMovieDetails(details)
+                }
+            } catch (error: IOException) {
+                runOnUiThread {
+                    if (isDestroyed || request != movieDetailsRequest) return@runOnUiThread
+                    movieDetailsStatus.text = "Details nahi mile: ${error.message}"
+                }
+            }
+        }
+    }
+
+    private fun showMovieDetails(details: MovieBox.Details) {
+        currentMovieDetails = details
+        currentPlayTitle = details.movie.title
+        selectedDubId = details.movie.subjectId
+        movieDetailsTitle.text = details.movie.title
+        val metaParts = mutableListOf<String>()
+        if (details.movie.year.isNotEmpty()) metaParts += details.movie.year
+        if (details.durationSec > 0) metaParts += formatDuration(details.durationSec)
+        if (details.rating.isNotEmpty()) metaParts += "★ ${details.rating}"
+        if (details.genres.isNotEmpty()) metaParts += details.genres.take(3).joinToString(", ")
+        movieDetailsMeta.text = metaParts.joinToString(" · ")
+        val descParts = mutableListOf<String>()
+        if (details.description.isNotEmpty()) descParts += details.description
+        if (details.director.isNotEmpty()) descParts += "Director: ${details.director}"
+        if (details.stars.isNotEmpty()) descParts += "Cast: ${details.stars}"
+        movieDetailsDesc.text = descParts.joinToString("\n\n")
+        rebuildDubChips(details)
+        loadMovieStreams()
+    }
+
+    private fun formatDuration(seconds: Long): String {
+        val minutes = seconds / 60
+        return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "${minutes}m"
+    }
+
+    private fun rebuildDubChips(details: MovieBox.Details) {
+        movieDubRow.removeAllViews()
+        val options = mutableListOf(details.movie.subjectId to "Original")
+        for (dub in details.dubs) {
+            if (dub.subjectId == details.movie.subjectId) continue
+            options += dub.subjectId to dub.language.ifEmpty { dub.label }
+        }
+        for ((subjectId, label) in options) {
+            val chipView = chip(label) {
+                if (selectedDubId != subjectId) {
+                    selectedDubId = subjectId
+                    markChipByTag(movieDubRow, subjectId)
+                    loadMovieStreams()
+                }
+            }
+            chipView.tag = subjectId
+            chipView.isSelected = subjectId == selectedDubId
+            refreshFilterText(chipView)
+            movieDubRow.addView(chipView, LinearLayout.LayoutParams(-2, -2).apply {
+                marginEnd = dp(8)
+            })
+        }
+    }
+
+    private fun markChipByTag(row: LinearLayout, tag: Any?) {
+        for (i in 0 until row.childCount) {
+            val child = row.getChildAt(i)
+            if (child is Button) {
+                child.isSelected = child.tag == tag
+                refreshFilterText(child)
+            }
+        }
+    }
+
+    private fun loadMovieStreams() {
+        val subjectId = selectedDubId ?: return
+        val request = ++movieStreamsRequest
+        currentMovieStreams = emptyList()
+        selectedQuality = 0
+        movieQualityRow.removeAllViews()
+        moviePlayButton.isEnabled = false
+        movieDetailsStatus.text = "Streams load ho rahe hain…"
+        imports.execute {
+            try {
+                // A dub is a different subject with its own files — reuse the
+                // details we already have when the original is selected.
+                val details = if (subjectId == currentMovieDetails?.movie?.subjectId) {
+                    currentMovieDetails!!
+                } else {
+                    movieBox.details(subjectId)
+                }
+                currentPlayTitle = details.movie.title
+                val streams = movieBox.streams(details)
+                runOnUiThread {
+                    if (isDestroyed || request != movieStreamsRequest) return@runOnUiThread
+                    currentMovieStreams = streams
+                    showMovieStreams(streams)
+                }
+            } catch (error: IOException) {
+                runOnUiThread {
+                    if (isDestroyed || request != movieStreamsRequest) return@runOnUiThread
+                    movieDetailsStatus.text = "Streams nahi mile: ${error.message}"
+                }
+            }
+        }
+    }
+
+    private fun showMovieStreams(streams: List<MovieBox.MovieStream>) {
+        val resolutions = streams.map { it.resolution }.filter { it > 0 }
+            .distinct().sortedDescending()
+        if (resolutions.isEmpty()) {
+            // Streams exist but none reports a resolution — one Auto entry
+            // that plays the best (first) stream.
+            selectedQuality = 0
+            val chipView = chip("Auto") {
+                selectedQuality = 0
+                markChipByTag(movieQualityRow, 0)
+            }
+            chipView.tag = 0
+            chipView.isSelected = true
+            refreshFilterText(chipView)
+            movieQualityRow.addView(chipView)
+            movieDetailsStatus.text = "Stream ready hai — Play dabayein."
+            moviePlayButton.isEnabled = true
+            return
+        }
+        // Default: the highest available quality.
+        selectedQuality = resolutions.first()
+        for (res in resolutions) {
+            val chipView = chip("${res}p") {
+                selectedQuality = res
+                markChipByTag(movieQualityRow, res)
+            }
+            chipView.tag = res
+            chipView.isSelected = res == selectedQuality
+            refreshFilterText(chipView)
+            movieQualityRow.addView(chipView, LinearLayout.LayoutParams(-2, -2).apply {
+                marginEnd = dp(8)
+            })
+        }
+        val best = streams.first()
+        val sizeText = if (best.sizeBytes > 0) " · ${formatSize(best.sizeBytes)}" else ""
+        movieDetailsStatus.text = "${resolutions.size} qualities available$sizeText — Play dabayein."
+        moviePlayButton.isEnabled = true
+    }
+
+    private fun formatSize(bytes: Long): String {
+        return when {
+            bytes >= 1024 * 1024 * 1024 ->
+                String.format(Locale.US, "%.1f GB", bytes / 1024.0 / 1024.0 / 1024.0)
+            bytes >= 1024 * 1024 ->
+                String.format(Locale.US, "%.0f MB", bytes / 1024.0 / 1024.0)
+            bytes > 0 -> String.format(Locale.US, "%.0f KB", bytes / 1024.0)
+            else -> ""
+        }
+    }
+
+    private fun playSelectedMovie() {
+        val details = currentMovieDetails ?: return
+        val streams = currentMovieStreams
+        if (streams.isEmpty()) return
+        val stream = streams.firstOrNull { it.resolution == selectedQuality } ?: streams.first()
+        closeMovies()
+        playMovieStream(details.movie.copy(title = currentPlayTitle), stream.url, stream.headers)
+    }
+
+    /**
+     * Plays a resolved movie file in the main player, with the same setup
+     * as [play] but without touching the channel store: no recent entry, no
+     * last-channel, no favorite — the signed URL must not outlive this
+     * session. Seek/pause/volume/speed/fullscreen all work through the
+     * existing controls; movies are seekable, so the seek bar appears.
+     */
+    private fun playMovieStream(
+        movie: MovieBox.Movie,
+        url: String,
+        headers: Map<String, String>,
+        positionMs: Long = 0L,
+    ) {
+        stopWeb()
+        selected = null
+        playingMovie = movie
+        playingMovieUrl = url
+        playingMovieHeaders = headers
+        setMovieMeta(movie)
+        val showBars = !(fullScreen && !isTv)
+        quickActions.visibility = if (showBars) View.VISIBLE else View.GONE
+        infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
+        playPauseButton.text = "❚❚"
+        mutedVolume = false
+        muteButton.text = if (store.volume == 0f) "🔇" else "🔊"
+        volumeSeekBar.progress = (store.volume * 100).toInt()
+        speed = 1f
+        playerController?.setSpeed(1f)
+        setSpeedText("1x")
+        videoOptions = emptyList()
+        selectedVideoIndex = -1
+        seekable = false
+        stopSeekUpdates()
+        updateFavoriteButton()
+        applyControlVisibility()
+        markPlayingRow()
+        status.text = "Connecting to stream…"
+        playerController?.play(url, headers)
+        if (positionMs > 0) playerController?.seekTo(positionMs)
+        bringPlayerOverlaysToFront()
+    }
+
+    private fun setMovieMeta(movie: MovieBox.Movie) {
+        metaName.text = movie.title
+        infoName.text = movie.title
+        metaCategory.text = "Movie"
+        metaCategory.visibility = View.VISIBLE
+        metaLiveBadge.visibility = View.GONE
+        infoLiveBadge.visibility = View.GONE
+    }
+
+    private fun restoreMoviePlayback(saved: Bundle?) {
+        if (saved == null) return
+        val url = saved.getString(STATE_MOVIE_URL) ?: return
+        val title = saved.getString(STATE_MOVIE_TITLE).orEmpty()
+        val position = saved.getLong(STATE_MOVIE_POS, 0L)
+        val headers = saved.getStringArrayList(STATE_MOVIE_HEADERS).orEmpty()
+            .mapNotNull { raw ->
+                val parts = raw.split("\u0001")
+                if (parts.size == 2) parts[0] to parts[1] else null
+            }.toMap()
+        playMovieStream(MovieBox.Movie(title = title), url, headers, position)
     }
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
@@ -1851,6 +2505,8 @@ class MainActivity : Activity() {
         val category = channel?.group.orEmpty()
         metaCategory.text = category
         metaCategory.visibility = if (category.isEmpty()) View.GONE else View.VISIBLE
+        metaLiveBadge.visibility = View.VISIBLE
+        infoLiveBadge.visibility = View.VISIBLE
     }
 
     /** PlayerView/WebView are added to [screen] after the overlays were built;
@@ -2083,5 +2739,9 @@ class MainActivity : Activity() {
         private const val PAGE_SIZE = 60
         private const val AUTO_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000L
         private const val STATE_FULLSCREEN = "fullscreen"
+        private const val STATE_MOVIE_URL = "movie_url"
+        private const val STATE_MOVIE_TITLE = "movie_title"
+        private const val STATE_MOVIE_POS = "movie_pos"
+        private const val STATE_MOVIE_HEADERS = "movie_headers"
     }
 }
