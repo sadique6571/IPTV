@@ -1,0 +1,14 @@
+#EXTM3U
+# IPTV Movies — Hindi / Punjabi / Hindi Dubbed (Marvel + DC khas tor par)
+# ------------------------------------------------------------------
+# Is file mein movie links daalo — app har 24 ghante GitHub se khud
+# refresh kar legi, naya APK lagane ki zaroorat nahi hogi.
+# Format (har movie ke liye 2 lines):
+#   #EXTINF:-1 group-title="Marvel Hindi Dubbed",Avengers Endgame (2019) [1080p]
+#   https://.../...mp4   (ya .m3u8 link)
+# Sirf HD links (720p/1080p) — cinema recording wale links mat daalo.
+# group-title ye istemal karo: Marvel Hindi Dubbed, DC Hindi Dubbed,
+# Bollywood, Punjabi, Hollywood Hindi Dubbed, South Hindi Dubbed
+# ------------------------------------------------------------------
+# Abhi is file mein koi movie link nahi hai — jab koi working HD link
+# mile to upar wale format mein yahan add kar do.

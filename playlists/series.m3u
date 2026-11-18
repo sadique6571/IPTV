@@ -1,0 +1,13 @@
+#EXTM3U
+# IPTV Series — Hindi / Hindi Dubbed Web Series
+# ------------------------------------------------------------------
+# Is file mein series ke episode links daalo — app har 24 ghante GitHub
+# se khud refresh kar legi, naya APK lagane ki zaroorat nahi hogi.
+# Format (har episode ke liye 2 lines):
+#   #EXTINF:-1 group-title="Loki",Loki S01E01 [Hindi Dubbed] [1080p]
+#   https://.../...mp4   (ya .m3u8 link)
+# Sirf HD links (720p/1080p) — cinema recording wale links mat daalo.
+# group-title mein series ka naam likho taa ke episodes aik jagah milen.
+# ------------------------------------------------------------------
+# Abhi is file mein koi series link nahi hai — jab koi working HD link
+# mile to upar wale format mein yahan add kar do.
