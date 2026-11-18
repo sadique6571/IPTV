@@ -24,7 +24,7 @@ android {
         applicationId = "com.sadique.iptv"
         minSdk = 23
         targetSdk = 34
-        versionCode = 11
+        versionCode = 12
         versionName = "2.0"
     }
     compileOptions {
@@ -53,4 +53,11 @@ dependencies {
     // back to the progressive MPEG-TS path).
     implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
     implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
+    // FileProvider (UpdateChecker installs downloaded APKs through it).
+    // androidx.core is ALREADY a runtime transitive dependency of
+    // media3-exoplayer (verified in its 1.9.2 module metadata: runtime-only,
+    // never api) — so this declaration adds no new code to the APK, it only
+    // makes the already-present library visible at compile time. Without it,
+    // `import androidx.core.content.FileProvider` fails to compile.
+    implementation("androidx.core:core:1.13.1")
 }
