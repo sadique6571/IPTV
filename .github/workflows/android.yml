@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'app/**'
-      - 'settings.gradle'
+      - 'settings.gradle.kts'
       - 'gradle.properties'
       - 'build-apk.sh'
       - '.github/workflows/android.yml'
@@ -24,6 +24,11 @@ jobs:
           distribution: temurin
           java-version: '17'
       - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Install Kotlin compiler
+        run: |
+          curl -fLsS https://github.com/JetBrains/kotlin/releases/download/v2.4.21/kotlin-compiler-2.4.21.zip -o "$RUNNER_TEMP/kotlin.zip"
+          unzip -q "$RUNNER_TEMP/kotlin.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/kotlinc/bin" >> "$GITHUB_PATH"
       - run: bash build-apk.sh
       - uses: actions/upload-artifact@v4
         with:
