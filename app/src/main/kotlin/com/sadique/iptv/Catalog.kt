@@ -1,6 +1,6 @@
 package com.sadique.iptv
 
-internal data class Channel(val name: String, val group: String, val url: String, val web: Boolean = false)
+internal data class Channel(val name: String, val group: String, val url: String, val web: Boolean = false, val country: String = "")
 
 internal val builtInChannels = listOf(
     Channel("Geo News", "Pakistan", "t3fvgmDDmdc", web = true),
@@ -17,7 +17,23 @@ internal val builtInChannels = listOf(
     Channel("HUM TV • Gulbahar, Ep 1", "Drama", "uCBJymYg8Fk", web = true),
     Channel("ARY Digital • Ae Dil, Ep 1", "Drama", "XaAnkBFzGJ4", web = true),
     Channel("Green TV • Intekhab, Ep 1", "Drama", "dbL9xd6wvhE", web = true),
-    Channel("Tamasha", "Cricket", ""),
-    Channel("DD Sports", "Cricket", ""),
-    Channel("ICC.tv", "Cricket", ""),
+    Channel("HUM TV Live", "Drama", "https://g4wlkwx8l23a-hls-live.5centscdn.com/HUM/271ddf829afeece44d8732757fba1a66.sdp/playlist_dvr.m3u8", country = "PK"),
+    Channel("DD Sports", "Cricket", "https://d3qs3d2rkhfqrt.cloudfront.net/out/v1/b17adfe543354fdd8d189b110617cddd/index.m3u8", country = "IN"),
+    Channel("Cricket Gold", "Cricket", "https://streams2.sofast.tv/ptnr-yupptv/title-cricketgold/v1/master/611d79b11b77e2f571934fd80ca1413453772ac7/b2048bb8-1686-4432-aa50-647245383e0c/manifest.m3u8"),
+)
+
+
+internal data class CatalogSource(val name: String, val url: String, val country: String = "")
+
+private const val IPTV_ORG = "https://iptv-org.github.io/iptv"
+private const val FREE_TV = "https://raw.githubusercontent.com/Free-TV/IPTV/master"
+
+internal val catalogSources = listOf(
+    CatalogSource("IPTV-org · Pakistan", "$IPTV_ORG/countries/pk.m3u", "PK"),
+    CatalogSource("IPTV-org · India", "$IPTV_ORG/countries/in.m3u", "IN"),
+    CatalogSource("IPTV-org · Sports", "$IPTV_ORG/categories/sports.m3u"),
+    CatalogSource("IPTV-org · Entertainment", "$IPTV_ORG/categories/entertainment.m3u"),
+    CatalogSource("IPTV-org · All countries", "$IPTV_ORG/index.m3u"),
+    CatalogSource("Free-TV · India", "$FREE_TV/playlists/playlist_india.m3u8", "IN"),
+    CatalogSource("Free-TV · All countries", "$FREE_TV/playlist.m3u8"),
 )

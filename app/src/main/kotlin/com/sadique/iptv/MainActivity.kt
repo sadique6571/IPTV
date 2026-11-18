@@ -11,6 +11,7 @@ import android.graphics.drawable.StateListDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.util.AtomicFile
+import android.view.View
 import android.view.Gravity
 import android.view.WindowManager
 import android.webkit.WebResourceRequest
@@ -32,6 +33,7 @@ import java.util.concurrent.Executors
 class MainActivity : Activity() {
     private val background = 0xff141218.toInt()
     private val surface = 0xff241e2a.toInt()
+    private val cricketBroadcasters = Regex("(?i).*(ptv sports|a sports|dd sports|willow|ten sports|star sports).*")
     private val accent = 0xffffca86.toInt()
     private val imports = Executors.newSingleThreadExecutor()
     private lateinit var playlistFile: AtomicFile
@@ -44,7 +46,17 @@ class MainActivity : Activity() {
     private var selected: Channel? = null
     private var imported = emptyList<Channel>()
     private var filter = "All"
-    private var limit = 80
+    private var page = 0
+    private var query = ""
+    private var activeSource: CatalogSource? = null
+    private var sourceChannels = emptyList<Channel>()
+    private var sourceRequest = 0
+    private var playbackRequest = 0
+    private lateinit var listScroll: ScrollView
+    private lateinit var libraryPane: LinearLayout
+    private lateinit var playerControls: LinearLayout
+    private lateinit var catalogTitle: TextView
+    private var fullScreen = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,7 +78,7 @@ class MainActivity : Activity() {
             orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         }
         root.addView(split, LinearLayout.LayoutParams(-1, 0, 1f))
-        val left = column()
+        val left = column().also { libraryPane = it }
         val right = column()
         if (wide) {
             split.addView(left, LinearLayout.LayoutParams(dp(260), -1))
@@ -85,29 +97,42 @@ class MainActivity : Activity() {
             val row = if (name == "Drama" || name == "M3U") moreFilters else filters
             row.addView(button(name) {
                 filter = name
-                limit = 80
+                page = 0
                 populate()
             }, LinearLayout.LayoutParams(0, -2, 1f))
         }
+        catalogTitle = label("", 12, accent)
+        left.addView(catalogTitle)
         list = column()
-        left.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        left.addView(button("Import M3U playlist", ::choosePlaylist))
-        left.addView(button("Open HTTPS stream") {
-            askAddress("Open HTTPS stream", "https://…/live.m3u8") { address ->
-                val uri = runCatching { URI.create(address) }.getOrNull()
-                if (uri != null && Playlist.valid(uri)) {
-                    play(Channel("Custom stream", "Imported", address))
-                } else {
-                    toast("Enter a valid HTTPS stream URL.")
-                }
+        listScroll = ScrollView(this).apply { addView(list) }
+        left.addView(listScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        val actions = LinearLayout(this)
+        left.addView(actions)
+        actions.addView(button("Catalogs", ::chooseCatalog), LinearLayout.LayoutParams(0, -2, 1f))
+        actions.addView(button("Search") {
+            askAddress("Search channels", "Channel name") { value ->
+                query = value
+                page = 0
+                populate()
+                list.getChildAt(0)?.requestFocus()
             }
-        })
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        left.addView(button("Import M3U or play URL", ::choosePlaylist))
 
         titleText = label("Select a channel", 23, Color.WHITE)
         status = label("", 14, accent)
         screen = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         right.addView(titleText)
         right.addView(status)
+        playerControls = LinearLayout(this).apply {
+            visibility = View.GONE
+            addView(button("Play / pause") {
+                video?.let { if (it.isPlaying) it.pause() else it.start() }
+            })
+            addView(button("Full screen") { setFullScreen(!fullScreen) })
+            addView(button("Retry") { selected?.let(::play) })
+        }
+        right.addView(playerControls)
         right.addView(screen, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         populate()
@@ -116,35 +141,111 @@ class MainActivity : Activity() {
 
     private fun populate() {
         list.removeAllViews()
-        val candidates = if (filter == "M3U") imported else builtInChannels + imported
+        val candidates = when {
+            filter == "M3U" -> imported
+            activeSource != null -> sourceChannels
+            else -> builtInChannels + imported
+        }
         val matches = candidates.filter { channel ->
-            when (filter) {
-                "PK" -> channel.group == "Pakistan" || channel.group == "Drama"
-                "IN" -> channel.group == "India"
-                "Cricket", "Drama" -> channel.group == filter
+            val group = channel.group
+            val accepted = when (filter) {
+                "PK" -> channel.country == "PK" || group == "Pakistan" ||
+                    (group == "Drama" && channel.country.isEmpty() && channel in builtInChannels)
+                "IN" -> channel.country == "IN" || group == "India"
+                "Cricket" -> group == "Cricket" ||
+                    (group.equals("Sports", true) && cricketBroadcasters.matches(channel.name))
+                "Drama" -> group.equals("Drama", true) || group.equals("Entertainment", true) ||
+                    group.equals("Series", true)
                 else -> true
             }
+            accepted && (query.isEmpty() || channel.name.contains(query, ignoreCase = true))
         }
-        matches.take(limit).forEach { channel ->
+        val pageSize = 60
+        val start = page * pageSize
+        val sourceName = if (filter == "M3U") "My playlist" else activeSource?.name ?: "Built-in"
+        catalogTitle.text = "$sourceName · ${matches.size}" +
+            if (query.isEmpty()) "" else " · $query"
+        if (page > 0) list.addView(button("Previous page") { showPage(page - 1) })
+        matches.drop(start).take(pageSize).forEach { channel ->
             list.addView(button(channel.name) { play(channel) }.apply {
                 gravity = Gravity.CENTER_VERTICAL or Gravity.START
             })
         }
-        if (matches.size > limit) {
-            list.addView(button("Show more channels") {
-                val firstNew = limit
-                limit += 80
-                populate()
-                list.getChildAt(firstNew)?.requestFocus()
-            })
+        if (start + pageSize < matches.size) {
+            list.addView(button("Next page") { showPage(page + 1) })
         }
-        if (matches.isEmpty()) list.addView(label("Import a playlist to add channels.", 14, accent))
+        if (matches.isEmpty()) list.addView(label("No matching channels.", 14, accent))
+        listScroll.post { listScroll.scrollTo(0, 0) }
+    }
+
+    private fun showPage(index: Int) {
+        page = index
+        populate()
+        list.getChildAt(if (index > 0) 1 else 0)?.requestFocus()
+    }
+
+    private fun chooseCatalog() {
+        val options = listOf("Built-in channels") + catalogSources.map { it.name } + "Awesome IPTV · reference"
+        AlertDialog.Builder(this).setTitle("Channel catalogs")
+            .setItems(options.toTypedArray()) { _, selectedIndex ->
+                when (selectedIndex) {
+                    0 -> selectBuiltIn()
+                    options.lastIndex -> AlertDialog.Builder(this)
+                        .setTitle("Awesome IPTV")
+                        .setMessage("Reference for players, devices and providers.\n\nhttps://github.com/iptv-org/awesome-iptv")
+                        .setPositiveButton("OK", null).show()
+                    else -> loadCatalog(catalogSources[selectedIndex - 1])
+                }
+            }.show()
+    }
+
+    private fun selectBuiltIn() {
+        sourceRequest++
+        activeSource = null
+        sourceChannels = emptyList()
+        filter = "All"
+        query = ""
+        showPage(0)
+    }
+
+    private fun loadCatalog(source: CatalogSource) {
+        val request = ++sourceRequest
+        catalogTitle.text = "Loading ${source.name}…"
+        imports.execute {
+            val result = runCatching { Playlist.fetch(source.url, source.country) }
+            runOnUiThread {
+                if (isDestroyed || request != sourceRequest) return@runOnUiThread
+                result.fold(
+                    onSuccess = {
+                        activeSource = source
+                        sourceChannels = it
+                        filter = "All"
+                        query = ""
+                        showPage(0)
+                    },
+                    onFailure = {
+                        populate()
+                        toast("Catalog unavailable. Try again.")
+                    }
+                )
+            }
+        }
+    }
+
+    private fun setFullScreen(enabled: Boolean) {
+        fullScreen = enabled
+        (playerControls.getChildAt(1) as Button).text = if (enabled) "Exit full screen" else "Full screen"
+        libraryPane.visibility = if (enabled) View.GONE else View.VISIBLE
+        if (enabled) playerControls.getChildAt(1)?.requestFocus()
+        else list.getChildAt(0)?.requestFocus()
     }
 
     private fun play(channel: Channel) {
         stopPlayback()
         selected = channel
         titleText.text = channel.name
+        playerControls.visibility = View.VISIBLE
+        playerControls.getChildAt(0)?.visibility = if (channel.web) View.GONE else View.VISIBLE
         when {
             channel.url.isEmpty() -> status.text = "No verified player feed available."
             channel.web -> playEmbed(channel.url)
@@ -172,9 +273,30 @@ class MainActivity : Activity() {
     }
 
     private fun playEmbed(videoId: String) {
-        if (!Regex("[A-Za-z0-9_-]{11}").matches(videoId)) {
-            status.text = "No verified player feed available."
+        if (videoId.startsWith("yt-live:")) {
+            status.text = "Finding the live video…"
+            val request = playbackRequest
+            imports.execute {
+                val resolved = runCatching { Playlist.resolveYouTubeLive(videoId.substringAfter(':')) }.getOrNull()
+                runOnUiThread {
+                    if (isDestroyed || request != playbackRequest) return@runOnUiThread
+                    if (resolved == null) status.text = "No embeddable live video found."
+                    else playEmbed(resolved)
+                }
+            }
             return
+        }
+        val embedUrl = when {
+            videoId.matches(Regex("[A-Za-z0-9_-]{11}")) ->
+                "https://www.youtube-nocookie.com/embed/$videoId?autoplay=1&amp;playsinline=1"
+            videoId.matches(Regex("yt-channel:UC[A-Za-z0-9_-]{22}")) ->
+                "https://www.youtube-nocookie.com/embed/live_stream?channel=${videoId.substringAfter(':')}&amp;autoplay=1"
+            videoId.matches(Regex("dm:[A-Za-z0-9]{5,12}")) ->
+                "https://www.dailymotion.com/embed/video/${videoId.substringAfter(':')}?autoplay=1"
+            else -> {
+                status.text = "This listing needs a direct video or embeddable stream URL."
+                return
+            }
         }
         status.text = "Press Play if prompted."
         val player = WebView(this)
@@ -191,14 +313,14 @@ class MainActivity : Activity() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val host = request.url.host.orEmpty()
                 return request.isForMainFrame || request.url.scheme != "https" ||
-                    (host != "www.youtube.com" && host != "www.youtube-nocookie.com")
+                    (host !in setOf("www.youtube.com", "www.youtube-nocookie.com", "www.dailymotion.com"))
             }
         }
         screen.addView(player, FrameLayout.LayoutParams(-1, -1))
         val playerDocument = """
             <!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1">
             <style>body{margin:0;background:black}iframe{display:block;width:100vw;height:100vh;border:0}</style>
-            <iframe title="Live channel player" src="https://www.youtube-nocookie.com/embed/$videoId?autoplay=1&playsinline=1"
+            <iframe title="Live channel player" src="$embedUrl"
               referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture"></iframe>
             </html>
         """.trimIndent()
@@ -209,8 +331,12 @@ class MainActivity : Activity() {
     private fun choosePlaylist() {
         AlertDialog.Builder(this)
             .setTitle("Import M3U playlist")
-            .setItems(arrayOf("HTTPS playlist URL", "Local playlist file")) { _, which ->
-                if (which == 0) askAddress("Playlist URL", "https://…/channels.m3u") { address ->
+            .setItems(arrayOf("HTTPS playlist URL", "Local playlist file", "Direct stream URL")) { _, which ->
+                if (which == 2) askAddress("Open stream", "https://…/live.m3u8") { address ->
+                    val uri = runCatching { URI.create(address) }.getOrNull()
+                    if (uri != null && Playlist.validStream(uri)) play(Channel("Custom stream", "Imported", address))
+                    else toast("Enter a valid HTTP or HTTPS stream URL.")
+                } else if (which == 0) askAddress("Playlist URL", "https://…/channels.m3u") { address ->
                     importPlaylist { Playlist.fetch(address) }
                 } else {
                     try {
@@ -254,8 +380,10 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     if (!isDestroyed) {
                         imported = channels
+                        sourceRequest++
+                        query = ""
                         filter = "M3U"
-                        limit = 80
+                        page = 0
                         populate()
                         list.getChildAt(0)?.requestFocus()
                         toast("${channels.size} channels imported.")
@@ -273,8 +401,10 @@ class MainActivity : Activity() {
         val data = buildString {
             appendLine("#EXTM3U")
             for (channel in channels) {
-                appendLine("#EXTINF:-1 group-title=\"${channel.group}\",${channel.name}")
-                appendLine(channel.url)
+                val group = channel.group.replace('"', ' ')
+                val country = channel.country.takeIf { it.matches(Regex("[A-Z]{2}")) }.orEmpty()
+                appendLine("#EXTINF:-1 group-title=\"$group\" tvg-country=\"$country\",${channel.name}")
+                appendLine(Playlist.serializedUrl(channel))
             }
         }.toByteArray()
         if (data.size > Playlist.MAX_BYTES) throw IOException("Playlist exceeds 2 MB.")
@@ -289,6 +419,7 @@ class MainActivity : Activity() {
     }
 
     private fun stopPlayback() {
+        playbackRequest++
         video?.stopPlayback()
         video = null
         web?.let { player ->
@@ -316,11 +447,14 @@ class MainActivity : Activity() {
 
     @Deprecated("Use the system back gesture callback on newer Android versions")
     override fun onBackPressed() {
-        if (selected == null) {
+        if (fullScreen) {
+            setFullScreen(false)
+        } else if (selected == null) {
             super.onBackPressed()
         } else {
             stopPlayback()
             selected = null
+            playerControls.visibility = View.GONE
             titleText.text = "Select a channel"
             status.text = ""
             list.getChildAt(0)?.requestFocus()
