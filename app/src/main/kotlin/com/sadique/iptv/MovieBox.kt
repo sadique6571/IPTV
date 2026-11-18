@@ -110,6 +110,24 @@ internal class MovieBox(context: Context) {
     // ---- Public API (all blocking) ----
 
     fun search(query: String, page: Int = 1): List<Movie> {
+        // The API ranks exact matches first and pages at 15: a related
+        // title ("Sardar Ji" for "sardar") can sit on page 2-3, so fetch
+        // up to 3 pages, dedupe, and rank substring matches first
+        // (stable — the API order survives inside each group).
+        val seen = mutableSetOf<String>()
+        val all = mutableListOf<Movie>()
+        for (p in page..page + 2) {
+            val batch = searchPage(query, p)
+            for (movie in batch) {
+                if (seen.add(movie.subjectId)) all += movie
+            }
+            if (batch.size < 15) break
+        }
+        val q = query.lowercase()
+        return all.sortedWith(compareByDescending { it.title.lowercase().contains(q) })
+    }
+
+    private fun searchPage(query: String, page: Int): List<Movie> {
         val body = JSONObject().apply {
             put("keyword", query)
             put("page", page)

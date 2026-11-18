@@ -201,7 +201,11 @@ internal class PlayerController(
             // filling the screen would mean stretching or cropping it.
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-            isFocusable = true
+            // Never focusable: this is a pure video surface, and a
+            // focusable full-screen surface swallows D-pad focus on TV
+            // (nothing inside it is reachable) — the on-video overlay
+            // controls are the navigation path, not the surface.
+            isFocusable = false
         }
         screen.addView(playerView, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
     }
