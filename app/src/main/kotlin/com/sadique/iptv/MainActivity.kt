@@ -109,6 +109,7 @@ class MainActivity : Activity() {
     private lateinit var numberOverlay: TextView
     private lateinit var listScroll: ScrollView
     private lateinit var libraryPane: LinearLayout
+    private var sidebarView: View? = null
     private lateinit var rootView: LinearLayout
     private lateinit var headerView: LinearLayout
     private lateinit var playerPane: LinearLayout
@@ -386,6 +387,7 @@ class MainActivity : Activity() {
                 elevation = dp(3).toFloat()
                 addView(sidebarScroll, LinearLayout.LayoutParams(-1, -1))
             }
+            sidebarView = sidebar
             split.addView(sidebar, LinearLayout.LayoutParams(dp(210), -1))
         }
         if (sideBySide) {
@@ -1137,15 +1139,37 @@ class MainActivity : Activity() {
      * player on screen (the landscape layout already lets it fill the pane).
      * The on-video overlay — including the fullscreen toggle — stays visible
      * so the user can exit from the video itself; Back also exits.
-     * On TV there is no rotation or system UI to hide — only the library
-     * pane hides, as before, and the controls stay usable with the remote.
+     * On TV there is no rotation or system UI to hide, but fullscreen is
+     * still real fullscreen: the sidebar, header, library, info bar, quick
+     * actions and status all hide and the paddings go to zero, so the
+     * player pane (weight 1) fills the whole 1920x1080 screen. Only the
+     * video + on-video overlay stay; Back also exits.
      */
     private fun updateFullscreenUi() {
         fullscreenIcon.expanded = fullScreen
         fullscreenIcon.invalidateSelf()
         fullscreenButton.contentDescription = if (fullScreen) "Exit fullscreen" else "Fullscreen"
         if (isTv) {
-            libraryPane.visibility = if (fullScreen) View.GONE else View.VISIBLE
+            if (fullScreen) {
+                sidebarView?.visibility = View.GONE
+                headerView.visibility = View.GONE
+                libraryPane.visibility = View.GONE
+                infoBar.visibility = View.GONE
+                quickActions.visibility = View.GONE
+                status.visibility = View.GONE
+                rootView.setPadding(0, 0, 0, 0)
+                playerPane.setPadding(0, 0, 0, 0)
+            } else {
+                sidebarView?.visibility = View.VISIBLE
+                headerView.visibility = View.VISIBLE
+                libraryPane.visibility = View.VISIBLE
+                val showBars = selected != null || playingMovie != null
+                infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
+                quickActions.visibility = if (showBars) View.VISIBLE else View.GONE
+                status.visibility = if (status.text.isEmpty()) View.GONE else View.VISIBLE
+                rootView.setPadding(rootPaddingPx, dp(10), rootPaddingPx, dp(12))
+                playerPane.setPadding(paneGapPx, 0, 0, 0)
+            }
             return
         }
         if (fullScreen) {
@@ -1528,19 +1552,24 @@ class MainActivity : Activity() {
             }
             return
         }
+        // Embed params hide the source platform: no player controls, no
+        // logo/branding, no related videos, no keyboard shortcuts, no
+        // in-player fullscreen — the app's own overlay controls (incl. its
+        // fullscreen toggle) are the only UI the user ever sees, so the
+        // channel looks like any other channel, not a YouTube embed.
         val embedUrl = when {
             videoId.matches(Regex("[A-Za-z0-9_-]{11}")) ->
-                "https://www.youtube-nocookie.com/embed/$videoId?autoplay=1&amp;playsinline=1"
+                "https://www.youtube-nocookie.com/embed/$videoId?autoplay=1&amp;playsinline=1&amp;controls=0&amp;modestbranding=1&amp;rel=0&amp;iv_load_policy=3&amp;disablekb=1&amp;fs=0"
             videoId.matches(Regex("yt-channel:UC[A-Za-z0-9_-]{22}")) ->
-                "https://www.youtube-nocookie.com/embed/live_stream?channel=${videoId.substringAfter(':')}&amp;autoplay=1"
+                "https://www.youtube-nocookie.com/embed/live_stream?channel=${videoId.substringAfter(':')}&amp;autoplay=1&amp;playsinline=1&amp;controls=0&amp;modestbranding=1&amp;rel=0&amp;iv_load_policy=3&amp;disablekb=1&amp;fs=0"
             videoId.matches(Regex("dm:[A-Za-z0-9]{5,12}")) ->
-                "https://www.dailymotion.com/embed/video/${videoId.substringAfter(':')}?autoplay=1"
+                "https://www.dailymotion.com/embed/video/${videoId.substringAfter(':')}?autoplay=1&amp;ui-logo=false&amp;ui-start-screen-info=false&amp;sharing-enable=false"
             else -> {
                 status.text = "This listing needs a direct video or embeddable stream URL."
                 return
             }
         }
-        status.text = "Press Play if prompted."
+        status.text = ""
         val player = WebView(this)
         web = player
         player.isFocusable = true

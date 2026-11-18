@@ -16,6 +16,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
 /**
@@ -194,6 +195,11 @@ internal class PlayerController(
         playerView = PlayerView(context).apply {
             player = active
             useController = false
+            // FIT keeps the channel's own aspect ratio: 16:9 channels fill
+            // a 16:9 TV screen edge to edge; 4:3 SD channels get black bars
+            // on the sides — that is the channel's own picture shape, and
+            // filling the screen would mean stretching or cropping it.
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
             isFocusable = true
         }
