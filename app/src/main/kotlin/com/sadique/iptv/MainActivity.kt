@@ -40,11 +40,16 @@ import java.net.URI
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
-    private val background = 0xff141218.toInt()
-    private val surface = 0xff241e2a.toInt()
-    private val tile = 0xff3a3340.toInt()
+    // Harmony theme (HarmonyOS TV look, per the user's order 2026-11-18): deep
+    // blue gradient background, white pill for the active tab, translucent
+    // light-blue cards and tiles, white focus strokes.
+    private val background = 0xff0b2150.toInt() // deep navy: gradient top + dark text on white pills
+    private val backgroundBottom = 0xff1663c7.toInt() // royal blue: gradient bottom
+    private val surface = 0x26ffffff.toInt() // translucent white: cards, rows, chips
+    private val tile = 0x33ffffff.toInt() // translucent white: letter tiles
+    private val strokeSoft = 0x33ffffff.toInt() // soft white card borders
     private val cricketBroadcasters = Regex("(?i).*(ptv sports|a sports|dd sports|willow|ten sports|star sports).*")
-    private val accent = 0xffffca86.toInt()
+    private val accent = 0xffffffff.toInt() // white: active pill, focus stroke, header
     private val imports = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var store: ChannelStore
@@ -153,7 +158,10 @@ class MainActivity : Activity() {
         val paneGapDp = if (isTv) 14 else 12
         val root = column().apply {
             setPadding(rootPadding, dp(if (isTv) 10 else 8), rootPadding, dp(if (isTv) 12 else 8))
-            setBackgroundColor(this@MainActivity.background)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(this@MainActivity.background, backgroundBottom),
+            )
         }
         // The header is hidden on phones in landscape: vertical space is
         // tight there and the playing row already shows what is on.
@@ -1188,15 +1196,15 @@ class MainActivity : Activity() {
         setPadding(sidePadding, dp(8), sidePadding, dp(8))
         background = StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_focused),
-                shape(0xff563a29.toInt(), accent, 10, if (isTv) 3 else 2))
+                shape(0x40ffffff.toInt(), accent, 10, if (isTv) 3 else 2))
             // Pressed state: without it taps on a phone gave no feedback.
             addState(intArrayOf(android.R.attr.state_pressed), shape(tile, accent))
-            addState(intArrayOf(), shape(surface, this@MainActivity.background))
+            addState(intArrayOf(), shape(surface, strokeSoft))
         }
         setOnClickListener { action() }
     }
 
-    /** Pill-shaped filter chip with a visible selected state (amber fill). */
+    /** Pill-shaped filter chip with a visible selected state (white pill, Harmony tabs). */
     private fun chip(value: String, action: () -> Unit) = Button(this).apply {
         text = value
         isAllCaps = false
@@ -1208,10 +1216,10 @@ class MainActivity : Activity() {
         setPadding(dp(16), dp(8), dp(16), dp(8))
         background = StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_focused),
-                shape(0xff563a29.toInt(), accent, 24, if (isTv) 3 else 2))
-            addState(intArrayOf(android.R.attr.state_pressed), shape(0xffe8b96f.toInt(), accent, 24))
+                shape(0x40ffffff.toInt(), accent, 24, if (isTv) 3 else 2))
+            addState(intArrayOf(android.R.attr.state_pressed), shape(0xffb3d9ff.toInt(), accent, 24))
             addState(intArrayOf(android.R.attr.state_selected), shape(accent, accent, 24))
-            addState(intArrayOf(), shape(surface, this@MainActivity.background, 24))
+            addState(intArrayOf(), shape(surface, strokeSoft, 24))
         }
         setOnFocusChangeListener { _, _ -> refreshChipText(this) }
         setOnClickListener { action() }
@@ -1229,13 +1237,13 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Channel-row background: amber-tinted when this row is playing. */
+    /** Channel-row background: white-tinted when this row is playing. */
     private fun rowBackground(playing: Boolean) = StateListDrawable().apply {
         addState(intArrayOf(android.R.attr.state_focused),
-            shape(0xff563a29.toInt(), accent, 10, if (isTv) 3 else 2))
+            shape(0x40ffffff.toInt(), accent, 10, if (isTv) 3 else 2))
         addState(intArrayOf(android.R.attr.state_pressed), shape(tile, accent))
-        addState(intArrayOf(), if (playing) shape(0xff4a3a22.toInt(), accent)
-            else shape(surface, this@MainActivity.background))
+        addState(intArrayOf(), if (playing) shape(0x40ffffff.toInt(), accent)
+            else shape(surface, strokeSoft))
     }
 
     /** Highlights the playing row (rows carry the channel key as their tag). */
