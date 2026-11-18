@@ -9,9 +9,10 @@ import java.util.Locale
 
 internal object Playlist {
     const val MAX_BYTES = 12 * 1024 * 1024
-    private const val MAX_CHANNELS = 30_000
+    const val MAX_CHANNELS = 30_000
     private val group = Regex("""group-title="([^"]*)"""", RegexOption.IGNORE_CASE)
     private val country = Regex("""tvg-country="([^"]*)"""", RegexOption.IGNORE_CASE)
+    private val logo = Regex("""tvg-logo="([^"]*)"""", RegexOption.IGNORE_CASE)
     private val channelId = Regex("""tvg-id="[^"]*\.([A-Za-z]{2})(?:@[^"]*)?"""")
     private val languages = Regex("""tvg-language="([^"]*)"""", RegexOption.IGNORE_CASE)
     private val videoId = Regex("[A-Za-z0-9_-]{11}")
@@ -35,6 +36,7 @@ internal object Playlist {
         var name = ""
         var category = "Imported"
         var region = ""
+        var logoUrl = ""
         var languageTags = emptySet<String>()
         for (line in text.removePrefix("\uFEFF").lineSequence().map(String::trim)) {
             when {
@@ -48,6 +50,7 @@ internal object Playlist {
                     }
                     name = if (comma >= 0) line.substring(comma + 1).trim() else ""
                     val label = group.find(line)?.groupValues?.get(1).orEmpty()
+                    logoUrl = logo.find(line)?.groupValues?.get(1).orEmpty().trim()
                     languageTags = languages.find(line)?.groupValues?.get(1).orEmpty()
                         .split(',', ';').mapNotNull { value ->
                             when (value.trim().lowercase(Locale.ROOT)) {
@@ -77,10 +80,11 @@ internal object Playlist {
                     val uri = runCatching { base?.resolve(line) ?: URI.create(line) }.getOrNull()
                     if (name.isNotEmpty() && uri != null && validStream(uri) && seen.add(name to uri.toString())) {
                         val embed = embedSource(uri)
-                        channels += Channel(name, category, embed ?: uri.toString(), embed != null, region, languageTags)
+                        channels += Channel(name, category, embed ?: uri.toString(), embed != null, region, languageTags, logoUrl)
                         if (channels.size == MAX_CHANNELS) break
                     }
                     name = ""
+                    logoUrl = ""
                 }
             }
         }
@@ -114,6 +118,21 @@ internal object Playlist {
             return "yt-live:${path.joinToString("/")}"
         }
         return "unsupported"
+    }
+
+    /** Writes channels back to M3U text (favorites, recent, saved playlists). */
+    fun serialize(channels: List<Channel>): String = buildString {
+        appendLine("#EXTM3U")
+        for (channel in channels) {
+            val group = channel.group.replace('"', ' ')
+            val country = channel.country.takeIf { it.matches(Regex("[A-Z]{2}")) }.orEmpty()
+            val languages = channel.languages.joinToString(";")
+            val logo = channel.logo.replace('"', ' ').trim()
+            val logoPart = if (logo.isEmpty()) "" else " tvg-logo=\"$logo\""
+            appendLine("#EXTINF:-1 group-title=\"$group\" tvg-country=\"$country\" " +
+                "tvg-language=\"$languages\"$logoPart,${channel.name}")
+            appendLine(serializedUrl(channel))
+        }
     }
 
     fun serializedUrl(channel: Channel): String = when {
