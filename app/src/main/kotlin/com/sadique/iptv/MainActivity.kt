@@ -34,7 +34,9 @@ import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -146,6 +148,11 @@ class MainActivity : Activity() {
     private var mutedVolume = false
     private var playerController: PlayerController? = null
     private var web: WebView? = null
+    // Transparent tap catcher above an iframe embed (below the app's own
+    // overlay controls): taps otherwise reach YouTube, which pops its
+    // "more videos" overlay over the channel. Direct web players have no
+    // catcher — their taps must reach the page (Cloudflare check).
+    private var webTapCatcher: View? = null
     private var selected: Channel? = null
     private var imported = emptyList<Channel>()
     private var filter = "All"
@@ -159,6 +166,16 @@ class MainActivity : Activity() {
     private var query = ""
     private var verifiedChannels = emptyList<Channel>()
     private var playbackRequest = 0
+    // YouTube live (yt-live:) tracking: the token to re-resolve when the
+    // stream ends or restarts, and the video ID currently in the embed
+    // (so a re-resolve that returns the same ID does not reload).
+    private var playingYtLive: String? = null
+    private var playingEmbedId: String? = null
+    // Main-frame navigation is blocked for embeds — except these hosts,
+    // and only while a direct web: player is showing (playsza + its
+    // Cloudflare check need real top-level navigation).
+    private var allowMainFrameHosts: Set<String> = emptySet()
+    private val ytLivePollRunnable = Runnable { pollYtLive() }
     private var fullScreen = false
     private var currentMatches = emptyList<Channel>()
     private var videoOptions = emptyList<PlayerController.VideoOption>()
@@ -947,8 +964,22 @@ class MainActivity : Activity() {
         list.getChildAt(0)?.requestFocus()
         // A movie playing across a rotation (or a process death) restores
         // from its saved signed URL instead of auto-playing the last channel.
+        // A drama episode restores the same way — without this, going
+        // fullscreen during an episode (rotation) played the last channel.
         val savedMovieUrl = savedInstanceState?.getString(STATE_MOVIE_URL)
-        if (savedMovieUrl != null) {
+        val savedDramaVideo = savedInstanceState?.getString(STATE_DRAMA_VIDEO)
+        if (savedDramaVideo != null) {
+            // Episodes restart from the beginning — WebView playback has
+            // no position to restore (same as the background-return path).
+            startDramaPlayback(
+                GeoDramas.Episode(
+                    videoId = savedDramaVideo,
+                    title = savedInstanceState.getString(STATE_DRAMA_EPISODE).orEmpty(),
+                    episodeNumber = savedInstanceState.getInt(STATE_DRAMA_EP_NUM, 0),
+                ),
+                savedInstanceState.getString(STATE_DRAMA_TITLE).orEmpty(),
+            )
+        } else if (savedMovieUrl != null) {
             restoreMoviePlayback(savedInstanceState)
         } else {
             store.lastChannel?.let { last ->
@@ -982,6 +1013,16 @@ class MainActivity : Activity() {
                 STATE_MOVIE_HEADERS,
                 ArrayList(playingMovieHeaders.map { (k, v) -> "$k\u0001$v" }),
             )
+        }
+        // Save a playing drama episode the same way, so a rotation —
+        // including the one the fullscreen toggle triggers — resumes the
+        // episode instead of the last channel.
+        val drama = playingDrama
+        if (drama != null) {
+            outState.putString(STATE_DRAMA_VIDEO, drama.videoId)
+            outState.putString(STATE_DRAMA_TITLE, playingDramaTitle)
+            outState.putString(STATE_DRAMA_EPISODE, drama.title)
+            outState.putInt(STATE_DRAMA_EP_NUM, drama.episodeNumber)
         }
     }
 
@@ -1627,14 +1668,36 @@ class MainActivity : Activity() {
 
     private fun playEmbed(videoId: String, loop: Boolean = true) {
         if (videoId.startsWith("yt-live:")) {
+            // Remember the token: when the stream ends or restarts, the
+            // IFrame API reports ENDED and the 5-minute poll re-checks —
+            // both re-resolve through here.
+            playingYtLive = videoId
             status.text = "Finding the live video…"
             val request = playbackRequest
             imports.execute {
                 val resolved = runCatching { Playlist.resolveYouTubeLive(videoId.substringAfter(':')) }.getOrNull()
                 runOnUiThread {
                     if (isDestroyed || request != playbackRequest) return@runOnUiThread
-                    if (resolved == null) status.text = "No embeddable live video found."
-                    else playEmbed(resolved)
+                    if (resolved == null) {
+                        status.text = "No embeddable live video found."
+                    } else if (resolved == playingEmbedId) {
+                        // The live stream ended and YouTube still points
+                        // at the same video — reloading would loop on
+                        // the related-videos end screen. The poll keeps
+                        // checking and rejoins when a new stream starts.
+                        status.text = "Live stream khatam ho gaya — thori der baad Retry dabao."
+                    } else {
+                        // Live embeds never loop: when the stream ends,
+                        // the player must report ENDED (so we re-resolve)
+                        // instead of replaying the finished video.
+                        // Stop the old embed first (a re-resolve replaces
+                        // it); keep the yt-live token across the stop.
+                        val token = playingYtLive
+                        stopWeb()
+                        playingYtLive = token
+                        playEmbed(resolved, loop = false)
+                        scheduleYtLivePoll()
+                    }
                 }
             }
             return
@@ -1645,31 +1708,36 @@ class MainActivity : Activity() {
         // fullscreen toggle) are the only UI the user ever sees, so the
         // channel looks like any other channel, not a YouTube embed.
         // Plain video IDs (recorded videos, e.g. Quran TV) loop so the
-        // channel never goes silent when the video ends; live streams are
-        // unaffected — a live stream has no end for the loop to trigger on.
-        // Drama episodes pass loop=false (see playDramaEpisode) so an
-        // episode ends instead of replaying itself.
+        // channel never goes silent when the video ends. Drama episodes
+        // pass loop=false (see playDramaEpisode) so an episode ends
+        // instead of replaying itself; live streams also play with
+        // loop=false (see the yt-live branch above) so a restart is
+        // detected instead of replaying the finished stream.
+        val isDirectWeb = videoId.startsWith("web:")
         val isPlainVideo = videoId.matches(Regex("[A-Za-z0-9_-]{11}"))
+        // The embed token currently showing (plain video ID or yt-channel
+        // token) — a re-resolve returning the same token does not reload.
+        playingEmbedId = if (isPlainVideo || videoId.startsWith("yt-channel:")) videoId else null
+        val isYouTube = isPlainVideo || videoId.matches(Regex("yt-channel:UC[A-Za-z0-9_-]{22}"))
         val loopParams = if (loop && isPlainVideo) "&amp;loop=1&amp;playlist=$videoId" else ""
         val embedUrl = when {
+            isDirectWeb -> ""
             isPlainVideo ->
-                "https://www.youtube-nocookie.com/embed/$videoId?autoplay=1&amp;playsinline=1&amp;controls=0&amp;modestbranding=1&amp;rel=0&amp;iv_load_policy=3&amp;disablekb=1&amp;fs=0$loopParams"
+                "https://www.youtube-nocookie.com/embed/$videoId?autoplay=1&amp;playsinline=1&amp;controls=0&amp;modestbranding=1&amp;rel=0&amp;iv_load_policy=3&amp;disablekb=1&amp;fs=0&amp;enablejsapi=1$loopParams"
             videoId.matches(Regex("yt-channel:UC[A-Za-z0-9_-]{22}")) ->
-                "https://www.youtube-nocookie.com/embed/live_stream?channel=${videoId.substringAfter(':')}&amp;autoplay=1&amp;playsinline=1&amp;controls=0&amp;modestbranding=1&amp;rel=0&amp;iv_load_policy=3&amp;disablekb=1&amp;fs=0"
+                "https://www.youtube-nocookie.com/embed/live_stream?channel=${videoId.substringAfter(':')}&amp;autoplay=1&amp;playsinline=1&amp;controls=0&amp;modestbranding=1&amp;rel=0&amp;iv_load_policy=3&amp;disablekb=1&amp;fs=0&amp;enablejsapi=1"
             videoId.matches(Regex("dm:[A-Za-z0-9]{5,12}")) ->
                 "https://www.dailymotion.com/embed/video/${videoId.substringAfter(':')}?autoplay=1&amp;ui-logo=false&amp;ui-start-screen-info=false&amp;sharing-enable=false"
-            // Generic web-player embed (playsza.st): the player page loads
-            // as-is in the iframe — no de-branding params exist for it.
-            // A Cloudflare check may appear on first load; on a real phone
-            // it usually passes on its own, otherwise the user taps it.
-            videoId.startsWith("web:") ->
-                videoId.substringAfter(':').replace("&", "&amp;")
             else -> {
                 status.text = "This listing needs a direct video or embeddable stream URL."
                 return
             }
         }
         status.text = ""
+        // A direct web player (playsza.st) needs real top-level
+        // navigation on its own host + the Cloudflare challenge host;
+        // every other embed keeps main-frame navigation blocked.
+        allowMainFrameHosts = if (isDirectWeb) setOf("playsza.st", "challenges.cloudflare.com") else emptySet()
         val player = WebView(this)
         web = player
         player.isFocusable = true
@@ -1679,26 +1747,119 @@ class MainActivity : Activity() {
             allowFileAccess = false
             allowContentAccess = false
             mediaPlaybackRequiresUserGesture = false
+            // Web players sometimes serve video over plain HTTP while
+            // the page is HTTPS — allow media, still block scripts.
+            if (isDirectWeb) mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         }
         player.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val host = request.url.host.orEmpty()
-                return request.isForMainFrame || request.url.scheme != "https" ||
+                return (request.isForMainFrame && host !in allowMainFrameHosts) ||
+                    request.url.scheme != "https" ||
                     (host !in setOf("www.youtube.com", "www.youtube-nocookie.com", "www.dailymotion.com",
                         "playsza.st", "challenges.cloudflare.com"))
             }
         }
+        if (isYouTube) player.addJavascriptInterface(YtEndedBridge(), "AndroidBridge")
         screen.addView(player, FrameLayout.LayoutParams(-1, -1))
+        if (!isDirectWeb) {
+            // Taps on an iframe embed reach YouTube/Dailymotion, which
+            // pops its own "more videos" overlay over the channel — the
+            // app's own tap handler never sees them (a WebView consumes
+            // its touches). This transparent catcher swallows those taps
+            // and toggles the app's controls instead. It sits below the
+            // overlay controls (raised right after this) so the buttons
+            // and seek bar still work.
+            val catcher = View(this).apply {
+                isClickable = true
+                isFocusable = false
+                setOnClickListener { if (!isTv) togglePlayerControls() }
+            }
+            webTapCatcher = catcher
+            screen.addView(catcher, FrameLayout.LayoutParams(-1, -1))
+        }
         bringPlayerOverlaysToFront()
+        if (isDirectWeb) {
+            // Generic web-player embed (playsza.st): load the player page
+            // directly. Inside an iframe it is often blocked by the
+            // host's X-Frame-Options, and its Cloudflare check needs
+            // real top-level navigation. A Cloudflare check may appear
+            // on first load; on a real phone it usually passes on its
+            // own, otherwise the user taps it.
+            player.loadUrl(videoId.substringAfter(':'))
+            return
+        }
+        // YouTube embeds report ENDED through the IFrame API so a live
+        // stream that ends (broadcaster restart) re-resolves instead of
+        // sitting on the related-videos end screen.
+        val apiScript = if (isYouTube) """
+            <script src="https://www.youtube.com/iframe_api"></script>
+            <script>
+            function onYouTubeIframeAPIReady() {
+              new YT.Player('ytplayer', { events: { 'onStateChange': function(e) {
+                if (e.data == YT.PlayerState.ENDED) { AndroidBridge.onYouTubeEnded(); }
+              }}});
+            }
+            </script>
+        """.trimIndent() else ""
         val playerDocument = """
             <!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1">
             <style>body{margin:0;background:black}iframe{display:block;width:100vw;height:100vh;border:0}</style>
-            <iframe title="Live channel player" src="$embedUrl"
+            <iframe id="ytplayer" title="Live channel player" src="$embedUrl"
               referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture"></iframe>
-            </html>
+            $apiScript</html>
         """.trimIndent()
         player.loadDataWithBaseURL("https://iptv-design-preview-2edf.roarai.app/", playerDocument,
             "text/html", "UTF-8", null)
+    }
+
+    /** JS bridge for YouTube embeds: the IFrame API calls this when the
+     * video ends. Only yt-live channels act on it (re-resolve); a Quran
+     * loop or a drama episode ending needs no action. */
+    private inner class YtEndedBridge {
+        @JavascriptInterface
+        fun onYouTubeEnded() {
+            runOnUiThread { onEmbedEnded() }
+        }
+    }
+
+    private fun onEmbedEnded() {
+        // A YouTube live stream ended (the broadcaster restarted it) —
+        // re-resolve so the embed rejoins the live stream instead of
+        // sitting on the related-videos end screen.
+        val token = playingYtLive ?: return
+        playEmbed(token)
+    }
+
+    private fun scheduleYtLivePoll() {
+        mainHandler.removeCallbacks(ytLivePollRunnable)
+        mainHandler.postDelayed(ytLivePollRunnable, YT_LIVE_POLL_MS)
+    }
+
+    /** While a yt-live channel plays, re-check /live every 5 minutes and
+     * rejoin when the video ID changes (the broadcaster restarted the
+     * stream). This catches restarts the player never reports as ENDED
+     * (e.g. a stall). One small fetch per check; a failed check just
+     * waits for the next one. */
+    private fun pollYtLive() {
+        val token = playingYtLive ?: return
+        val request = playbackRequest
+        imports.execute {
+            val resolved = runCatching { Playlist.resolveYouTubeLive(token.substringAfter(':')) }.getOrNull()
+            runOnUiThread {
+                if (isDestroyed || request != playbackRequest) return@runOnUiThread
+                if (playingYtLive == null) return@runOnUiThread
+                if (resolved != null && resolved != playingEmbedId &&
+                    resolved.matches(Regex("[A-Za-z0-9_-]{11}"))
+                ) {
+                    // The live stream restarted under a new video.
+                    stopWeb()
+                    playingYtLive = token
+                    playEmbed(resolved, loop = false)
+                }
+                mainHandler.postDelayed(ytLivePollRunnable, YT_LIVE_POLL_MS)
+            }
+        }
     }
 
     private fun choosePlaylist() {
@@ -2079,6 +2240,12 @@ class MainActivity : Activity() {
 
     private fun stopWeb() {
         playbackRequest++
+        mainHandler.removeCallbacks(ytLivePollRunnable)
+        playingYtLive = null
+        playingEmbedId = null
+        allowMainFrameHosts = emptySet()
+        webTapCatcher?.let { screen.removeView(it) }
+        webTapCatcher = null
         web?.let { player ->
             screen.removeView(player)
             player.destroy()
@@ -3835,6 +4002,14 @@ class MainActivity : Activity() {
         private const val STATE_MOVIE_TITLE = "movie_title"
         private const val STATE_MOVIE_POS = "movie_pos"
         private const val STATE_MOVIE_HEADERS = "movie_headers"
+        private const val STATE_DRAMA_VIDEO = "drama_video"
+        private const val STATE_DRAMA_TITLE = "drama_title"
+        private const val STATE_DRAMA_EPISODE = "drama_episode"
+        private const val STATE_DRAMA_EP_NUM = "drama_ep_num"
+        // YouTube live re-resolve poll: while a yt-live channel plays,
+        // re-check /live this often and rejoin when the video ID changes
+        // (the broadcaster restarted the stream).
+        private const val YT_LIVE_POLL_MS = 5 * 60 * 1000L
         // Continue Watching: ignore positions under 5s (a fresh start is
         // not "continue watching"), and save every 20 seek ticks (20 ×
         // 500ms ≈ 10s) while a movie plays.
