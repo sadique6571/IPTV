@@ -26,7 +26,7 @@ internal object LogoLoader {
     private val memoryCache = object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
-    private val pool: ExecutorService = Executors.newFixedThreadPool(3)
+    private var pool: ExecutorService = Executors.newFixedThreadPool(3)
 
     fun load(context: Context, url: String, target: ImageView) {
         target.tag = url
@@ -35,6 +35,11 @@ internal object LogoLoader {
             if (target.tag == url) target.setImageBitmap(it)
             return
         }
+        // The pool is shut down when the activity is really destroyed (Back
+        // out). Reopening the app in the same process reuses this singleton,
+        // so a dead pool must be recreated — otherwise the first logo load
+        // throws RejectedExecutionException and crashes the app.
+        if (pool.isShutdown) pool = Executors.newFixedThreadPool(3)
         val appContext = context.applicationContext
         pool.execute {
             try {

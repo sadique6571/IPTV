@@ -6,6 +6,7 @@ import android.app.UiModeManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
@@ -63,6 +64,11 @@ class MainActivity : Activity() {
     private lateinit var numberOverlay: TextView
     private lateinit var listScroll: ScrollView
     private lateinit var libraryPane: LinearLayout
+    private lateinit var rootView: LinearLayout
+    private lateinit var headerView: TextView
+    private lateinit var playerPane: LinearLayout
+    private var rootPaddingPx = 0
+    private var paneGapPx = 0
     private lateinit var playerControls: LinearLayout
     private lateinit var seekRow: LinearLayout
     private lateinit var seekBar: SeekBar
@@ -149,14 +155,26 @@ class MainActivity : Activity() {
         isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         isTv = detectTv()
 
+        // Rotation recreates the activity (no configChanges in the manifest),
+        // and entering fullscreen on a phone triggers a rotation — so the
+        // fullscreen state is saved and restored here. Playback resumes from
+        // the last channel below (live TV, no position to save); the screen
+        // never goes blank.
+        fullScreen = savedInstanceState?.getBoolean(STATE_FULLSCREEN, false) ?: false
+        if (fullScreen && !isTv) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+
         // TV and landscape phones/tablets sit side by side; portrait phones
         // and tablets stack the player above the channel list.
         val sideBySide = isTv || isLandscape
         val rootPaddingDp = if (isTv) 16 else 12
         val rootPadding = dp(rootPaddingDp)
+        rootPaddingPx = rootPadding
         val libraryWidthDp = if (isTv) 320 else 300
         val paneGapDp = if (isTv) 14 else 12
-        val root = column().apply {
+        paneGapPx = dp(paneGapDp)
+        rootView = column().apply {
             setPadding(rootPadding, dp(if (isTv) 10 else 8), rootPadding, dp(if (isTv) 12 else 8))
             background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
@@ -165,26 +183,26 @@ class MainActivity : Activity() {
         }
         // The header is hidden on phones in landscape: vertical space is
         // tight there and the playing row already shows what is on.
-        val header = label("IPTV", if (isTv) 28 else 22, accent).apply {
+        headerView = label("IPTV", if (isTv) 28 else 22, accent).apply {
             if (!isTv && isLandscape) visibility = View.GONE
         }
-        root.addView(header)
+        rootView.addView(headerView)
         val split = LinearLayout(this).apply {
             orientation = if (sideBySide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         }
-        root.addView(split, LinearLayout.LayoutParams(-1, 0, 1f))
+        rootView.addView(split, LinearLayout.LayoutParams(-1, 0, 1f))
         val left = column().also { libraryPane = it }
-        val right = column()
+        playerPane = column()
         if (sideBySide) {
             // Library on the left, player filling the rest. The library is
             // wider than before so the larger text fits comfortably.
             split.addView(left, LinearLayout.LayoutParams(dp(libraryWidthDp), -1))
-            right.setPadding(dp(paneGapDp), 0, 0, 0)
-            split.addView(right, LinearLayout.LayoutParams(0, -1, 1f))
+            playerPane.setPadding(dp(paneGapDp), 0, 0, 0)
+            split.addView(playerPane, LinearLayout.LayoutParams(0, -1, 1f))
         } else {
             // Portrait phone/tablet: player pane on top (wrap content, the
             // screen itself is fixed 16:9 below), library filling the rest.
-            split.addView(right, LinearLayout.LayoutParams(-1, -2))
+            split.addView(playerPane, LinearLayout.LayoutParams(-1, -2))
             split.addView(left, LinearLayout.LayoutParams(-1, 0, 1f))
         }
 
@@ -267,13 +285,20 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(0, -2, 1f).apply {
                 marginStart = dp(4)
             })
-        left.addView(button("Import M3U or play URL", ::choosePlaylist),
-            LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(6)
+        // Library footer: two tidy rows of equal buttons instead of stacked
+        // full-width ones. The Import dialog still offers a direct stream
+        // URL — only the label is shorter.
+        val libraryActions = LinearLayout(this)
+        left.addView(libraryActions, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(6)
+        })
+        libraryActions.addView(button("Import M3U", ::choosePlaylist),
+            LinearLayout.LayoutParams(0, -2, 1f).apply {
+                marginEnd = dp(4)
             })
-        left.addView(button("Xtream login", ::askXtream),
-            LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(6)
+        libraryActions.addView(button("Xtream", ::askXtream),
+            LinearLayout.LayoutParams(0, -2, 1f).apply {
+                marginStart = dp(4)
             })
 
         // On phones in landscape the title is hidden with the header: the
@@ -289,55 +314,28 @@ class MainActivity : Activity() {
             visibility = View.GONE
         }
         screen.addView(buffering, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
-        playerControls = column().apply { visibility = View.GONE }
-        playPauseButton = button("Play") { playerController?.togglePlayPause() }
-        fullscreenButton = button("Full screen") { setFullScreen(!fullScreen) }
-        val retryButton = button("Retry") { retryPlayback() }
+        // One control card (translucent tile, rounded corners) instead of
+        // loose buttons scattered around the player.
+        playerControls = column().apply {
+            visibility = View.GONE
+            background = shape(tile, strokeSoft, 16)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+        }
+        playPauseButton = button("▶") { playerController?.togglePlayPause() }
+        fullscreenButton = button("⛶ Full") { setFullScreen(!fullScreen) }
+        val retryButton = button("↻ Retry") { retryPlayback() }
         qualityButton = button("Quality") { showQualityDialog() }
-        speedButton = button("Speed 1x") { showSpeedDialog() }
-        volumeDownButton = button("Vol −") { changeVolume(-0.1f) }
-        volumeLabel = label("Vol ${(store.volume * 100).toInt()}%", if (isTv) 14 else 13, Color.WHITE).apply {
+        speedButton = button("1x") { showSpeedDialog() }
+        volumeDownButton = button("−") { changeVolume(-0.1f) }
+        volumeLabel = label("${(store.volume * 100).toInt()}%", if (isTv) 14 else 13, Color.WHITE).apply {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(4), 0, dp(4), 0)
         }
-        volumeUpButton = button("Vol +") { changeVolume(0.1f) }
-        favoriteButton = button("☆ Favorite") { toggleFavorite() }
-        val sleepButton = button("Sleep timer") { showSleepDialog() }
-        // Five wrap-content buttons overflowed a narrow phone row and the
-        // labels wrapped mid-word. Below ~560dp of player width the controls
-        // split into three compact rows instead of two wide ones; the
-        // fullscreen button gets extra weight because its text grows to
-        // "Exit full screen" when active. Weight 0 means wrap content.
-        val screenWidthDp =
-            (resources.displayMetrics.widthPixels / resources.displayMetrics.density).toInt()
-        val playerPaneWidthDp = if (sideBySide) {
-            screenWidthDp - 2 * rootPaddingDp - libraryWidthDp - paneGapDp
-        } else {
-            screenWidthDp - 2 * rootPaddingDp
-        }
-        val compactControls = !isTv && playerPaneWidthDp < 560
-        val controlRows: List<List<Pair<View, Float>>> = if (compactControls) {
-            listOf(
-                listOf(playPauseButton to 1f, fullscreenButton to 2f, retryButton to 1f),
-                listOf(qualityButton to 1f, speedButton to 1f, favoriteButton to 1f),
-                listOf(volumeDownButton to 1f, volumeLabel to 0f, volumeUpButton to 1f, sleepButton to 2f),
-            )
-        } else {
-            listOf(
-                listOf(playPauseButton to 1f, fullscreenButton to 1f, retryButton to 1f, qualityButton to 1f, speedButton to 1f),
-                listOf(volumeDownButton to 1f, volumeLabel to 0f, volumeUpButton to 1f, favoriteButton to 1f, sleepButton to 1f),
-            )
-        }
-        for ((rowIndex, row) in controlRows.withIndex()) {
-            val rowLayout = LinearLayout(this)
-            for ((view, weight) in row) {
-                rowLayout.addView(view, if (weight > 0f) controlParams(weight) else
-                    LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_VERTICAL })
-            }
-            playerControls.addView(rowLayout, LinearLayout.LayoutParams(-1, -2).apply {
-                if (rowIndex > 0) topMargin = dp(6)
-            })
-        }
+        volumeUpButton = button("+") { changeVolume(0.1f) }
+        favoriteButton = button("☆") { toggleFavorite() }
+        val sleepButton = button("Sleep") { showSleepDialog() }
+        // Seek bar first: full width with time labels at the top of the card.
+        // It stays GONE for live (non-seekable) streams.
         seekRow = LinearLayout(this).apply { visibility = View.GONE }
         seekBar = SeekBar(this).apply {
             isFocusable = true
@@ -365,23 +363,43 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         })
         playerControls.addView(seekRow, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(6)
+            bottomMargin = dp(8)
         })
-        right.addView(titleText)
-        right.addView(status)
-        right.addView(numberOverlay)
-        right.addView(playerControls, LinearLayout.LayoutParams(-1, -2).apply {
+        // Two fixed rows — primary controls, then the volume group with the
+        // secondary actions. Icon/short labels fit every phone width, so
+        // there is no separate compact layout anymore. Weight 0 means wrap
+        // content (the volume % label).
+        val controlRows: List<List<Pair<View, Float>>> = listOf(
+            listOf(playPauseButton to 1f, fullscreenButton to 1f, favoriteButton to 1f,
+                qualityButton to 1f, speedButton to 1f),
+            listOf(volumeDownButton to 1f, volumeLabel to 0f, volumeUpButton to 1f,
+                retryButton to 1f, sleepButton to 1f),
+        )
+        for ((rowIndex, row) in controlRows.withIndex()) {
+            val rowLayout = LinearLayout(this)
+            for ((view, weight) in row) {
+                rowLayout.addView(view, if (weight > 0f) controlParams(weight) else
+                    LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_VERTICAL })
+            }
+            playerControls.addView(rowLayout, LinearLayout.LayoutParams(-1, -2).apply {
+                if (rowIndex > 0) topMargin = dp(6)
+            })
+        }
+        playerPane.addView(titleText)
+        playerPane.addView(status)
+        playerPane.addView(numberOverlay)
+        playerPane.addView(playerControls, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(4)
             bottomMargin = dp(6)
         })
         if (sideBySide) {
-            right.addView(screen, LinearLayout.LayoutParams(-1, 0, 1f))
+            playerPane.addView(screen, LinearLayout.LayoutParams(-1, 0, 1f))
         } else {
             // Portrait phone/tablet: fixed 16:9 player under the controls,
             // capped so very wide screens do not push the list off-screen.
             val playerWidthPx = resources.displayMetrics.widthPixels - 2 * rootPadding
             val playerHeight = (playerWidthPx * 9 / 16).coerceAtMost(dp(320))
-            right.addView(screen, LinearLayout.LayoutParams(-1, playerHeight))
+            playerPane.addView(screen, LinearLayout.LayoutParams(-1, playerHeight))
         }
 
         playerController = PlayerController(this, screen, store.volume,
@@ -404,7 +422,7 @@ class MainActivity : Activity() {
                     if (!isDestroyed) status.text = "Playback ended."
                 }
                 override fun onPlayingChanged(isPlaying: Boolean) {
-                    if (!isDestroyed) playPauseButton.text = if (isPlaying) "Pause" else "Play"
+                    if (!isDestroyed) playPauseButton.text = if (isPlaying) "❚❚" else "▶"
                 }
                 override fun onTracksChanged(
                     options: List<PlayerController.VideoOption>,
@@ -429,7 +447,7 @@ class MainActivity : Activity() {
                     if (isSeekable) startSeekUpdates() else stopSeekUpdates()
                 }
             })
-        setContentView(root)
+        setContentView(rootView)
         populate()
         list.getChildAt(0)?.requestFocus()
         store.lastChannel?.let { last ->
@@ -437,7 +455,15 @@ class MainActivity : Activity() {
                 .firstOrNull { it.key == last.key } ?: last
             play(match)
         }
+        // Restored fullscreen (after the rotation it triggered): hide the
+        // library, header and controls again and re-hide the system UI.
+        if (fullScreen) updateFullscreenUi()
         refreshStalePlaylists()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_FULLSCREEN, fullScreen)
     }
 
     private fun populate() {
@@ -548,11 +574,74 @@ class MainActivity : Activity() {
     }
 
     private fun setFullScreen(enabled: Boolean) {
+        if (fullScreen == enabled) return
         fullScreen = enabled
-        fullscreenButton.text = if (enabled) "Exit full screen" else "Full screen"
-        libraryPane.visibility = if (enabled) View.GONE else View.VISIBLE
-        if (enabled) fullscreenButton.requestFocus()
-        else list.getChildAt(0)?.requestFocus()
+        if (!isTv) {
+            // Rotation recreates the activity; the state is saved and
+            // re-applied in onCreate, so there is no toggle loop.
+            requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+        updateFullscreenUi()
+        if (enabled) {
+            if (fullscreenButton.isShown) fullscreenButton.requestFocus()
+        } else {
+            list.getChildAt(0)?.requestFocus()
+        }
+    }
+
+    /**
+     * Applies the current [fullScreen] state to the UI. Called from
+     * [setFullScreen] and from onCreate when restoring after rotation.
+     * Touch devices get real fullscreen: immersive system UI, and only the
+     * player on screen (the landscape layout already lets it fill the pane).
+     * On TV there is no rotation or system UI to hide — only the library
+     * pane hides, as before, and the controls stay usable with the remote.
+     */
+    private fun updateFullscreenUi() {
+        fullscreenButton.text = if (fullScreen) "⛶ Exit" else "⛶ Full"
+        if (isTv) {
+            libraryPane.visibility = if (fullScreen) View.GONE else View.VISIBLE
+            return
+        }
+        if (fullScreen) {
+            hideSystemUi()
+            headerView.visibility = View.GONE
+            libraryPane.visibility = View.GONE
+            titleText.visibility = View.GONE
+            status.visibility = View.GONE
+            numberOverlay.visibility = View.GONE
+            playerControls.visibility = View.GONE
+            rootView.setPadding(0, 0, 0, 0)
+            playerPane.setPadding(0, 0, 0, 0)
+        } else {
+            showSystemUi()
+            headerView.visibility = if (!isTv && isLandscape) View.GONE else View.VISIBLE
+            libraryPane.visibility = View.VISIBLE
+            titleText.visibility = if (!isTv && isLandscape) View.GONE else View.VISIBLE
+            status.visibility = View.VISIBLE
+            playerControls.visibility = if (selected == null) View.GONE else View.VISIBLE
+            rootView.setPadding(rootPaddingPx, dp(if (isTv) 10 else 8), rootPaddingPx, dp(if (isTv) 12 else 8))
+            playerPane.setPadding(if (isTv || isLandscape) paneGapPx else 0, 0, 0, 0)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun hideSystemUi() {
+        // Immersive sticky: the bars stay hidden and re-hide after a swipe.
+        // These flags are deprecated on API 30+ but still honored on every
+        // version this app supports (minSdk 23).
+        window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_FULLSCREEN)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun showSystemUi() {
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
     private fun play(channel: Channel) {
@@ -571,11 +660,13 @@ class MainActivity : Activity() {
         store.addRecent(channel)
         store.lastChannel = channel
         titleText.text = channel.name
-        playerControls.visibility = View.VISIBLE
-        playPauseButton.text = "Pause"
+        // In phone fullscreen the controls stay hidden (Back exits first);
+        // a channel change must not pop them back over the video.
+        playerControls.visibility = if (fullScreen && !isTv) View.GONE else View.VISIBLE
+        playPauseButton.text = "❚❚"
         speed = 1f
         playerController?.setSpeed(1f)
-        speedButton.text = "Speed 1x"
+        speedButton.text = "1x"
         videoOptions = emptyList()
         selectedVideoIndex = -1
         seekable = false
@@ -613,7 +704,7 @@ class MainActivity : Activity() {
     private fun updateFavoriteButton() {
         val channel = selected
         favoriteButton.text =
-            if (channel != null && store.isFavorite(channel)) "★ Favorite" else "☆ Favorite"
+            if (channel != null && store.isFavorite(channel)) "★" else "☆"
     }
 
     private fun toggleFavorite() {
@@ -640,7 +731,7 @@ class MainActivity : Activity() {
         val value = (store.volume + delta).coerceIn(0f, 1f)
         store.volume = value
         playerController?.setVolume(value)
-        volumeLabel.text = "Vol ${(value * 100).toInt()}%"
+        volumeLabel.text = "${(value * 100).toInt()}%"
     }
 
     private fun showQualityDialog() {
@@ -669,7 +760,7 @@ class MainActivity : Activity() {
             .setSingleChoiceItems(labels, checked) { dialog, which ->
                 speed = values[which]
                 playerController?.setSpeed(speed)
-                speedButton.text = "Speed ${labels[which]}"
+                speedButton.text = labels[which]
                 dialog.dismiss()
             }.show()
     }
@@ -1150,7 +1241,10 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         imports.shutdownNow()
-        LogoLoader.shutdown()
+        // LogoLoader's pool is shared across activity instances: killing it
+        // on a rotation would crash the recreated activity the first time it
+        // loads a channel logo — and fullscreen rotates on every toggle.
+        if (!isChangingConfigurations) LogoLoader.shutdown()
         mainHandler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
@@ -1225,7 +1319,7 @@ class MainActivity : Activity() {
         setOnClickListener { action() }
     }
 
-    /** Dark text on the amber selected chip, white everywhere else. */
+    /** Dark text on the white selected pill, white everywhere else. */
     private fun refreshChipText(chip: Button) {
         chip.setTextColor(if (chip.isSelected && !chip.isFocused) background else Color.WHITE)
     }
@@ -1288,5 +1382,6 @@ class MainActivity : Activity() {
     companion object {
         private const val PAGE_SIZE = 60
         private const val AUTO_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000L
+        private const val STATE_FULLSCREEN = "fullscreen"
     }
 }
