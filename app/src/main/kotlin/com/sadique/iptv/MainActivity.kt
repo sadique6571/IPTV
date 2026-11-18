@@ -48,9 +48,7 @@ class MainActivity : Activity() {
     private var filter = "All"
     private var page = 0
     private var query = ""
-    private var activeSource: CatalogSource? = null
-    private var sourceChannels = emptyList<Channel>()
-    private var sourceRequest = 0
+    private var verifiedChannels = emptyList<Channel>()
     private var playbackRequest = 0
     private lateinit var listScroll: ScrollView
     private lateinit var libraryPane: LinearLayout
@@ -62,6 +60,11 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         playlistFile = AtomicFile(File(filesDir, "channels.m3u"))
+        verifiedChannels = try {
+            assets.open("verified-channels.m3u").use { Playlist.parse(Playlist.read(it)) }
+        } catch (_: IOException) {
+            emptyList()
+        }
         try {
             imported = playlistFile.openRead().use { Playlist.parse(Playlist.read(it)) }
         } catch (_: IOException) {
@@ -108,7 +111,6 @@ class MainActivity : Activity() {
         left.addView(listScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         val actions = LinearLayout(this)
         left.addView(actions)
-        actions.addView(button("Catalogs", ::chooseCatalog), LinearLayout.LayoutParams(0, -2, 1f))
         actions.addView(button("Search") {
             askAddress("Search channels", "Channel name") { value ->
                 query = value
@@ -141,16 +143,11 @@ class MainActivity : Activity() {
 
     private fun populate() {
         list.removeAllViews()
-        val candidates = when {
-            filter == "M3U" -> imported
-            activeSource != null -> sourceChannels
-            else -> builtInChannels + imported
-        }
+        val candidates = if (filter == "M3U") imported else verifiedChannels
         val matches = candidates.filter { channel ->
             val group = channel.group
             val accepted = when (filter) {
-                "PK" -> channel.country == "PK" || group == "Pakistan" ||
-                    (group == "Drama" && channel.country.isEmpty() && channel in builtInChannels)
+                "PK" -> channel.country == "PK" || group == "Pakistan"
                 "IN" -> channel.country == "IN" || group == "India"
                 "Cricket" -> group == "Cricket" ||
                     (group.equals("Sports", true) && cricketBroadcasters.matches(channel.name))
@@ -162,7 +159,7 @@ class MainActivity : Activity() {
         }
         val pageSize = 60
         val start = page * pageSize
-        val sourceName = if (filter == "M3U") "My playlist" else activeSource?.name ?: "Built-in"
+        val sourceName = if (filter == "M3U") "My playlist" else "Checked streams"
         catalogTitle.text = "$sourceName · ${matches.size}" +
             if (query.isEmpty()) "" else " · $query"
         if (page > 0) list.addView(button("Previous page") { showPage(page - 1) })
@@ -182,54 +179,6 @@ class MainActivity : Activity() {
         page = index
         populate()
         list.getChildAt(if (index > 0) 1 else 0)?.requestFocus()
-    }
-
-    private fun chooseCatalog() {
-        val options = listOf("Built-in channels") + catalogSources.map { it.name } + "Awesome IPTV · reference"
-        AlertDialog.Builder(this).setTitle("Channel catalogs")
-            .setItems(options.toTypedArray()) { _, selectedIndex ->
-                when (selectedIndex) {
-                    0 -> selectBuiltIn()
-                    options.lastIndex -> AlertDialog.Builder(this)
-                        .setTitle("Awesome IPTV")
-                        .setMessage("Reference for players, devices and providers.\n\nhttps://github.com/iptv-org/awesome-iptv")
-                        .setPositiveButton("OK", null).show()
-                    else -> loadCatalog(catalogSources[selectedIndex - 1])
-                }
-            }.show()
-    }
-
-    private fun selectBuiltIn() {
-        sourceRequest++
-        activeSource = null
-        sourceChannels = emptyList()
-        filter = "All"
-        query = ""
-        showPage(0)
-    }
-
-    private fun loadCatalog(source: CatalogSource) {
-        val request = ++sourceRequest
-        catalogTitle.text = "Loading ${source.name}…"
-        imports.execute {
-            val result = runCatching { Playlist.fetch(source.url, source.country) }
-            runOnUiThread {
-                if (isDestroyed || request != sourceRequest) return@runOnUiThread
-                result.fold(
-                    onSuccess = {
-                        activeSource = source
-                        sourceChannels = it
-                        filter = "All"
-                        query = ""
-                        showPage(0)
-                    },
-                    onFailure = {
-                        populate()
-                        toast("Catalog unavailable. Try again.")
-                    }
-                )
-            }
-        }
     }
 
     private fun setFullScreen(enabled: Boolean) {
@@ -380,7 +329,6 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     if (!isDestroyed) {
                         imported = channels
-                        sourceRequest++
                         query = ""
                         filter = "M3U"
                         page = 0

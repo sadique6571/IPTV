@@ -17,8 +17,8 @@ sed 's/<manifest /<manifest package="com.sadique.iptv" /' \
 
 "$tools_directory/aapt2" compile --dir "$source_directory/res" -o "$build_directory/resources.zip"
 "$tools_directory/aapt2" link -I "$android_jar" -o "$build_directory/unsigned.apk" \
-    --manifest "$build_directory/AndroidManifest.xml" --min-sdk-version 23 \
-    --target-sdk-version 34 --version-code 4 --version-name 1.3 \
+    --manifest "$build_directory/AndroidManifest.xml" -A "$source_directory/assets" --min-sdk-version 23 \
+    --target-sdk-version 34 --version-code 5 --version-name 1.4 \
     "$build_directory/resources.zip"
 kotlin_compiler="${KOTLINC:-kotlinc}"
 kotlin_stdlib="${KOTLIN_STDLIB:-$(dirname "$(command -v "$kotlin_compiler")")/../lib/kotlin-stdlib.jar}"

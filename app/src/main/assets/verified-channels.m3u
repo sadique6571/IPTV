@@ -1,0 +1,455 @@
+#EXTM3U
+#EXTINF:-1 group-title="News" tvg-country="PK",24 News HD
+https://cdn4.mjunoon.tv:8087/streamtest/146M/chunks.m3u8
+#EXTINF:-1 group-title="Music" tvg-country="PK",8XM
+https://cdn4.mjunoon.tv:8087/streamtest/131M/chunks.m3u8
+#EXTINF:-1 group-title="General" tvg-country="PK",aurLife HD
+http://124.109.47.101/hls/stream1.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="PK",Bol Entertainment HD
+https://vodzong.mjunoon.tv:8087/streamtest/Channel5-159-4/playlist.m3u8
+#EXTINF:-1 group-title="Animation;Kids" tvg-country="PK",Cartoon Network (Pakistan)
+https://vodzong.mjunoon.tv:8087/streamtest/cartoon-network-87/live/87H/chunks.m3u8
+#EXTINF:-1 group-title="News" tvg-country="PK",Dunya News
+https://imob.dunyanews.tv/livehd/ngrp:dunyalivehd_2_all/playlist.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="PK",Falak TV
+https://falak.rst.ae/index.m3u8
+#EXTINF:-1 group-title="Kids;Religious" tvg-country="PK",God Stands Kids Club TV
+https://online.godstands.tv:5443/WebRTCApp/streams/kidsenglish.m3u8
+#EXTINF:-1 group-title="Kids;Religious" tvg-country="PK",God Stands Kids Club TV Arabic
+https://online.godstands.tv:5443/WebRTCApp/streams/KidsArabic.m3u8
+#EXTINF:-1 group-title="Kids;Religious" tvg-country="PK",God Stands Kids Club TV Urdu
+https://online.godstands.tv:5443/WebRTCApp/streams/KidsUrdu.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="PK",God Stands TV
+https://online.godstands.tv:5443/WebRTCApp/streams/mainlive.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="PK",God Stands TV Arabic
+https://online.godstands.tv:5443/WebRTCApp/streams/Arabic.m3u8
+#EXTINF:-1 group-title="Drama" tvg-country="PK",HUM TV Live
+https://g4wlkwx8l23a-hls-live.5centscdn.com/HUM/271ddf829afeece44d8732757fba1a66.sdp/playlist_dvr.m3u8
+#EXTINF:-1 group-title="General" tvg-country="PK",Jeremiah TV
+https://x.streamablecloud.com/stream/hls/jeremiahtv/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="PK",Lahore News
+https://vcdn.dunyanews.tv/lahorelive/ngrp:lnews_1_all/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="PK",M News
+https://cdn.rabta.stream/M-News/index.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="PK",M Sports
+https://cdn.rabta.stream/M-Sports/index.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="PK",Madani Channel Urdu
+https://streaming.madanichannel.tv/static/streaming-playlists/hls/b9790f10-cb0d-4e30-82bf-84a756234e58/master.m3u8
+#EXTINF:-1 group-title="Undefined" tvg-country="PK",Paigham Television
+https://samitaorigin.tangotv.in/PAIGAMTV/SAMITAORIGIN/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="PK",Such TV
+https://video.primexsports.com/suchnews/live/playlist.m3u8
+#EXTINF:-1 group-title="Undefined" tvg-country="PK",Zindagi TV
+https://5ad386ff92705.streamlock.net/live_transcoder/ngrp:zindagitv.stream_all/chunklist.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Aakaash Aath
+https://cdn.pishow.tv/ott/live/969/master.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",ABP Ananda
+https://d2l4ar6y3mrs4k.cloudfront.net/live-streaming/ananda-livetv/master.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",ABP Majha
+https://cdn.pishow.tv/ott/live/471/master.m3u8
+#EXTINF:-1 group-title="India" tvg-country="IN",ABP News
+https://d2l4ar6y3mrs4k.cloudfront.net/live-streaming/abpnews-livetv/master.m3u8
+#EXTINF:-1 group-title="Movies" tvg-country="IN",All Time Movies
+https://fta.ektv.in/live/54/54_0.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Alright! TV
+https://d3c7vdfq3tyeyw.cloudfront.net/v1/master/071c0467fcd02420cdf0d8a1ca3524b96c27a151/rusk_media/v1/channel/ruskmedia/germane.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Amrita TV
+https://ddash74r36xqp.cloudfront.net/master.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Anjan TV
+https://anjan.vstream.online/anjanorg/ngrp:anjan_hdall/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",APN
+https://d1msejlow1t3l4.cloudfront.net/fta/apnnews/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Argus News
+https://d1msejlow1t3l4.cloudfront.net/fta/argusnews/playlist.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Arputhar Yesu TV
+https://account33.livebox.co.in/jesushelpshls/live.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Asianet HD
+https://da86m1sqpm3o0.cloudfront.net/28072023/smil:starasianet.smil/chunklist_b1928000.m3u8
+#EXTINF:-1 group-title="Movies" tvg-country="IN",Asianet Movies
+https://da86m1sqpm3o0.cloudfront.net/28072023/smil:asianetmovies.smil/chunklist_b1928000.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Asianet News
+https://amg13737-amg13737c1-amgplt0016.playout.now3.amagi.tv/playlist/amg13737-amg13737c1-amgplt0016/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Asianet Suvarna News
+https://asianet-prasarbharati.vgcdn.net/out/v1/bd05c931d9d94d288bbe455cc0f7e229/playlist.m3u8
+#EXTINF:-1 group-title="Undefined" tvg-country="IN",Astroscience
+https://yuppnimrestreammum.akamaized.net/181224/smil:astrotech.smil/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
+#EXTINF:-1 group-title="News" tvg-country="IN",Awaaz India TV
+https://awaazindia.livebox.co.in/AwaazIndaTVhls/Live.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Awakening TV
+https://d2gvyg6lvauoko.cloudfront.net/230226/awakeningtv/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
+#EXTINF:-1 group-title="Lifestyle" tvg-country="IN",Ayush TV
+http://d1msejlow1t3l4.cloudfront.net/fta/ayushtv/playlist.m3u8
+#EXTINF:-1 group-title="Movies" tvg-country="IN",B4U Bhojpuri
+https://cdnb4u.wiseplayout.com/B4U_Bhojpuri/master.m3u8
+#EXTINF:-1 group-title="Movies" tvg-country="IN",B4U Kadak
+https://amg00877-b4unew-amg00877c4-xiaomi-in-5473.playouts.now.amagi.tv/playlist.m3u8
+#EXTINF:-1 group-title="Movies" tvg-country="IN",B4U Movies
+https://amg00877-b4unew-amg00877c2-xiaomi-in-5489.playouts.now.amagi.tv/playlist.m3u8
+#EXTINF:-1 group-title="Music" tvg-country="IN",B4U Music
+https://amg00877-b4unew-amg00877c3-xiaomi-in-5474.playouts.now.amagi.tv/720p/index.m3u8
+#EXTINF:-1 group-title="Music" tvg-country="IN",Balle Balle
+https://mcncdndigital.com/worldpunjabitv/index.m3u8
+#EXTINF:-1 group-title="Music" tvg-country="IN",Balle Balle HD
+https://mcncdndigital.com/balleballetv/index.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Bhagyam TV
+https://ott.bhagyam.net/hls/bhagyamweb/index-1409148900-now.m3u8
+#EXTINF:-1 group-title="Movies" tvg-country="IN",Bhojpuri Cinema
+https://live-bhojpuri.akamaized.net/liveabr/playlist.m3u8
+#EXTINF:-1 group-title="Music" tvg-country="IN",Boogle Bollywood
+https://yuppnimrestreammum.akamaized.net/181224/smil:bogglebollywood.smil/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
+#EXTINF:-1 group-title="Business;News" tvg-country="IN",BT TV
+https://feeds.intoday.in/bttv/itgd.m3u8
+#EXTINF:-1 group-title="Education" tvg-country="IN",BVG
+https://mumt05.tangotv.in/87NeALx2BVG/index.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Channel Divya
+https://d2lk5u59tns74c.cloudfront.net/out/v1/40f46fa036df45ee9d28b6eda42eb27c/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Chardikla Gurbaani TV
+https://chardikalatimestv.gigabitcdn.net/in-chardikala/chardikala-gurbani-tv/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Chardikla Time TV
+https://chardikalagurbanitv.gigabitcdn.net/in-chardikala/chardikala-timetv/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Chardikla Time TV North America
+https://chardikalanorthamerica.gigabitcdn.net/in-chardikala/chardikala-north-usa/playlist.m3u8
+#EXTINF:-1 group-title="Business" tvg-country="IN",CNBC Awaaz
+https://n18syndication.akamaized.net/bpk-tv/CNBC_Awaaz_NW18_MOB/output01/master.m3u8
+#EXTINF:-1 group-title="Business" tvg-country="IN",CNBC Bajar
+https://n18syndication.akamaized.net/bpk-tv/CNBC_Bazaar_NW18_MOB/output01/master.m3u8
+#EXTINF:-1 group-title="Business" tvg-country="IN",CNBC TV18
+https://n18syndication.akamaized.net/bpk-tv/CNBC_TV18_NW18_MOB/output01/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Cnews Bharat
+https://legitpro.co.in/cnews/cnews/index.fmp4.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Colors
+https://raw.githubusercontent.com/amazeyourself/adaptive-streams/refs/heads/main/streams/sg/YuppTV/ColorsAPAC.m3u8
+#EXTINF:-1 group-title="Movies" tvg-country="IN",Colors Cineplex
+https://raw.githubusercontent.com/amazeyourself/adaptive-streams/refs/heads/main/streams/gb/YuppTV/ColorsCineplexUK.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Colors Gujarati
+https://raw.githubusercontent.com/amazeyourself/adaptive-streams/refs/heads/main/streams/in/YuppTV/ColorsGujarati.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Colors Kannada HD (1080i)
+https://da86m1sqpm3o0.cloudfront.net/28072023/smil:colorskannadahd1.smil/playlist.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Colors Marathi HD
+https://da86m1sqpm3o0.cloudfront.net/28072023/smil:colorsmarathihd.smil/playlist.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Colors Super
+https://d1rc86nwwc9fag.cloudfront.net/260723/smil:colorssuper1.smil/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Colors Tamil HD
+https://da86m1sqpm3o0.cloudfront.net/28072023/smil:colorstamilhd11.smil/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",CTVN AKD Plus
+https://live.legitpro.co.in/ctvnakdplus/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",D5 Channel Punjabi
+https://d5.tv360.ca:3453/live/cd5live.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Dangal 2
+https://live-dangal2.akamaized.net/liveabr/playlist.m3u8
+#EXTINF:-1 group-title="General" tvg-country="IN",Dangal TV
+https://live-dangal.akamaized.net/liveabr/playlist.m3u8
+#EXTINF:-1 group-title="General" tvg-country="IN",DD Meghalaya
+https://d3qs3d2rkhfqrt.cloudfront.net/out/v1/4f81bc8d13dd49b484da35988abb8729/index.m3u8
+#EXTINF:-1 group-title="Cricket" tvg-country="IN",DD Sports
+https://d3qs3d2rkhfqrt.cloudfront.net/out/v1/b17adfe543354fdd8d189b110617cddd/index.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Desi Channel
+https://desichannel.kableone.com/desichannel/master.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Dharm Sandesh
+https://d2lk5u59tns74c.cloudfront.net/out/v1/aed713462c734923aac946a547265288/index.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Dheeran TV
+https://live.we2live.in/dheerantv/dheerantv/playlist.m3u8
+#EXTINF:-1 group-title="Music" tvg-country="IN",Dhool TV
+https://d1msejlow1t3l4.cloudfront.net/fta/subhartitv/playlist.m3u8
+#EXTINF:-1 group-title="Undefined" tvg-country="IN",Disha TV
+https://d1msejlow1t3l4.cloudfront.net/fta/dishatv/playlist.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Divya Bhajan
+https://jmp2.uk/stvp-IN1600002IQ
+#EXTINF:-1 group-title="News" tvg-country="IN",DY 365
+https://cdn.smartstream.video/smartstream-us/dy365/dy365/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Ekamra Bharat Odia
+https://live.ekamraott.com/bharat/bharat/index.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Enterr 10 Bangla
+https://amg01448-samsungin-enterr10bangla-samsungin-ad-gg.amagi.tv/playlist/amg01448-samsungin-enterr10bangla-samsungin/playlist.m3u8
+#EXTINF:-1 group-title="Music" tvg-country="IN",ETV Beats
+https://jmp2.uk/stvp-IN4900002RV
+#EXTINF:-1 group-title="Movies" tvg-country="IN",ETV Cinema
+https://yupplivegcpusa.yuppcdn.net/100823/smil:etvcinema.smil/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
+#EXTINF:-1 group-title="Comedy" tvg-country="IN",ETV Comedy
+https://cc-wie8j8y69d2uy.akamaized.net/WWBI/Amagi/ETV_Comedy_IN/playlist.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",ETV Josh
+https://cc-uyh1ow5zouoio.akamaized.net/WWBI/Amagi/ETV_Josh_IN/playlist.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",ETV Plus
+https://yupplivegcpusa.yuppcdn.net/100823/smil:etvplus.smil/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
+#EXTINF:-1 group-title="Cooking;Lifestyle" tvg-country="IN",Food Food
+https://d2lk5u59tns74c.cloudfront.net/out/v1/ffc601b3dc8d41c5b09115702538d75a/index.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Gangaur TV
+https://pbgangaur.wiseplayout.com/Gangaur/master.m3u8
+#EXTINF:-1 group-title="Kids" tvg-country="IN",Green Gold TV
+https://cc-szrmqvu8zkg16.akamaized.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-szrmqvu8zkg16/greengold/stream/grngld/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",GS TV
+https://cdnplay.peanutsquare.com/560828843292539228453915.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",GTC Punjabi UK
+https://neotv.ottlive.co.in/gtcpunjabiuk/index.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",GTC Punjabi US
+https://neotv.ottlive.co.in/gtcpunjabiusa/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Guarantee News
+https://guaranteenews.in:8443/live/gnews/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Gujarat First
+https://live1.ottlive.co.in/gujaratfirst/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Headlines Tripura
+https://distro.ottlive.co.in/headlinestripura/headlinestripura/index.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Hebron TV
+https://account20.livebox.co.in/charleshls/live.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",High News
+https://highmedia.livebox.co.in/HIGHNEWShls/LIVE.m3u8
+#EXTINF:-1 group-title="Music" tvg-country="IN",Hindi Hits SD
+http://146.59.253.52:8080/hindihitshd/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Hindi Khabar
+https://livingindiaottlive.akamaized.net/hindikhabar/index.m3u8
+#EXTINF:-1 group-title="Documentary" tvg-country="IN",History TV18 HD
+https://amg01448-amg01448c16-samsung-in-3495.playouts.now.amagi.tv/playlist/amg01448-samsungindia-historychannelenglish-samsungin/playlist.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Hosanna TV Global
+https://ktismaservers.in:3349/live/hosannatvlive.m3u8
+#EXTINF:-1 group-title="Undefined" tvg-country="IN",HSTV
+https://live.castmaxcloud.com/live/hstv.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Ind 24
+https://livestream.jswk.online/ind24/live/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",India Daily Live
+https://indiadaily.ottlive.co.in/indiadailylive/index.m3u8
+#EXTINF:-1 group-title="India" tvg-country="IN",India TV
+https://pl-indiatvnews.akamaized.net/out/v1/db79179b608641ceaa5a4d0dd0dca8da/index.m3u8
+#EXTINF:-1 group-title="Music" tvg-country="IN",Isai Aruvi
+https://segment.yuppcdn.net/140622/isaiaruvi/playlist.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Ishwar Bhakti TV
+https://6n3yow8pl9ok-hls-live.5centscdn.com/ishwartvlive/tv.stream/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Janta TV
+https://live.jswk.online/IK_RTPM/live/index.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Joy TV
+https://ktismaservers.in:3412/live/joytvlive.m3u8
+#EXTINF:-1 group-title="General" tvg-country="IN",Kairali TV
+https://mumt01.tangotv.in/O5aw8Zn3KAIRALI/index.m3u8
+#EXTINF:-1 group-title="Movies" tvg-country="IN",Kairali We
+https://mumt01.tangotv.in/O5aw8Zn3WETV/index.m3u8
+#EXTINF:-1 group-title="General" tvg-country="IN",Kalaignar TV
+https://segment.yuppcdn.net/240122/kalaignartv/playlist.m3u8
+#EXTINF:-1 group-title="Music" tvg-country="IN",Kalika TV
+http://server.applelive.in/kalikatv/kalikatv.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Karnataka News Beat
+https://vglivessai.akamaized.net/sg/v1/master/611d79b11b77e2f571934fd80ca1413453772ac7/d0f1a078-3293-4f87-80ac-34cff3279b0d/index.m3u8
+#EXTINF:-1 group-title="General" tvg-country="IN",Kaumudy TV
+https://oqgdrkxby4rm-hls-live.5centscdn.com/kaumudytv/live.stream/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",KBP Times
+https://kbpnews.cloud/Kbptimes/Kbptimeslive/video.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Khabar Fast
+https://d2gvyg6lvauoko.cloudfront.net/230226/khabarfast/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
+#EXTINF:-1 group-title="Education" tvg-country="IN",Kite Victers
+https://932y4x26ljv8-hls-live.5centscdn.com/victers/tv.stream/playlist.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Knock Bhakti
+https://knocktv2.wiseplayout.com/Knock_Bhakti_EST/master.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Life TV (India)
+https://lifetv.livebox.co.in/lifetvhls/lifetv.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Mahua Khabar
+https://cdn.ottlive.co.in/mahuakhabar/index.m3u8
+#EXTINF:-1 group-title="General" tvg-country="IN",Makkal TV (576i)
+https://5k8q87azdy4v-hls-live.wmncdn.net/MAKKAL/271ddf829afeece44d8732757fba1a66.sdp/playlist.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Mangalmay TV
+https://yupplivegcpusa.yuppcdn.net/100823/mangalmay_1800/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",Mango (India)
+https://stmv6.voxtvhd.com.br/cinehindi/cinehindi/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Manorama News
+https://mmtvlive3.akamaized.net/v1/master/673630b269b766886555eebfddd4f27f3de3ab50/mmtvAdCampaign3/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Mathrubhumi News
+https://dn5yap910rvbg.cloudfront.net/live/mbnews/master.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Media9
+https://media9news.akamaized.net/media9/hls/media9tv.m3u8
+#EXTINF:-1 group-title="Education;News;Science" tvg-country="IN",MediBizTV
+https://43wrzjnpqoxe-hls-live.wmncdn.net/marinebiztvlive/marinebiztvlive/playlist.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IN",Mercy TV (India)
+https://5dd3981940faa.streamlock.net/mercytv/mercytv/playlist.m3u8
+#EXTINF:-1 group-title="General" tvg-country="IN",Metro TV (India)
+https://mercury.streambridge.link:8042/telugu/metrotv/index.m3u8
+#EXTINF:-1 group-title="Music" tvg-country="IN",Mh 1 Music
+https://livestream.jswk.online/playlisttest/live/playlist.m3u8
+#EXTINF:-1 group-title="General" tvg-country="IN",Mh 1 Prime
+https://mumt04.tangotv.in/m18aqlK4MHONE/index.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="IN",MK Six
+https://mumt06.tangotv.in/qYyB8fXVMKSIX/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Mojo TV
+https://mumt07.tangotv.in/zHjX9OFlMOJOTV/index.m3u8
+#EXTINF:-1 group-title="Movies" tvg-country="IN",Movie Punjab
+https://mumt01.tangotv.in/O5aw8Zn3MOVIEPUNJAB/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",Naxatra News Hindi
+https://d2gvyg6lvauoko.cloudfront.net/230226/naxatranewshindi/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
+#EXTINF:-1 group-title="News" tvg-country="IN",NDTV
+https://web-ndtv24x7-uk.akamaized.net/hls/live/2109290/ndtv24x7uk/master.m3u8
+#EXTINF:-1 group-title="India" tvg-country="IN",NDTV 24x7
+https://ndtv24x7elemarchana.akamaized.net/hls/live/2003678/ndtv24x7/master.m3u8
+#EXTINF:-1 group-title="Lifestyle" tvg-country="IN",NDTV Good Times
+https://amg01448-samsungin-ndtvgoodtimes-samsungin-ad-gp.amagi.tv/playlist/amg01448-samsungin-ndtvgoodtimes-samsungin/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",NDTV India
+https://backupndtvindiaelemarchana.akamaized.net/hls/live/2004134/ndtvindia/master_1.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",NDTV Madhya Pradesh Chhattisgarh
+https://ndtvregional.akamaized.net/hls/live/2102726-b/ndtvmpcg/master_1.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",NDTV Rajasthan
+https://ndtvregional.akamaized.net/hls/live/2102726-b/ndtvraj/master_1.m3u8
+#EXTINF:-1 group-title="News" tvg-country="IN",News Hour
+https://mumt07.tangotv.in/zHjX9OFlNEWSHOUR/index.m3u8
+#EXTINF:-1 group-title="Undefined" tvg-country="IN",Taaza TV
+https://live.we2live.in/taazatv/live/playlist.m3u8
+#EXTINF:-1 group-title="Animation;Kids" tvg-country="IN",WOW Kidz
+https://yuppparoriglin.akamaized.net/181224/smil:wowkidzhindi.smil/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
+#EXTINF:-1 group-title="Animation;Kids" tvg-country="IN",WOW Kidz Tamil
+https://yuppparoriglin.akamaized.net/181224/smil:wowkidztam.smil/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
+#EXTINF:-1 group-title="Animation;Kids" tvg-country="IN",WOW Kidz Telugu
+https://yuppparoriglin.akamaized.net/181224/smil:wowkidztelgu.smil/playlist.m3u8?hdnts=st=1735898689~exp=1835898688~acl=*~hmac=f5fe24724fe05481e3841f9eb5ab8efdee0a3dd83645ae9dcf45703f525bab7b
+#EXTINF:-1 group-title="General" tvg-country="ES",28 kanala
+https://streaming.28kanala.eus/hls/z.m3u8
+#EXTINF:-1 group-title="Business" tvg-country="US",30A Investment Pitch
+https://30a-tv.com/feeds/xodglobal/30atv.m3u8
+#EXTINF:-1 group-title="Business" tvg-country="",30A Investment Pitch (30A Investment Pitch)
+https://www.30a-tv.com/InvPit.m3u8
+#EXTINF:-1 group-title="General" tvg-country="NL",A1 TV
+https://stream.a1mediagroep.nl/hls/a1tv.m3u8
+#EXTINF:-1 group-title="General" tvg-country="KR",ABN
+https://vod2.abn.co.kr/IPHONE/abn.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="US",ABN Urdu
+https://mediaserver.abnvideos.com/streams/abnurdu.m3u8
+#EXTINF:-1 group-title="News" tvg-country="UK",Afghanistan International
+https://hls.afintl.com/hls/stream.m3u8
+#EXTINF:-1 group-title="Business" tvg-country="AE",Al Arabiya Business
+https://live.alarabiya.net/alarabiapublish/aswaaq.smil/playlist.m3u8
+#EXTINF:-1 group-title="Documentary;News" tvg-country="AE",Al Arabiya Programs
+https://live.alarabiya.net/alarabiapublish/aaprograms.smil/playlist.m3u8
+#EXTINF:-1 group-title="News" tvg-country="PS",Al Najah News
+https://streaming.najah.edu:8443/hls/AlNajah.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IQ",Al-Aimma TV
+https://alaimma.tv/live/index.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="US",Al-Mahdi TV
+https://iptv.almahditv.com/almahditv/playlist.m3u8
+#EXTINF:-1 group-title="General" tvg-country="",Alcarria TV
+https://cls.alcarria.tv/alcarriatv/livestream/playlist.m3u8
+#EXTINF:-1 group-title="Lifestyle" tvg-country="RO",Antena Monden
+https://stream1.antenaplay.ro/live/AntenaMonden/playlist.m3u8
+#EXTINF:-1 group-title="Entertainment" tvg-country="CA",Apna Punjab TV
+https://plus.gigabitcdn.net/live-stream/apna-punjab-H3sE/playlist.m3u8
+#EXTINF:-1 group-title="Education" tvg-country="DE",ARD-alpha
+https://mcdn.br.de/br/fs/ard_alpha/hls/de/master.m3u8
+#EXTINF:-1 group-title="Outdoor" tvg-country="KH",ARDB TV
+https://ardbtv.ardb.com.kh:8443/tv-live/tv-online.m3u8
+#EXTINF:-1 group-title="News" tvg-country="AZ",Baku.TV
+https://rtmp.baku.tv/hls/bakutv.m3u8
+#EXTINF:-1 group-title="General" tvg-country="RO",Banat TV
+https://www.btv.ro/hls/banat-tv.m3u8
+#EXTINF:-1 group-title="General" tvg-country="UG",BBS TV (Uganda)
+https://bbstv.ug/hls/ch01/index.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="US",beIN SPORTS XTRA en Espanol
+https://dc1644a9jazgj.cloudfront.net/beIN_Sports_Xtra_Espanol.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="IQ",BeitolAbbas TV Channel
+https://live.beitolabbas.tv/live/beitolabbastv.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="US",BEK Sports West
+https://cdn3.wowza.com/5/ZWQ1K2NYTmpFbGsr/BEK-WOWZA-1/smil:BEKPRIMEW.smil/playlist.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="PE",Bethel TV
+https://alfa.betheltv.tv/srt/3_abr/playlist.m3u8
+#EXTINF:-1 group-title="Lifestyle" tvg-country="TT",Bizz TV
+https://stream.bizzmedia.biz/bizz_tv/index.m3u8
+#EXTINF:-1 group-title="USA" tvg-country="US",Bloomberg
+https://bloomberg.com/media-manifest/streams/us.m3u8
+#EXTINF:-1 group-title="Business;Documentary" tvg-country="US",Bloomberg Originals
+https://bloomberg.com/media-manifest/streams/qt.m3u8
+#EXTINF:-1 group-title="Documentary;News" tvg-country="PL",BTB Info
+https://emisja2.btb.j00r.us/iptv/session/4/hls.m3u8
+#EXTINF:-1 group-title="News" tvg-country="",BTB Info (BTB Info)
+https://panel.btb.j00r.us/memfs/928cfb64-fed7-4c27-9937-f5ad72d9d73c.m3u8
+#EXTINF:-1 group-title="General" tvg-country="RW",BTN TV (Rwanda)
+https://tv.btnrwanda.com:3973/live/btnv2live.m3u8
+#EXTINF:-1 group-title="General" tvg-country="CR",Canal 1 (Costa Rica)
+https://vid.canal1cr.com:3424/multi_live/play_720.m3u8
+#EXTINF:-1 group-title="General" tvg-country="PY",Canal 5 TV Max
+https://tvmaxsa.com.py/hls/FB-430927919930380-0-AbzjnbAzAIR0NaFg.m3u8
+#EXTINF:-1 group-title="General" tvg-country="DO",Canal del Sol
+https://stream.canaldelsol.com/sol26/live_1080.m3u8
+#EXTINF:-1 group-title="General" tvg-country="",Canal Dos
+https://stream2.micanal2.tv/hls/canal2.m3u8
+#EXTINF:-1 group-title="Legislative" tvg-country="",Canal Gov
+https://canalgov-stream.ebc.com.br/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="VE",Canal I
+https://streaming.canal-i.com/canal-i/live/master.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="",Canal Mas
+https://canalmasuruguay.com/hls/master-abr.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="AR",Canal Showsport
+https://livestream.lumpentv.com.ar/hls/lumpen.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="CO",Canal Telesantiago
+https://stream.canaltelesantiago.com:8000/play/TELESANTIAGO/index.m3u8
+#EXTINF:-1 group-title="General" tvg-country="BR",Canal UOL
+https://video24.mais.uol.com.br/live/6146.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="SK",Canal+ Sport 2 SK
+http://rpprod.hbbtv.cdn.cra.cz:8080/hbbTV/cme-sk-canal-plus-sport2/live_fullhd?offsetSeconds=0
+#EXTINF:-1 group-title="Sports" tvg-country="SK",Canal+ Sport 3 SK
+http://rpprod.hbbtv.cdn.cra.cz:8080/hbbTV/cme-sk-canal-plus-sport3/live_fullhd?offsetSeconds=0
+#EXTINF:-1 group-title="Sports" tvg-country="SK",Canal+ Sport 4 SK
+http://rpprod.hbbtv.cdn.cra.cz:8080/hbbTV/cme-sk-canal-plus-sport4/live_fullhd?offsetSeconds=0
+#EXTINF:-1 group-title="News" tvg-country="",CBS News 24/7 (CBS News 24/7)
+https://cbsn-us-vtt.cbsnstream.cbsnews.com/out/v1/ef868690d34144509eda696884bf1619/master.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="DO",CDN Deportes
+https://hls.tvabierta.net/hls/036.m3u8
+#EXTINF:-1 group-title="General" tvg-country="HU",City TV (Hungary)
+https://citytv.hu/playlist.m3u8
+#EXTINF:-1 group-title="General" tvg-country="AR",Ciudad TV Resistencia
+https://617c5175c970b.streamlock.net:4444/chacodxdtv/livenew/playlist.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="CO",CMB Television
+https://cdn1.cmbcolombia.tv/bethesda/video.m3u8
+#EXTINF:-1 group-title="General" tvg-country="MK",Cool TV
+https://stream.nasatv.com.mk/cooltv/hls/cooltv_live.m3u8
+#EXTINF:-1 group-title="Cricket" tvg-country="",Cricket Gold
+https://streams2.sofast.tv/ptnr-yupptv/title-cricketgold/v1/master/611d79b11b77e2f571934fd80ca1413453772ac7/b2048bb8-1686-4432-aa50-647245383e0c/manifest.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="CL",CRTV (Chile)
+https://stmv2.voxtvhd.com.br/crtvchile/crtvchile/playlist.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="CM",CRTV Sports and Entertainment SD
+https://live1.acangroup.org:1929/publiclive/crtv_sport/playlist.m3u8
+#EXTINF:-1 group-title="Legislative" tvg-country="US",Cruz TV
+https://reflect-communitytv.cablecast.tv/live-4/live/stream-2/live.m3u8
+#EXTINF:-1 group-title="General" tvg-country="DO",CTT Canal 49
+https://cdnfox.hostlagarto.com/cct49/index.m3u8
+#EXTINF:-1 group-title="Music" tvg-country="AR",Cumbia Mix
+https://cloud.tvomix.com/CUMBIAMIX/index.m3u8
+#EXTINF:-1 group-title="Education;News" tvg-country="SD",Dabanga TV
+https://hls.dabangasudan.org/hls/stream.m3u8
+#EXTINF:-1 group-title="Education" tvg-country="KH",EBC General Education
+https://iptv.ebc.edu.kh/iptv/channel/1.m3u8
+#EXTINF:-1 group-title="Education" tvg-country="KR",EBS 1TV
+https://ebsonair.ebs.co.kr/ebs1familypc/familypc1m/playlist.m3u8
+#EXTINF:-1 group-title="Education" tvg-country="",EBS 1TV (EBS 1)
+https://ebsonair.ebs.co.kr/groundwavefamilypc/familypc1m/playlist.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="UK",FIFA+ French
+https://37b4c228.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWZyX0ZJRkFQbHVzRnJlbmNoX0hMUw/playlist.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="UK",FIFA+ Italy
+https://5d95f7d7.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWl0X0ZJRkFQbHVzSXRhbGlhbl9ITFM/playlist.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="UK",FIFA+ Portuguese
+https://e3be9ac5.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/TEctYnJfRklGQVBsdXNQb3J0dWd1ZXNlX0hMUw/playlist.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="UK",FIFA+ Spain
+https://d63fabad.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWVzX0ZJRkFQbHVzU3BhbmlzaF9ITFM/playlist.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="UK",FIFA+ Women
+https://cffda8ff.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/U2Ftc3VuZy1nYl9GSUZBUGx1c3dvbWVuX0hMUw/playlist.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="NL",FightBox HD
+https://nosignal1.antenaplay.ro/hls/fightbox-hd/index.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="US",FITE 24/7
+https://d3d85c7qkywguj.cloudfront.net/scheduler/scheduleMaster/263.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="US",FloHockey
+https://amg02278-amg02278c2-flosports-worldwide-9916.playouts.now.amagi.tv/playlist.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="US",FloRacing
+https://amg02278-amg02278c1-flosports-worldwide-7592.playouts.now.amagi.tv/playlist.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="RO",Formula 1 AntenaPlay (576i)
+https://stream1.antenaplay.ro/promo/formula-1-las-vegas-20-2211/chunklist.m3u8
+#EXTINF:-1 group-title="Sports" tvg-country="RO",Formula 2 AntenaPlay (576i)
+https://stream1.antenaplay.ro/promo/formula-2-qatar/chunklist.m3u8
+#EXTINF:-1 group-title="Religious" tvg-country="CL",Fortaleza TV
+https://multimedia.fortalezatv.cl/video/video.m3u8
+#EXTINF:-1 group-title="General" tvg-country="NG",Fortis TV
+https://stream.fortistv.com/hls/fortis-news/index.m3u8
+#EXTINF:-1 group-title="News" tvg-country="US",Fox News Radio
+https://radiovid.foxnews.com/hls/live/661547/RADIOVID/index.m3u8
+#EXTINF:-1 group-title="Weather" tvg-country="US",Fox Weather
+https://247wlive.foxweather.com/stream/index.m3u8
+#EXTINF:-1 group-title="General" tvg-country="CA",Gaunda Punjab TV
+http://cdn6.live247stream.com/gaundapunjab/tv/playlist.m3u8
+#EXTINF:-1 group-title="Culture" tvg-country="CA",Hyder TV
+https://cdn.live247stream.com/hyder/tv/playlist.m3u8
+#EXTINF:-1 group-title="Lifestyle" tvg-country="NL",INFAST
+https://amg00861-terninternation-lifestyle-samsungau-kdlyy.amagi.tv/playlist/amg00861-terninternation-lifestyle-samsungau/playlist.m3u8
+#EXTINF:-1 group-title="Science" tvg-country="NL",InWonder
+https://amg00861-terninternation-inwonder-samsungau-1k63k.amagi.tv/playlist/amg00861-terninternation-inwonder-samsungau/playlist.m3u8
+#EXTINF:-1 group-title="Entertainment;Movies" tvg-country="SG",KCM India
+https://amg02159-amg02159c7-samsung-in-4001.playouts.now.amagi.tv/playlist/amg02159-kcglobal-kcm-samsungin/playlist.m3u8
+#EXTINF:-1 group-title="Animation;Kids" tvg-country="UK",Mr Bean Animated
+https://amg00627-amg00627c23-samsung-au-4110.playouts.now.amagi.tv/playlist.m3u8
