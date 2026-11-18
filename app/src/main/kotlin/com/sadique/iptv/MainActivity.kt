@@ -118,7 +118,14 @@ class MainActivity : Activity() {
     private var paneGapPx = 0
     private lateinit var infoBar: LinearLayout
     private lateinit var infoName: TextView
-    private lateinit var quickActions: LinearLayout
+    // On-video corner buttons (the tiles under the player are gone — the
+    // user asked for the buttons ON the screen itself): Favorite
+    // top-right, Retry bottom-left, Quality bottom-right. Speed lives in
+    // the overlay pill (movies only — channels never need it).
+    private lateinit var favButton: Button
+    private lateinit var retryButton: Button
+    private lateinit var qualityButton: Button
+    private lateinit var speedButton: Button
     private lateinit var seekRow: LinearLayout
     private lateinit var seekBar: SeekBar
     private lateinit var seekLabel: TextView
@@ -132,18 +139,16 @@ class MainActivity : Activity() {
     private lateinit var muteButton: Button
     private lateinit var fullscreenButton: ImageButton
     private lateinit var fullscreenIcon: FullscreenIconDrawable
-    private lateinit var qualityButton: Button // TopBar cyan chip
-    private lateinit var qualityTile: LinearLayout // quick-actions tile, mobile landscape only
-    private lateinit var qualityGlyph: TextView
-    private lateinit var speedTile: LinearLayout
-    private lateinit var speedGlyph: TextView
-    private lateinit var favoriteTile: LinearLayout
-    private lateinit var favoriteGlyph: TextView
     private lateinit var catalogTitle: TextView
     // Shown under the catalog title while a search query is active: the
     // query text + a button that clears it and restores the full list.
     private lateinit var searchClearRow: LinearLayout
     private lateinit var searchClearLabel: TextView
+    // Search bar at the top of the browse pane, as wide as the list —
+    // the channel search lives where the channels are (the TopBar pill
+    // stays as the second way in).
+    private lateinit var paneSearchBar: LinearLayout
+    private lateinit var paneSearchLabel: TextView
     private var mutedVolume = false
     private var playerController: PlayerController? = null
     private var web: WebView? = null
@@ -161,7 +166,6 @@ class MainActivity : Activity() {
             // changes from a dialog or a playlist action instead of a tap.
             markActiveFilter()
         }
-    private var page = 0
     private var query = ""
     // TV browse levels: the left pane shows either the categories or the
     // channels of the picked category — never both (the old sidebar is
@@ -202,10 +206,20 @@ class MainActivity : Activity() {
     // app would auto-play an expired link on the next launch.
     private lateinit var movieBox: MovieBox
     private lateinit var movieStore: MovieStore
+    // The Movies/Dramas overlays build on first open, not at startup —
+    // they are big view trees and the app opened on a black screen while
+    // they inflated. Nothing touches them before the first open.
+    private lateinit var contentFrame: FrameLayout
+    private var moviesViewBuilt = false
+    private var dramasViewBuilt = false
     private lateinit var moviesView: LinearLayout
     private lateinit var moviesListPane: LinearLayout
     private lateinit var moviesDetailsPane: LinearLayout
     private lateinit var movieSearchInput: EditText
+    // Home chip in the Movies quick row — the focus fallback when the
+    // section opens with no rows (the search box is NOT the landing:
+    // focusing it pops the keyboard and D-pad up/down can die on it).
+    private lateinit var movieHomeChip: Button
     private lateinit var movieStatus: TextView
     // Now-playing bar at the top of the Movies section: shown when a movie
     // is already playing, with a shortcut back to the player.
@@ -341,7 +355,10 @@ class MainActivity : Activity() {
         // TV and landscape phones/tablets sit side by side; portrait phones
         // and tablets stack the player above the channel list.
         val sideBySide = isTv || isLandscape
-        val rootPaddingDp = if (isTv) 16 else 12
+        // TV overscan: cheap TVs crop a few percent off every edge, and
+        // the list was visibly cut at the sides — 32dp keeps the content
+        // inside the safe area.
+        val rootPaddingDp = if (isTv) 32 else 12
         val rootPadding = dp(rootPaddingDp)
         rootPaddingPx = rootPadding
         val libraryWidthDp = if (isTv) 320 else 300
@@ -354,10 +371,10 @@ class MainActivity : Activity() {
                 intArrayOf(bg0, bg1, bg2),
             )
         }
-        // TopBar (Qwen): logo mark + IPTV title + glass search pill + cyan
-        // quality chip. Hidden on phones in landscape (vertical space is
-        // tight there; the footer Search button and the quality tile cover
-        // it) — the playing card already shows what is on.
+        // TopBar (Qwen): logo mark + IPTV title + glass search pill + the
+        // round action buttons (TV). Hidden on phones in landscape
+        // (vertical space is tight there; the footer buttons cover it) —
+        // the playing card already shows what is on.
         headerView = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -396,16 +413,16 @@ class MainActivity : Activity() {
             marginEnd = dp(12)
         })
         if (isTv) {
-            // Small round action buttons (TV): Search, Playlists, Import
-            // M3U, Xtream, Update. They used to sit under the channel list
+            // Small round action buttons (TV): Playlists, Import M3U,
+            // Xtream, Update. They used to sit under the channel list
             // and eat its height; the search pill already lives up here,
             // so the actions join it and the space below stays free.
+            // (No Search button — the pill IS the search bar.)
             val topActions = listOf(
-                Triple("🔍", "Search") { openSearch() },
                 Triple("📋", "Playlists") { showPlaylists() },
                 Triple("⬇", "Import M3U") { choosePlaylist() },
                 Triple("📡", "Xtream") { askXtream() },
-                Triple("⟳", "Update") { checkForUpdateManually() },
+                Triple("⬆", "Update") { checkForUpdateManually() },
             )
             for ((glyph, description, action) in topActions) {
                 headerView.addView(topRoundButton(glyph, description, action),
@@ -414,30 +431,6 @@ class MainActivity : Activity() {
                     })
             }
         }
-        // The Quality control lives here as a cyan chip (Qwen TopBar). It
-        // starts hidden — applyControlVisibility shows it once a stream
-        // reports two or more video tracks.
-        qualityButton = Button(this).apply {
-            text = "Quality"
-            isAllCaps = false
-            setTextColor(cyan)
-            setTypeface(null, Typeface.BOLD)
-            textSize = if (isTv) 17f else 15f
-            minimumWidth = 0
-            minimumHeight = dp(if (isTv) 48 else 44)
-            setPadding(dp(18), dp(8), dp(18), dp(8))
-            background = StateListDrawable().apply {
-                addState(intArrayOf(android.R.attr.state_focused),
-                    shape(0xb8070d26.toInt(), cyan, 14, 2))
-                addState(intArrayOf(android.R.attr.state_pressed),
-                    shape(0xcc1e2a66.toInt(), cyan, 14, 1))
-                addState(intArrayOf(),
-                    shape(0xb8070d26.toInt(), 0x6622d9ee.toInt(), 14, 1))
-            }
-            visibility = View.GONE
-            setOnClickListener { showQualityDialog() }
-        }
-        headerView.addView(qualityButton)
         rootView.addView(headerView)
         val split = LinearLayout(this).apply {
             orientation = if (sideBySide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
@@ -445,6 +438,32 @@ class MainActivity : Activity() {
         rootView.addView(split, LinearLayout.LayoutParams(-1, 0, 1f))
         val left = column().also { libraryPane = it }
         playerPane = column()
+
+        // Search bar at the top of the browse pane, as wide as the list —
+        // the channel search lives where the channels are. It sits above
+        // both browse levels (categories + channels) and shows the active
+        // query while one is running (see populate).
+        paneSearchBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isFocusable = true
+            isClickable = true
+            minimumHeight = dp(if (isTv) 52 else 48)
+            background = glassStateList(24)
+            setPadding(dp(16), 0, dp(16), 0)
+            setOnClickListener { openSearch() }
+        }
+        paneSearchBar.addView(label("🔍", if (isTv) 17 else 15, muted).apply {
+            setPadding(0, 0, dp(10), 0)
+        })
+        paneSearchLabel = label("Search channels…", if (isTv) 15 else 14, muted2).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        paneSearchBar.addView(paneSearchLabel, LinearLayout.LayoutParams(0, -2, 1f))
+        left.addView(paneSearchBar, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(8)
+        })
 
         // Categories follow the M3U group-titles — only five: News,
         // Sports, Islamic, Kids, General. Everything that is not news,
@@ -454,7 +473,6 @@ class MainActivity : Activity() {
         val filterLabels = mapOf("Favs" to "♥ Favorites", "Recent" to "◷ Recent")
         val chipAction: (String) -> Unit = { name ->
             filter = name
-            page = 0
             populate()
             // TV: a category pick swaps the browse pane to its channels.
             // (No-op on touch — the chip strip and the list share the pane.)
@@ -538,8 +556,8 @@ class MainActivity : Activity() {
         // Search clear row (task 2): visible only while a search query is
         // active, so the user always has a way back to the full list — even
         // when the search found nothing. It lives OUTSIDE `list` on purpose:
-        // populate() indexes list children by position (Previous page / rows),
-        // and an extra child there would break focusChannel/showPage math.
+        // list children are exactly the channel rows (index = currentMatches
+        // index), and an extra child there would break focusChannel math.
         searchClearRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -601,7 +619,7 @@ class MainActivity : Activity() {
             left.addView(updateRow, LinearLayout.LayoutParams(-1, -2).apply {
                 topMargin = dp(6)
             })
-            updateRow.addView(button("⟳ Update", ::checkForUpdateManually),
+            updateRow.addView(button("⬆ Update", ::checkForUpdateManually),
                 LinearLayout.LayoutParams(0, -2, 1f).apply {
                     marginEnd = dp(4)
                 })
@@ -763,6 +781,27 @@ class MainActivity : Activity() {
             showPlayerControls()
         }
         muteButton.id = View.generateViewId()
+        // Playback speed in the pill (movies only — the old tile under the
+        // player is gone). Narrow text, so it gets its own sizing instead
+        // of the fixed 48dp overlay slot ("1.25x" would clip in it).
+        speedButton = Button(this).apply {
+            text = "1x"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            id = View.generateViewId()
+            minimumWidth = dp(48)
+            minimumHeight = 0
+            setPadding(dp(10), 0, dp(10), 0)
+            background = overlayButtonBackground()
+            visibility = View.GONE
+            setOnClickListener {
+                showSpeedDialog()
+                showPlayerControls()
+            }
+        }
         fullscreenIcon = FullscreenIconDrawable(expanded = false)
         fullscreenButton = ImageButton(this).apply {
             setImageDrawable(fullscreenIcon)
@@ -788,6 +827,11 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         })
         overlayBar.addView(muteButton, overlayParams())
+        overlayBar.addView(speedButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 48 else 44)).apply {
+            marginStart = dp(3)
+            marginEnd = dp(3)
+            gravity = Gravity.CENTER_VERTICAL
+        })
         overlayBar.addView(fullscreenButton, overlayParams())
         screen.addView(overlayBar, FrameLayout.LayoutParams(
             -2, -2, Gravity.BOTTOM or Gravity.END,
@@ -854,6 +898,104 @@ class MainActivity : Activity() {
             marginEnd = dp(if (isTv) 20 else 12)
             bottomMargin = dp(if (isTv) 92 else 72)
         })
+        // On-video corner buttons (the tiles under the player are gone):
+        // Favorite top-right, Retry bottom-left, Quality bottom-right.
+        // They sit ON the video, so they stay reachable in fullscreen too.
+        // Quality is a text pill ("720p") — a round glyph button would
+        // clip the label. All three start hidden; applyControlVisibility
+        // owns them (Favorite/Retry while a channel plays, Quality for
+        // multi-track streams).
+        val cornerMargin = dp(if (isTv) 20 else 12)
+        favButton = Button(this).apply {
+            text = "☆"
+            isAllCaps = false
+            contentDescription = "Favorite"
+            setTextColor(Color.WHITE)
+            textSize = if (isTv) 22f else 20f
+            gravity = Gravity.CENTER
+            id = View.generateViewId()
+            minimumWidth = 0
+            minimumHeight = 0
+            setPadding(0, 0, 0, 0)
+            background = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_focused), glassShape(24, cyan, 2))
+                addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 24))
+                addState(intArrayOf(), glassShape(24))
+            }
+            visibility = View.GONE
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { toggleFavorite() }
+        }
+        screen.addView(favButton, FrameLayout.LayoutParams(
+            dp(if (isTv) 48 else 44), dp(if (isTv) 48 else 44),
+            Gravity.TOP or Gravity.END,
+        ).apply {
+            marginEnd = cornerMargin
+            topMargin = cornerMargin
+        })
+        retryButton = Button(this).apply {
+            text = "↻"
+            isAllCaps = false
+            contentDescription = "Retry"
+            setTextColor(Color.WHITE)
+            textSize = if (isTv) 22f else 20f
+            gravity = Gravity.CENTER
+            id = View.generateViewId()
+            minimumWidth = 0
+            minimumHeight = 0
+            setPadding(0, 0, 0, 0)
+            background = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_focused), glassShape(24, cyan, 2))
+                addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 24))
+                addState(intArrayOf(), glassShape(24))
+            }
+            visibility = View.GONE
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { retryPlayback() }
+        }
+        screen.addView(retryButton, FrameLayout.LayoutParams(
+            dp(if (isTv) 48 else 44), dp(if (isTv) 48 else 44),
+            Gravity.BOTTOM or Gravity.START,
+        ).apply {
+            marginStart = cornerMargin
+            bottomMargin = cornerMargin
+        })
+        qualityButton = Button(this).apply {
+            text = "Quality"
+            isAllCaps = false
+            contentDescription = "Quality"
+            setTextColor(cyan)
+            setTypeface(null, Typeface.BOLD)
+            textSize = if (isTv) 16f else 14f
+            gravity = Gravity.CENTER
+            id = View.generateViewId()
+            minimumWidth = 0
+            minimumHeight = dp(if (isTv) 48 else 44)
+            setPadding(dp(18), dp(8), dp(18), dp(8))
+            background = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_focused),
+                    shape(0xb8070d26.toInt(), cyan, 14, 2))
+                addState(intArrayOf(android.R.attr.state_pressed),
+                    shape(0xcc1e2a66.toInt(), cyan, 14, 1))
+                addState(intArrayOf(),
+                    shape(0xb8070d26.toInt(), 0x6622d9ee.toInt(), 14, 1))
+            }
+            visibility = View.GONE
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { showQualityDialog() }
+        }
+        screen.addView(qualityButton, FrameLayout.LayoutParams(
+            -2, -2, Gravity.BOTTOM or Gravity.END,
+        ).apply {
+            marginEnd = cornerMargin
+            bottomMargin = cornerMargin
+        })
+        // D-pad between the corners: right column (Fav ↓ Quality),
+        // bottom row (Retry → Quality).
+        favButton.nextFocusDownId = qualityButton.id
+        qualityButton.nextFocusUpId = favButton.id
+        retryButton.nextFocusRightId = qualityButton.id
+        qualityButton.nextFocusLeftId = retryButton.id
         // Tap the video to show/hide the controls (touch only). The
         // PlayerView has no click handler of its own (useController=false),
         // so taps on it reach this listener; taps on the overlay buttons
@@ -891,49 +1033,17 @@ class MainActivity : Activity() {
                 marginEnd = dp(18)
             })
         infoBar.addView(liveBadge().also { infoLiveBadge = it })
-        // Quick Actions glass tiles (Qwen RightPanel style, real actions
-        // only — no Cast, Subtitles, Audio Track or PiP tiles): favorite,
-        // quality (mobile landscape only — the TopBar chip covers the rest),
-        // speed, retry. (Sleep timer removed 2026-11-18 on the user's order.)
-        quickActions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            visibility = View.GONE
-        }
-        val (favTile, favGlyph) = actionTile("☆", "Fav") { toggleFavorite() }
-        favoriteTile = favTile
-        favoriteGlyph = favGlyph
-        val (qTile, qGlyph) = actionTile("Auto", "Quality") { showQualityDialog() }
-        qualityTile = qTile
-        qualityGlyph = qGlyph
-        val (spTile, spGlyph) = actionTile("1x", "Speed") { showSpeedDialog() }
-        speedTile = spTile
-        speedGlyph = spGlyph
-        val (retryTile, _) = actionTile("↻", "Retry") { retryPlayback() }
-        val tiles = listOf(favoriteTile, qualityTile, speedTile, retryTile)
-        for ((index, tile) in tiles.withIndex()) {
-            quickActions.addView(tile, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                if (index < tiles.size - 1) marginEnd = dp(8)
-            })
-        }
-        // TV D-pad: the on-video controls are the play/volume/fullscreen
-        // path — there is no separate Fullscreen tile (the user asked
-        // for the screen controls instead). UP from a tile lands on the
-        // overlay button above it; DOWN from the overlay comes back here.
-        favoriteTile.id = View.generateViewId()
-        speedTile.id = View.generateViewId()
-        retryTile.id = View.generateViewId()
-        favoriteTile.nextFocusUpId = playPauseButton.id
-        speedTile.nextFocusUpId = nextButton.id
-        retryTile.nextFocusUpId = fullscreenButton.id
-        playPauseButton.nextFocusDownId = speedTile.id
-        nextButton.nextFocusDownId = speedTile.id
-        volumeSeekBar.nextFocusDownId = retryTile.id
-        muteButton.nextFocusDownId = retryTile.id
-        fullscreenButton.nextFocusDownId = retryTile.id
-        seekBar.nextFocusDownId = playPauseButton.id
-        // Status line (buffering/errors/sleep timer): hidden whenever its
-        // text is empty, so it takes no space in the normal case.
+        // Status line (buffering/errors): an overlay ON the video, never
+        // a row under it. It used to sit in playerPane below the player,
+        // and its TextWatcher flipped it VISIBLE on every "Connecting…"
+        // / "Buffering…" — on TV/landscape the player has weight 1, so
+        // the video shrank by the status height and grew back when the
+        // text cleared, even in fullscreen (the watcher overrode the
+        // fullscreen GONE). As an overlay it can never resize the video.
         status = label("", if (isTv) 15 else 13, accent).apply {
+            background = shape(overlayDark, 0x1affffff.toInt(), 18, 1)
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            isFocusable = false
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -943,6 +1053,11 @@ class MainActivity : Activity() {
             })
             visibility = View.GONE
         }
+        screen.addView(status, FrameLayout.LayoutParams(
+            -2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL,
+        ).apply {
+            topMargin = dp(12)
+        })
         if (sideBySide) {
             playerPane.addView(screen, LinearLayout.LayoutParams(-1, 0, 1f))
         } else {
@@ -955,10 +1070,6 @@ class MainActivity : Activity() {
         playerPane.addView(infoBar, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(12)
         })
-        playerPane.addView(quickActions, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(10)
-        })
-        playerPane.addView(status, LinearLayout.LayoutParams(-1, -2))
 
         playerController = PlayerController(this, screen, store.volume,
             object : PlayerController.Listener {
@@ -1015,23 +1126,25 @@ class MainActivity : Activity() {
                 }
                 override fun onSeekableChanged(isSeekable: Boolean, durationMs: Long) {
                     if (isDestroyed) return
-                    seekable = isSeekable
+                    // Live channels report seekable when the stream has a
+                    // DVR window (a 24s window showed a seek bar on a live
+                    // channel) — the seek bar is movies-only, so ignore
+                    // the signal for everything else.
+                    seekable = isSeekable && playingMovie != null
                     applyControlVisibility()
-                    if (isSeekable) startSeekUpdates() else stopSeekUpdates()
+                    if (seekable) startSeekUpdates() else stopSeekUpdates()
                 }
             })
         // The Movies overlay sits on top of the Live TV layout in a frame,
-        // so opening it never detaches the player view underneath.
+        // so opening it never detaches the player view underneath. Both
+        // overlays build on first open (ensureMoviesView/ensureDramasView),
+        // not here — building them at startup kept the app on a black
+        // screen while they inflated.
         movieBox = MovieBox(applicationContext)
         movieStore = MovieStore(applicationContext)
-        moviesView = buildMoviesView()
-        // Same overlay pattern for Geo Dramas.
         geoDramas = GeoDramas(applicationContext)
-        dramasView = buildDramasView()
-        val contentFrame = FrameLayout(this)
+        contentFrame = FrameLayout(this)
         contentFrame.addView(rootView, FrameLayout.LayoutParams(-1, -1))
-        contentFrame.addView(moviesView, FrameLayout.LayoutParams(-1, -1))
-        contentFrame.addView(dramasView, FrameLayout.LayoutParams(-1, -1))
         setContentView(contentFrame)
         populate()
         list.getChildAt(0)?.requestFocus()
@@ -1117,15 +1230,31 @@ class MainActivity : Activity() {
         if (showingCategories) {
             filterChips[filter]?.requestFocus()
         } else {
-            list.getChildAt(0)?.requestFocus()
+            focusPlayingRowOrFirst()
         }
+    }
+
+    /** Focuses the playing channel's row when it is on screen, else the
+     * first row — Back and level switches used to drop focus on channel
+     * #1 even while another channel was playing. */
+    private fun focusPlayingRowOrFirst(preferChannel: Channel? = selected) {
+        val channel = preferChannel
+        if (channel != null) {
+            focusChannel(channel)
+            // focusChannel is a no-op when the channel is not in this
+            // list (filter changed) — but if focus already sits on a row,
+            // that is still a good landing, so only fall back to the
+            // first row when focus is nowhere in the list.
+            if (currentFocus != null && list.indexOfChild(currentFocus) >= 0) return
+        }
+        list.getChildAt(0)?.requestFocus()
     }
 
     /** Puts D-pad focus where the current browse state needs it: the
      * playing movie's controls when the pane is hidden for a movie,
-     * else the active category (categories level) or the first channel
-     * row (channels level). */
-    private fun focusBrowse() {
+     * else the active category (categories level) or the playing
+     * channel's row (channels level). */
+    private fun focusBrowse(preferChannel: Channel? = selected) {
         if (playingMovie != null && !movieEnded && (isTv || isLandscape)) {
             playPauseButton.requestFocus()
             return
@@ -1134,7 +1263,7 @@ class MainActivity : Activity() {
             filterChips[filter]?.requestFocus()
             return
         }
-        list.getChildAt(0)?.requestFocus()
+        focusPlayingRowOrFirst(preferChannel)
     }
 
     /** The browse pane (categories/channels) hides while a movie plays
@@ -1147,7 +1276,12 @@ class MainActivity : Activity() {
         libraryPane.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
-    private fun populate() {
+    /** Rebuilds the channel list as ONE list (no pages — the user asked
+     * for a single scroll). With preserveScroll, the scroll position is
+     * kept (favorite toggles); otherwise the list starts at the top
+     * (filter/search changes). */
+    private fun populate(preserveScroll: Boolean = false) {
+        val savedScrollY = if (preserveScroll) listScroll.scrollY else 0
         list.removeAllViews()
         // Search clear row (task 2): always visible while a query is active,
         // so there is always a way back to the full list — but only on the
@@ -1159,6 +1293,9 @@ class MainActivity : Activity() {
         } else {
             searchClearRow.visibility = View.GONE
         }
+        // The pane search bar shows the active query too.
+        paneSearchLabel.text =
+            if (query.isNotEmpty()) "Search: \"$query\"" else "Search channels…"
         val candidates = when {
             // Search is global: a query searches every bundled channel,
             // whatever category is showing — otherwise a search from the
@@ -1199,8 +1336,6 @@ class MainActivity : Activity() {
             })
         }
         currentMatches = matches
-        val pageSize = PAGE_SIZE
-        val start = page * pageSize
         val sourceName = when (filter) {
             "M3U" -> playlistStore.active()?.name ?: "My playlist"
             "Favs" -> "Favorites"
@@ -1209,23 +1344,11 @@ class MainActivity : Activity() {
         }
         catalogTitle.text = "$sourceName · ${matches.size}" +
             if (query.isEmpty()) "" else " · $query"
-        if (page > 0) list.addView(button("Previous page") { showPage(page - 1) },
-            LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(4)
-                bottomMargin = dp(4)
-            })
-        matches.drop(start).take(pageSize).forEach { channel ->
+        matches.forEach { channel ->
             list.addView(channelRow(channel), LinearLayout.LayoutParams(-1, -2).apply {
                 topMargin = dp(if (isTv) 3 else 5)
                 bottomMargin = dp(if (isTv) 3 else 5)
             })
-        }
-        if (start + pageSize < matches.size) {
-            list.addView(button("Next page") { showPage(page + 1) },
-                LinearLayout.LayoutParams(-1, -2).apply {
-                    topMargin = dp(4)
-                    bottomMargin = dp(4)
-                })
         }
         if (matches.isEmpty()) {
             if (query.isNotEmpty()) {
@@ -1248,7 +1371,7 @@ class MainActivity : Activity() {
                 list.addView(label(emptyText, if (isTv) 16 else 14, muted))
             }
         }
-        listScroll.post { listScroll.scrollTo(0, 0) }
+        listScroll.post { listScroll.scrollTo(0, savedScrollY) }
         markPlayingRow()
     }
 
@@ -1262,7 +1385,6 @@ class MainActivity : Activity() {
     /** Clears the active search and restores the full list (task 2). */
     private fun clearSearch() {
         query = ""
-        page = 0
         populate()
         list.getChildAt(0)?.requestFocus()
     }
@@ -1348,8 +1470,8 @@ class MainActivity : Activity() {
         row.addView(liveBadge())
         // Favorite heart — touch only (not D-pad focusable, so remote
         // navigation keeps one stop per row). Tapping toggles this
-        // channel's favorite; the tile below the player does the same for
-        // the playing channel.
+        // channel's favorite; the on-screen corner button does the same
+        // for the playing channel.
         val isFav = store.isFavorite(channel)
         val heart = Button(this).apply {
             text = if (isFav) "♥" else "♡"
@@ -1367,12 +1489,6 @@ class MainActivity : Activity() {
             marginStart = dp(8)
         })
         return row
-    }
-
-    private fun showPage(index: Int) {
-        page = index
-        populate()
-        list.getChildAt(if (index > 0) 1 else 0)?.requestFocus()
     }
 
     private fun setFullScreen(enabled: Boolean) {
@@ -1400,10 +1516,10 @@ class MainActivity : Activity() {
      * The on-video overlay — including the fullscreen toggle — stays visible
      * so the user can exit from the video itself; Back also exits.
      * On TV there is no rotation or system UI to hide, but fullscreen is
-     * still real fullscreen: the browse pane, header, info bar, quick
-     * actions and status all hide and the paddings go to zero, so the
-     * player pane (weight 1) fills the whole 1920x1080 screen. Only the
-     * video + on-video overlay stay; Back also exits.
+     * still real fullscreen: the browse pane, header and info bar all
+     * hide and the paddings go to zero, so the player pane (weight 1)
+     * fills the whole 1920x1080 screen. Only the video + on-video controls
+     * stay; Back also exits.
      */
     private fun updateFullscreenUi() {
         fullscreenIcon.expanded = fullScreen
@@ -1414,8 +1530,6 @@ class MainActivity : Activity() {
                 headerView.visibility = View.GONE
                 libraryPane.visibility = View.GONE
                 infoBar.visibility = View.GONE
-                quickActions.visibility = View.GONE
-                status.visibility = View.GONE
                 rootView.setPadding(0, 0, 0, 0)
                 playerPane.setPadding(0, 0, 0, 0)
             } else {
@@ -1424,8 +1538,6 @@ class MainActivity : Activity() {
                 updateBrowseVisibility()
                 val showBars = selected != null || playingMovie != null || playingDrama != null
                 infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
-                quickActions.visibility = if (showBars) View.VISIBLE else View.GONE
-                status.visibility = if (status.text.isEmpty()) View.GONE else View.VISIBLE
                 rootView.setPadding(rootPaddingPx, dp(10), rootPaddingPx, dp(12))
                 playerPane.setPadding(paneGapPx, 0, 0, 0)
             }
@@ -1436,8 +1548,6 @@ class MainActivity : Activity() {
             headerView.visibility = View.GONE
             libraryPane.visibility = View.GONE
             infoBar.visibility = View.GONE
-            quickActions.visibility = View.GONE
-            status.visibility = View.GONE
             rootView.setPadding(0, 0, 0, 0)
             playerPane.setPadding(0, 0, 0, 0)
         } else {
@@ -1447,8 +1557,6 @@ class MainActivity : Activity() {
             updateBrowseVisibility()
             val showBars = selected != null || playingMovie != null || playingDrama != null
             infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
-            quickActions.visibility = if (showBars) View.VISIBLE else View.GONE
-            status.visibility = if (status.text.isEmpty()) View.GONE else View.VISIBLE
             rootView.setPadding(rootPaddingPx, dp(if (isTv) 10 else 8), rootPaddingPx, dp(if (isTv) 12 else 8))
             playerPane.setPadding(if (isTv || isLandscape) paneGapPx else 0, 0, 0, 0)
         }
@@ -1472,14 +1580,15 @@ class MainActivity : Activity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
-    private fun play(channel: Channel) {
+    private fun play(channel: Channel, forceRestart: Boolean = false) {
         // Pressing OK on the channel that is already playing does NOT
         // restart it — it takes it fullscreen. The channel screen has
         // no controls anymore, so OK is the fullscreen switch (Back
         // leaves fullscreen). Web channels join in: the selected-key
-        // match is the only signal a WebView gives; Retry stays
-        // available as a quick-actions tile.
-        if (channel.key == selected?.key &&
+        // match is the only signal a WebView gives. Retry bypasses
+        // this with forceRestart — otherwise the Retry button on a web
+        // channel would just go fullscreen instead of reloading.
+        if (!forceRestart && channel.key == selected?.key &&
             (channel.web || playerController?.isPlaying() == true)) {
             focusChannel(channel)
             if (!fullScreen) setFullScreen(true)
@@ -1494,23 +1603,16 @@ class MainActivity : Activity() {
         playingMovieUrl = null
         playingMovieHeaders = emptyMap()
         playingDrama = null
-        // Keep the list on the page the playing channel belongs to.
+        // The list is one list now — the playing channel's row is always
+        // on screen, so focus just goes to it.
         val matchIndex = currentMatches.indexOfFirst { it.key == channel.key }
-        if (matchIndex >= 0) {
-            val targetPage = matchIndex / PAGE_SIZE
-            if (targetPage != page) {
-                page = targetPage
-                populate()
-            }
-            focusChannel(channel)
-        }
+        if (matchIndex >= 0) focusChannel(channel)
         store.addRecent(channel)
         store.lastChannel = channel
         setChannelMeta(channel)
         // In phone fullscreen the bars stay hidden (Back exits first);
         // a channel change must not pop them back over the video.
         val showBars = !(fullScreen && !isTv)
-        quickActions.visibility = if (showBars) View.VISIBLE else View.GONE
         infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
         playPauseButton.text = "❚❚"
         // A fresh player starts at the stored volume, so a muted session
@@ -1549,12 +1651,10 @@ class MainActivity : Activity() {
     }
 
     private fun focusChannel(channel: Channel) {
+        // One list, no pages: the row index IS the match index.
         val index = currentMatches.indexOfFirst { it.key == channel.key }
         if (index < 0) return
-        val positionInPage = index - page * PAGE_SIZE
-        if (positionInPage < 0 || positionInPage >= PAGE_SIZE) return
-        val childIndex = positionInPage + if (page > 0) 1 else 0
-        list.getChildAt(childIndex)?.requestFocus()
+        list.getChildAt(index)?.requestFocus()
     }
 
     private fun retryPlayback() {
@@ -1568,20 +1668,21 @@ class MainActivity : Activity() {
             return
         }
         val channel = selected ?: return
-        if (channel.web) play(channel) else playerController?.retry()
+        if (channel.web) play(channel, forceRestart = true) else playerController?.retry()
     }
 
     private fun updateFavoriteButton() {
         val channel = selected
-        favoriteGlyph.text =
-            if (channel != null && store.isFavorite(channel)) "★" else "☆"
+        val isFav = channel != null && store.isFavorite(channel)
+        favButton.text = if (isFav) "★" else "☆"
+        favButton.setTextColor(if (isFav) magenta else Color.WHITE)
     }
 
     private fun toggleFavorite() {
         val channel = selected ?: return
         val nowFavorite = store.toggleFavorite(channel)
         updateFavoriteButton()
-        populate()
+        populate(preserveScroll = true)
         toast(if (nowFavorite) "Added to favorites." else "Removed from favorites.")
     }
 
@@ -1590,25 +1691,32 @@ class MainActivity : Activity() {
     private fun toggleFavoriteFor(channel: Channel) {
         val nowFavorite = store.toggleFavorite(channel)
         updateFavoriteButton()
-        populate()
+        populate(preserveScroll = true)
         toast(if (nowFavorite) "Added to favorites." else "Removed from favorites.")
     }
 
-    /** Shows only the controls that apply to the current channel and stream. */
-    /** First on-video overlay control that is currently visible — the
-     * D-pad target for RIGHT from the channel list. Web channels and
-     * dramas hide play/volume/mute, so fullscreen is the landing there.
-     * (The next-channel button never changes the outcome: when play is
-     * visible it is first, and when play is gone the web rules hide
-     * volume and mute too, so fullscreen is what's left.) */
+    /** First on-video control that is currently visible — the D-pad
+     * target for RIGHT from the channel list. Movies/dramas show the
+     * overlay pill, so the first visible pill button is the landing.
+     * Channels play on a clean screen (no pill) — RIGHT goes to the
+     * on-video corner buttons: Quality first when it is showing
+     * (multi-track stream), else Favorite, else Retry. */
     private fun firstOverlayControlId(): Int {
-        // Channels play on a clean screen (no overlay pill) — RIGHT from
-        // a row goes to the quick-actions tiles instead (Fav first).
-        if (overlayBar.visibility != View.VISIBLE) return favoriteTile.id
+        if (overlayBar.visibility == View.VISIBLE) {
+            return when {
+                playPauseButton.visibility == View.VISIBLE -> playPauseButton.id
+                volumeSeekBar.visibility == View.VISIBLE -> volumeSeekBar.id
+                muteButton.visibility == View.VISIBLE -> muteButton.id
+                speedButton.visibility == View.VISIBLE -> speedButton.id
+                else -> fullscreenButton.id
+            }
+        }
         return when {
-            playPauseButton.visibility == View.VISIBLE -> playPauseButton.id
-            volumeSeekBar.visibility == View.VISIBLE -> volumeSeekBar.id
-            muteButton.visibility == View.VISIBLE -> muteButton.id
+            qualityButton.visibility == View.VISIBLE -> qualityButton.id
+            favButton.visibility == View.VISIBLE -> favButton.id
+            retryButton.visibility == View.VISIBLE -> retryButton.id
+            // Nothing on screen (no channel playing yet) — the pill is
+            // gone, so FocusFinder falls back to geometry; any id works.
             else -> fullscreenButton.id
         }
     }
@@ -1636,23 +1744,27 @@ class MainActivity : Activity() {
         playPauseButton.visibility = if (webChannel) View.GONE else View.VISIBLE
         volumeSeekBar.visibility = if (webChannel) View.GONE else View.VISIBLE
         muteButton.visibility = if (webChannel) View.GONE else View.VISIBLE
-        // Quality lives in the TopBar chip, except on phones in landscape
-        // where the TopBar is hidden — there the quick-actions tile shows it.
+        // On-video corner buttons: Favorite + Retry show while a channel
+        // plays (the tiles under the player are gone); Quality shows for
+        // multi-track streams, on the video's bottom-right corner. Speed
+        // lives in the overlay pill and only applies to movies.
         val showQuality = !webChannel && videoOptions.size >= 2
-        qualityButton.visibility =
-            if (showQuality && (isTv || !isLandscape)) View.VISIBLE else View.GONE
-        qualityTile.visibility =
-            if (showQuality && !isTv && isLandscape) View.VISIBLE else View.GONE
-        speedTile.visibility = if (webChannel) View.GONE else View.VISIBLE
-        // The seek row lives ON the video (YouTube-style): only for seekable
-        // playback, and on touch only while the controls are shown.
-        seekRow.visibility = if (webChannel || !seekable) View.GONE
+        qualityButton.visibility = if (showQuality) View.VISIBLE else View.GONE
+        favButton.visibility = if (channelPlaying) View.VISIBLE else View.GONE
+        retryButton.visibility = if (channelPlaying) View.VISIBLE else View.GONE
+        speedButton.visibility = if (playingMovie != null) View.VISIBLE else View.GONE
+        // The seek row lives ON the video (YouTube-style): movies only —
+        // live channels report "seekable" when the stream has a DVR
+        // window, and the bar must never appear on a channel. On touch
+        // it hides together with the pill after 3 seconds.
+        seekRow.visibility = if (webChannel || playingMovie == null || !seekable) View.GONE
             else if (isTv || controlsVisible) View.VISIBLE else View.GONE
         // D-pad routing onto the video: UP from play/pause reaches the
-        // seek bar only while it is shown; rows always point RIGHT at
-        // the first visible overlay control.
+        // seek bar only while it is shown (DOWN from the seek bar comes
+        // back); rows always point RIGHT at the first visible control.
         playPauseButton.nextFocusUpId =
             if (seekRow.visibility == View.VISIBLE) seekBar.id else View.NO_ID
+        seekBar.nextFocusDownId = playPauseButton.id
         syncRowFocusTargets()
     }
 
@@ -1694,15 +1806,14 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Keeps the TopBar quality chip and the quick-actions quality tile in
-     * sync; both open the same dialog. */
+    /** Keeps the on-video quality button's label in sync with the
+     * selected track ("720p", or "Quality" for Auto). */
     private fun setQualityText(label: String) {
         qualityButton.text = label
-        qualityGlyph.text = if (label == "Quality") "Auto" else label
     }
 
     private fun setSpeedText(label: String) {
-        speedGlyph.text = label
+        speedButton.text = label
     }
 
     private fun setVolume(value: Float) {
@@ -1839,15 +1950,29 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Up/down switch channels only in fullscreen or while the player has focus,
-     * so list navigation with the remote keeps working. Focus on an overlay
-     * control (play, volume, fullscreen…) keeps normal D-pad navigation
-     * instead — only the video surface itself switches channels. */
+    /** Up/down switch channels whenever the Live TV screen is in charge
+     * — the remote's channel +/-. The first press used to zap and the
+     * rest did nothing: the zap only fired while focus sat on the video
+     * surface, and play() pulled focus into the list right after it.
+     * Now a channel row zaps too (focus follows the new channel, so the
+     * next press zaps again). The only exceptions keep their own D-pad
+     * navigation: the categories pane, the TopBar, the on-screen corner
+     * buttons, the overlay pill and any text field. Movies and dramas
+     * never zap — their up/down belongs to the player controls. */
     private fun channelSwitchKeysActive(): Boolean {
         if (fullScreen) return true
-        var view: View? = currentFocus
+        if (playingMovie != null || playingDrama != null) return false
+        var view: View? = currentFocus ?: return false
         while (view != null) {
-            if (view === overlayBar || view === metaChip || view === numberOverlay) return false
+            // Navigation surfaces keep their own up/down.
+            if (view === categoryListScroll || view === headerView ||
+                view === overlayBar || view === metaChip || view === numberOverlay ||
+                view === favButton || view === retryButton || view === qualityButton) return false
+            // A channel row — or the video surface itself — zaps. (With
+            // no matches on screen the list holds only the empty-state
+            // button, so up/down keeps navigating instead of zapping
+            // into nothing and trapping focus there.)
+            if (view === list) return currentMatches.isNotEmpty()
             if (view === screen) return true
             view = view.parent as? View
         }
@@ -1903,7 +2028,7 @@ class MainActivity : Activity() {
         // in-player fullscreen — the app's own overlay controls (incl. its
         // fullscreen toggle) are the only UI the user ever sees, so the
         // channel looks like any other channel, not a YouTube embed.
-        // Plain video IDs (recorded videos, e.g. Quran TV) loop so the
+        // Plain video IDs (recorded videos) loop so the
         // channel never goes silent when the video ends. Drama episodes
         // pass loop=false (see playDramaEpisode) so an episode ends
         // instead of replaying itself; live streams also play with
@@ -2015,8 +2140,8 @@ class MainActivity : Activity() {
     }
 
     /** JS bridge for YouTube embeds: the IFrame API calls this when the
-     * video ends. Only yt-live channels act on it (re-resolve); a Quran
-     * loop or a drama episode ending needs no action. */
+     * video ends. Only yt-live channels act on it (re-resolve); a looped
+     * video or a drama episode ending needs no action. */
     private inner class YtEndedBridge {
         @JavascriptInterface
         fun onYouTubeEnded() {
@@ -2103,7 +2228,6 @@ class MainActivity : Activity() {
     private fun openSearch() {
         askText("Search channels", "Channel name", query) { value ->
             query = value
-            page = 0
             populate()
             // Results are channels — the TV pane switches to that level.
             setBrowseLevel(BrowseLevel.CHANNELS)
@@ -2173,7 +2297,6 @@ class MainActivity : Activity() {
                     imported = channels
                     query = ""
                     filter = "M3U"
-                    page = 0
                     populate()
                     list.getChildAt(0)?.requestFocus()
                     toast("${channels.size} Xtream channels loaded.")
@@ -2201,7 +2324,6 @@ class MainActivity : Activity() {
                     playlistStore.activeId = null
                     imported = emptyList()
                     filter = "All"
-                    page = 0
                     query = ""
                     populate()
                 } else {
@@ -2223,7 +2345,6 @@ class MainActivity : Activity() {
                         playlistStore.activeId = playlist.id
                         imported = playlistStore.channelsOf(playlist)
                         filter = "M3U"
-                        page = 0
                         query = ""
                         populate()
                         list.getChildAt(0)?.requestFocus()
@@ -2235,7 +2356,6 @@ class MainActivity : Activity() {
                             imported = emptyList()
                             filter = "All"
                         }
-                        page = 0
                         populate()
                         toast("Playlist deleted.")
                     }
@@ -2418,7 +2538,6 @@ class MainActivity : Activity() {
                                 imported = channels
                                 query = ""
                                 filter = "M3U"
-                                page = 0
                                 populate()
                                 list.getChildAt(0)?.requestFocus()
                                 toast("${channels.size} channels imported.")
@@ -2529,6 +2648,7 @@ class MainActivity : Activity() {
             // Back while something plays stops it — save the movie's place
             // in Continue Watching before the player is released.
             saveMovieProgress(async = false)
+            val stoppedChannel = selected
             stopPlayback()
             selected = null
             playingMovie = null
@@ -2537,22 +2657,23 @@ class MainActivity : Activity() {
             playingDrama = null
             playingDramaTitle = ""
             movieEnded = false
-            quickActions.visibility = View.GONE
             infoBar.visibility = View.GONE
             playPauseButton.text = "▶"
             setChannelMeta(null)
             status.text = ""
+            applyControlVisibility()
+            markPlayingRow()
             updateBrowseVisibility()
-            focusBrowse()
+            focusBrowse(stoppedChannel)
         }
     }
 
     /** D-pad LEFT/RIGHT during a movie seek 10 seconds per press — but
      * only when focus sits on the play/pause button or the seek bar.
-     * Everywhere else LEFT/RIGHT keep navigating (tiles, pill buttons,
-     * header), and a focused volume bar keeps adjusting volume. The
-     * intercept runs in dispatchKeyEvent so the seek bar's own ±1s key
-     * handling never fires alongside it. */
+     * Everywhere else LEFT/RIGHT keep navigating (corner buttons, pill
+     * buttons, header), and a focused volume bar keeps adjusting volume.
+     * The intercept runs in dispatchKeyEvent so the seek bar's own ±1s
+     * key handling never fires alongside it. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (playingMovie != null && !movieEnded && event.action == KeyEvent.ACTION_DOWN) {
             val code = event.keyCode
@@ -2601,7 +2722,10 @@ class MainActivity : Activity() {
 
     private fun buildMoviesView(): LinearLayout {
         val view = column().apply {
-            setPadding(dp(16), dp(12), dp(16), dp(12))
+            // TV overscan: 32dp sides so nothing is cut (same as the
+            // main layout's root padding).
+            setPadding(dp(if (isTv) 32 else 16), dp(if (isTv) 20 else 12),
+                dp(if (isTv) 32 else 16), dp(if (isTv) 20 else 12))
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(bg0, bg1, bg2),
@@ -2617,7 +2741,9 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        header.addView(button("‹ Live TV") { closeMovies() },
+        val backButton = button("‹ Live TV") { closeMovies() }
+        backButton.id = View.generateViewId()
+        header.addView(backButton,
             LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(12) })
         header.addView(label("🎬 Movies", if (isTv) 26 else 22, textColor).apply {
             setTypeface(null, Typeface.BOLD)
@@ -2671,11 +2797,24 @@ class MainActivity : Activity() {
                     false
                 }
             }
+            // A focused EditText can swallow D-pad up/down on some TVs
+            // (the Leanback keyboard session eats them) — forward them
+            // to focus search so navigation never dies on the search box.
+            setOnKeyListener { _, keyCode, event ->
+                if (event.action == KeyEvent.ACTION_DOWN &&
+                    (keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_UP)) {
+                    val direction = if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) View.FOCUS_DOWN
+                        else View.FOCUS_UP
+                    focusSearch(direction)?.requestFocus()
+                    true
+                } else {
+                    false
+                }
+            }
         }
-        searchRow.addView(movieSearchInput, LinearLayout.LayoutParams(0, -2, 1f).apply {
-            marginEnd = dp(8)
-        })
-        searchRow.addView(button("Search") { searchMovies() })
+        // No Search button next to the bar — the keyboard's search key
+        // runs the search (the button was a redundant tap target).
+        searchRow.addView(movieSearchInput, LinearLayout.LayoutParams(0, -2, 1f))
         moviesListPane.addView(searchRow, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(12)
             bottomMargin = dp(8)
@@ -2685,6 +2824,8 @@ class MainActivity : Activity() {
         // Home chip goes back to Continue Watching + Fav Movies.
         val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val homeChip = chip("⌂ Home") { showMoviesHome() }
+        homeChip.id = View.generateViewId()
+        movieHomeChip = homeChip
         quickRow.addView(homeChip, LinearLayout.LayoutParams(-2, -2).apply {
             marginEnd = dp(8)
         })
@@ -2694,6 +2835,10 @@ class MainActivity : Activity() {
                 marginEnd = dp(8)
             })
         }
+        // Explicit vertical links for the search box — geometry alone is
+        // unreliable here (the chips sit inside a horizontal scroller).
+        movieSearchInput.nextFocusDownId = homeChip.id
+        movieSearchInput.nextFocusUpId = backButton.id
         val quickScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
@@ -2799,7 +2944,6 @@ class MainActivity : Activity() {
         if (selected == null) return
         stopPlayback()
         selected = null
-        quickActions.visibility = View.GONE
         infoBar.visibility = View.GONE
         playPauseButton.text = "▶"
         setChannelMeta(null)
@@ -2809,7 +2953,25 @@ class MainActivity : Activity() {
         updateBrowseVisibility()
     }
 
+    /** Builds the Movies overlay on first open (see onCreate — it is not
+     * built at startup, so the app opens faster). */
+    private fun ensureMoviesView() {
+        if (moviesViewBuilt) return
+        moviesViewBuilt = true
+        moviesView = buildMoviesView()
+        contentFrame.addView(moviesView, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    /** Builds the Geo Dramas overlay on first open (same reason). */
+    private fun ensureDramasView() {
+        if (dramasViewBuilt) return
+        dramasViewBuilt = true
+        dramasView = buildDramasView()
+        contentFrame.addView(dramasView, FrameLayout.LayoutParams(-1, -1))
+    }
+
     private fun openMovies() {
+        ensureMoviesView()
         // A channel must not keep playing behind the Movies browser.
         stopPlayingChannel()
         moviesOpen = true
@@ -2838,17 +3000,28 @@ class MainActivity : Activity() {
         // No search on screen — show (and refresh) the Movies home:
         // Continue Watching + Fav Movies. A search result stays as it is.
         if (!movieResultsAreSearch) showMoviesHome()
-        // Back from a movie's details returns to the row it came from —
-        // not to the search box (losing your place in a long result list).
+        // Focus landing: Back from a movie's details returns to the row
+        // it came from; otherwise the first row (not the search box —
+        // focusing it pops the keyboard and D-pad up/down can die on it).
+        // With no rows at all, the Home chip is the landing.
         val returnRow = moviesReturnRow
         moviesReturnRow = -1
         val target = if (returnRow in 0 until movieResults.childCount) {
             movieResults.getChildAt(returnRow)?.takeIf { it.isFocusable }
         } else {
             null
+        } ?: firstFocusableMovieRow() ?: movieHomeChip
+        target.post { target.requestFocus() }
+    }
+
+    /** First focusable row in the Movies results (section labels are not
+     * focusable, so child 0 is not always a row). */
+    private fun firstFocusableMovieRow(): View? {
+        for (i in 0 until movieResults.childCount) {
+            val child = movieResults.getChildAt(i)
+            if (child.isFocusable) return child
         }
-        if (target != null) target.post { target.requestFocus() }
-        else movieSearchInput.requestFocus()
+        return null
     }
 
     private fun showMoviesDetails() {
@@ -2916,6 +3089,9 @@ class MainActivity : Activity() {
             })
         }
         linkMovieRowActions(rows)
+        // UP from the first row reaches the quick chips (geometry alone
+        // is unreliable across the scroller boundary).
+        rows.firstOrNull()?.nextFocusUpId = movieHomeChip.id
         movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
         movieResults.getChildAt(0)?.requestFocus()
     }
@@ -2973,6 +3149,8 @@ class MainActivity : Activity() {
             }
         }
         linkMovieRowActions(rows)
+        // UP from the first row reaches the quick chips.
+        rows.firstOrNull()?.nextFocusUpId = movieHomeChip.id
         movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
     }
 
@@ -3469,7 +3647,6 @@ class MainActivity : Activity() {
         movieEnded = false
         setMovieMeta(movie)
         val showBars = !(fullScreen && !isTv)
-        quickActions.visibility = if (showBars) View.VISIBLE else View.GONE
         infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
         playPauseButton.text = "❚❚"
         mutedVolume = false
@@ -3533,7 +3710,10 @@ class MainActivity : Activity() {
 
     private fun buildDramasView(): LinearLayout {
         val view = column().apply {
-            setPadding(dp(16), dp(12), dp(16), dp(12))
+            // TV overscan: 32dp sides so nothing is cut (same as the
+            // main layout's root padding).
+            setPadding(dp(if (isTv) 32 else 16), dp(if (isTv) 20 else 12),
+                dp(if (isTv) 32 else 16), dp(if (isTv) 20 else 12))
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(bg0, bg1, bg2),
@@ -3646,6 +3826,7 @@ class MainActivity : Activity() {
     }
 
     private fun openDramas() {
+        ensureDramasView()
         dramasOpen = true
         dramasView.visibility = View.VISIBLE
         // Now-playing bar: show it only when an episode is actually playing.
@@ -3956,7 +4137,6 @@ class MainActivity : Activity() {
         playingDramaTitle = dramaTitle
         setDramaMeta(episode, dramaTitle)
         val showBars = !(fullScreen && !isTv)
-        quickActions.visibility = if (showBars) View.VISIBLE else View.GONE
         infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
         playPauseButton.text = "❚❚"
         mutedVolume = false
@@ -4151,14 +4331,19 @@ class MainActivity : Activity() {
     }
 
     /** PlayerView/WebView are added to [screen] after the overlays were built;
-     * re-raise the border, meta chip, seek row, overlay controls and number
-     * popup above them. Called at the end of [play] and after adding a WebView. */
+     * re-raise the border, meta chip, seek row, overlay controls, corner
+     * buttons and number popup above them. Called at the end of [play] and
+     * after adding a WebView. */
     private fun bringPlayerOverlaysToFront() {
         screenBorder.bringToFront()
         metaChip.bringToFront()
         seekRow.bringToFront()
         overlayBar.bringToFront()
+        favButton.bringToFront()
+        retryButton.bringToFront()
+        qualityButton.bringToFront()
         numberOverlay.bringToFront()
+        status.bringToFront()
         buffering.bringToFront()
     }
 
@@ -4215,43 +4400,6 @@ class MainActivity : Activity() {
         }
         setOnClickListener { action() }
     }
-
-    /** Qwen "Quick Actions" glass tile: a glyph over a small label. Returns
-     * the tile and its glyph view, so favorite/quality/speed can update the
-     * glyph when their state changes. */
-    private fun actionTile(glyph: String, labelText: String, action: () -> Unit): Pair<LinearLayout, TextView> {
-        val glyphView = TextView(this).apply {
-            text = glyph
-            textSize = if (isTv) 22f else 20f
-            setTextColor(textColor)
-            gravity = Gravity.CENTER
-        }
-        val labelView = TextView(this).apply {
-            text = labelText
-            textSize = 12f
-            setTextColor(muted)
-            gravity = Gravity.CENTER
-        }
-        val tile = column().apply {
-            gravity = Gravity.CENTER
-            isFocusable = true
-            isClickable = true
-            minimumHeight = dp(if (isTv) 64 else 60)
-            setPadding(dp(6), dp(8), dp(6), dp(8))
-            background = StateListDrawable().apply {
-                addState(intArrayOf(android.R.attr.state_focused), glassShape(18, cyan, 2))
-                addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 18))
-                addState(intArrayOf(), glassShape(18))
-            }
-            elevation = dp(2).toFloat()
-            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
-            addView(glyphView)
-            addView(labelView)
-            setOnClickListener { action() }
-        }
-        return tile to glyphView
-    }
-
     /** Round button inside the on-video overlay pill: transparent at rest
      * (the pill is the dark background), cyan ring on D-pad focus. */
     private fun overlayButtonBackground() = StateListDrawable().apply {
@@ -4359,7 +4507,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        private const val PAGE_SIZE = 30 // Rows per page: a ScrollView measures every row, so 60 made each populate — and the app opening — visibly slower on the 1.5 GB TV.
         private const val AUTO_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000L
         private const val DRAMA_REFRESH_AFTER_MS = 6 * 60 * 60 * 1000L
         private const val CONTROLS_HIDE_DELAY_MS = 3000L
