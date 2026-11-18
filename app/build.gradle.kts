@@ -6,6 +6,20 @@ plugins {
 android {
     namespace = "com.sadique.iptv"
     compileSdk = 35
+    signingConfigs {
+        // Fixed debug key: every CI build signs with the same key (app/debug.keystore,
+        // PKCS12, alias androiddebugkey, password android), so updates install cleanly
+        // over older builds. Before this, each ephemeral CI runner generated a fresh
+        // random debug key, which caused INSTALL_FAILED_UPDATE_INCOMPATIBLE.
+        // This is a DEBUG key only — never use it for a release build.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+            storeType = "PKCS12"
+        }
+    }
     defaultConfig {
         applicationId = "com.sadique.iptv"
         minSdk = 23
