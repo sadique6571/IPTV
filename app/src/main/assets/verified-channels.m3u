@@ -180,7 +180,7 @@ https://stream.ottlive.co.in/ptccanada/index.m3u8
 #EXTINF:-1 group-title="Sports" tvg-country="US" tvg-language="eng" tvg-logo="https://provider-static.plex.tv/epg/cms/production/acf3d1d8-c53e-49ca-86e9-0d9410b106b4/Willow_Sports_dark_Background_1500_1000_color.png",Willow Sports
 https://d36r8jifhgsk5j.cloudfront.net/Willow_TV.m3u8
 #EXTINF:-1 group-title="Sports" tvg-country="US" tvg-language="eng",Willow Cricket
-https://d36r8jifhgsk5j.cloudfront.net/Willow_TV1080p.m3u8
+https://tvsen5.aynaott.com/willowhd/index.m3u8
 #EXTINF:-1 group-title="Sports" tvg-country="UK" tvg-language="eng",Sky Sports Cricket
 https://playsza.st/player.php?id=crich2
 #EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd" tvg-logo="https://i.imgur.com/IJH47fJ.png",Discover Pakistan
