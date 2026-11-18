@@ -262,7 +262,10 @@ internal class PlayerController(
         }
         if (retryCount < MAX_RETRIES) {
             retryCount++
-            val delay = RETRY_BASE_MS shl (retryCount - 1)
+            // Backoff 2s → 4s → 8s → 16s → 16s (capped): the user never has
+            // to press Retry for a hiccup, but the app does not hammer a
+            // dead server with ever-growing waits either.
+            val delay = minOf(RETRY_BASE_MS shl (retryCount - 1), 16_000L)
             events.onError("Connection lost. Retrying in ${delay / 1000}s… " +
                 "(attempt $retryCount of $MAX_RETRIES)")
             retryHandler.postDelayed({
@@ -297,7 +300,9 @@ internal class PlayerController(
     }
 
     companion object {
-        private const val MAX_RETRIES = 3
+        // Auto-retry: 5 attempts (was 3) — a flaky mobile connection gets
+        // more chances before the user ever sees the manual Retry button.
+        private const val MAX_RETRIES = 5
         private const val RETRY_BASE_MS = 2000L
     }
 }

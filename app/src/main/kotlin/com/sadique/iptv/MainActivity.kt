@@ -81,12 +81,18 @@ class MainActivity : Activity() {
     private val liveRed = 0xffff3b4e.toInt()
     private val overlayDark = 0x99060a1e.toInt() // Qwen meta chip / overlay pill
     private val cricketBroadcasters = Regex("(?i).*(ptv sports|a sports|dd sports|willow|ten sports|star sports).*")
+    // Group-titles that have their own category (task 5). A channel whose
+    // group matches none of these falls under General (the catch-all), so
+    // no channel is reachable only through "All".
+    private val categoryGroups = setOf(
+        "news", "entertainment", "movies", "music", "religious",
+        "cricket", "kids", "animation", "drama",
+    )
     private val accent = cyan // focus strokes, status text, list counts
     private val imports = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var store: ChannelStore
     private lateinit var playlistStore: PlaylistStore
-    private lateinit var sleepTimer: SleepTimer
     private lateinit var list: LinearLayout
     private lateinit var screen: FrameLayout
     private lateinit var screenBorder: View
@@ -114,6 +120,11 @@ class MainActivity : Activity() {
     private lateinit var seekRow: LinearLayout
     private lateinit var seekBar: SeekBar
     private lateinit var seekLabel: TextView
+    // YouTube-style on-video controls (touch only): tapping the video shows
+    // the overlay pill + seek bar, and they auto-hide after 3 seconds. On TV
+    // the controls always stay visible (D-pad navigation needs them).
+    private var controlsVisible = true
+    private val hideControlsRunnable = Runnable { hidePlayerControls() }
     private lateinit var playPauseButton: Button
     private lateinit var volumeSeekBar: SeekBar
     private lateinit var muteButton: Button
@@ -127,6 +138,10 @@ class MainActivity : Activity() {
     private lateinit var favoriteTile: LinearLayout
     private lateinit var favoriteGlyph: TextView
     private lateinit var catalogTitle: TextView
+    // Shown under the catalog title while a search query is active: the
+    // query text + a button that clears it and restores the full list.
+    private lateinit var searchClearRow: LinearLayout
+    private lateinit var searchClearLabel: TextView
     private var mutedVolume = false
     private var playerController: PlayerController? = null
     private var web: WebView? = null
@@ -165,6 +180,10 @@ class MainActivity : Activity() {
     private lateinit var moviesDetailsPane: LinearLayout
     private lateinit var movieSearchInput: EditText
     private lateinit var movieStatus: TextView
+    // Now-playing bar at the top of the Movies section: shown when a movie
+    // is already playing, with a shortcut back to the player.
+    private lateinit var movieNowPlayingBar: LinearLayout
+    private lateinit var movieNowPlayingLabel: TextView
     private lateinit var movieProgress: ProgressBar
     private lateinit var movieResults: LinearLayout
     private lateinit var movieResultsScroll: ScrollView
@@ -217,19 +236,6 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         store = ChannelStore(this)
         playlistStore = PlaylistStore(this)
-        sleepTimer = SleepTimer {
-            stopPlayback()
-            selected = null
-            playingMovie = null
-            playingMovieUrl = null
-            playingMovieHeaders = emptyMap()
-            quickActions.visibility = View.GONE
-            infoBar.visibility = View.GONE
-            playPauseButton.text = "▶"
-            setChannelMeta(null)
-            setStatusIdle()
-            toast("Sleep timer: playback stopped.")
-        }
         playlistStore.migrateLegacy(File(filesDir, "channels.m3u"))
         verifiedChannels = try {
             assets.open("verified-channels.m3u").use { Playlist.parse(Playlist.read(it)) }
@@ -276,9 +282,16 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             if (!isTv && isLandscape) visibility = View.GONE
         }
-        headerView.addView(logoMark())
+        // The app's real launcher icon (manifest: android:icon) at the
+        // top-left corner, next to the IPTV title.
+        headerView.addView(ImageView(this).apply {
+            setImageResource(R.drawable.iptv_icon)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "IPTV"
+        }, LinearLayout.LayoutParams(dp(44), dp(44)))
         headerView.addView(label("IPTV", if (isTv) 28 else 22, textColor).apply {
             setTypeface(null, Typeface.BOLD)
+            letterSpacing = 0.03f
             setPadding(dp(12), 0, dp(16), 0)
         })
         val searchPill = LinearLayout(this).apply {
@@ -333,7 +346,12 @@ class MainActivity : Activity() {
         val left = column().also { libraryPane = it }
         playerPane = column()
 
-        val filterNames = listOf("All", "Favs", "Recent", "Urdu", "Hindi", "Punjabi", "PK", "IN", "Cricket", "Drama", "M3U")
+        // Categories follow the M3U group-titles (News, Entertainment,
+        // Movies, Music, Religious, Cricket, Kids, Drama, General) — the
+        // old language/country filters (Urdu/Hindi/Punjabi/PK/IN) did not
+        // match any group, so the biggest groups had no category at all.
+        // "Undefined" channels show under General (see populate()).
+        val filterNames = listOf("All", "Favs", "Recent", "News", "Entertainment", "Movies", "Music", "Religious", "Cricket", "Kids", "Drama", "General", "M3U")
         val filterLabels = mapOf("Favs" to "♥ Favorites", "Recent" to "◷ Recent")
         val chipAction: (String) -> Unit = { name ->
             filter = name
@@ -342,17 +360,17 @@ class MainActivity : Activity() {
         }
         if (isTv) {
             // TV: LEFT glass sidebar with the real channel categories only.
-            // This is a Live TV app, so there is no Home/Movies/Series/
-            // Catch Up/Settings nav — those sections do not exist. The
-            // active item is a cyan→blue gradient pill (Qwen sidebar).
-            // Eleven items do not fit a short TV screen, so the list
-            // scrolls; D-pad focus auto-scrolls to the focused item.
+            // This is a Live TV app, so there is no Home/Series/Catch Up/
+            // Settings nav — those sections do not exist. The active item
+            // is a cyan→blue gradient pill (Qwen sidebar). Thirteen items
+            // do not fit a short TV screen, so the list scrolls; D-pad
+            // focus auto-scrolls to the focused item.
             val sidebarItems = column()
             for (name in filterNames) {
                 val item = navItem(filterLabels[name] ?: name) { chipAction(name) }
                 filterChips[name] = item
                 sidebarItems.addView(item, LinearLayout.LayoutParams(-1, -2).apply {
-                    bottomMargin = dp(6)
+                    bottomMargin = dp(8)
                 })
             }
             // Movies live outside the channel filters — a plain nav item
@@ -365,6 +383,7 @@ class MainActivity : Activity() {
             val sidebar = column().apply {
                 background = glassShape(28)
                 setPadding(dp(14), dp(14), dp(14), dp(14))
+                elevation = dp(3).toFloat()
                 addView(sidebarScroll, LinearLayout.LayoutParams(-1, -1))
             }
             split.addView(sidebar, LinearLayout.LayoutParams(dp(210), -1))
@@ -393,7 +412,7 @@ class MainActivity : Activity() {
                 val chipView = chip(name) { chipAction(name) }
                 filterChips[name] = chipView
                 chipRow.addView(chipView, LinearLayout.LayoutParams(-2, -2).apply {
-                    marginEnd = dp(8)
+                    marginEnd = dp(10)
                 })
             }
             val strip = HorizontalScrollView(this).apply {
@@ -411,6 +430,30 @@ class MainActivity : Activity() {
         left.addView(catalogTitle, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(6)
             bottomMargin = dp(2)
+        })
+        // Search clear row (task 2): visible only while a search query is
+        // active, so the user always has a way back to the full list — even
+        // when the search found nothing. It lives OUTSIDE `list` on purpose:
+        // populate() indexes list children by position (Previous page / rows),
+        // and an extra child there would break focusChannel/showPage math.
+        searchClearRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+        }
+        searchClearLabel = TextView(this).apply {
+            textSize = if (isTv) 14f else 13f
+            setTextColor(muted)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        searchClearRow.addView(searchClearLabel, LinearLayout.LayoutParams(0, -2, 1f))
+        searchClearRow.addView(button("✕ Saaf karein") { clearSearch() },
+            LinearLayout.LayoutParams(-2, -2).apply {
+                marginStart = dp(8)
+            })
+        left.addView(searchClearRow, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(4)
         })
         list = column()
         listScroll = ScrollView(this).apply { addView(list) }
@@ -492,14 +535,16 @@ class MainActivity : Activity() {
             isFocusable = false
             background = GradientDrawable().apply {
                 setColor(Color.TRANSPARENT)
-                setStroke(dp(1), strokeHi)
+                // Slightly stronger ring than the generic stroke so the
+                // video card reads as a raised panel.
+                setStroke(dp(1), 0x6696acff.toInt())
                 cornerRadius = dp(24).toFloat()
             }
         }
         screen.addView(screenBorder, FrameLayout.LayoutParams(-1, -1))
         metaChip = column().apply {
-            background = shape(overlayDark, 0x1affffff.toInt(), 16, 1)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = shape(overlayDark, 0x1affffff.toInt(), 18, 1)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
         }
         val metaRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -508,7 +553,9 @@ class MainActivity : Activity() {
         metaRow.addView(liveBadge().also { metaLiveBadge = it })
         metaName = TextView(this).apply {
             text = "Select a channel"
-            textSize = if (isTv) 18f else 16f
+            // Mobile par channel naam chhota (13sp) — pehle 16sp bohat bara
+            // lagta tha; TV par 18sp waisa hi hai.
+            textSize = if (isTv) 18f else 13f
             setTypeface(null, Typeface.BOLD)
             setTextColor(textColor)
             maxLines = 1
@@ -520,7 +567,7 @@ class MainActivity : Activity() {
         metaChip.addView(metaRow)
         metaCategory = TextView(this).apply {
             textSize = if (isTv) 14f else 13f
-            setTextColor(muted)
+            setTextColor(muted2)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             visibility = View.GONE
@@ -552,25 +599,42 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             background = shape(overlayDark, 0x1affffff.toInt(), 24, 1)
             setPadding(dp(8), dp(6), dp(8), dp(6))
+            elevation = dp(6).toFloat()
         }
-        playPauseButton = overlayButton("▶") { playerController?.togglePlayPause() }
-        val nextButton = overlayButton("⏭") { stepChannel(1) }
+        playPauseButton = overlayButton("▶") {
+            playerController?.togglePlayPause()
+            showPlayerControls()
+        }
+        val nextButton = overlayButton("⏭") {
+            stepChannel(1)
+            showPlayerControls()
+        }
         volumeSeekBar = SeekBar(this).apply {
             max = 100
             progress = (store.volume * 100).toInt()
             progressTintList = ColorStateList.valueOf(cyan)
-            thumbTintList = ColorStateList.valueOf(Color.WHITE)
+            // Custom round thumb (white dot + cyan ring); the tint is
+            // cleared so it does not wash out the ring.
+            thumbTintList = null
+            thumb = seekThumb()
             progressBackgroundTintList = ColorStateList.valueOf(0x38ffffff.toInt())
             isFocusable = true
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
                     if (fromUser) setVolume(progress / 100f)
                 }
-                override fun onStartTrackingTouch(seekBar: SeekBar) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar) {}
+                override fun onStartTrackingTouch(seekBar: SeekBar) {
+                    mainHandler.removeCallbacks(hideControlsRunnable)
+                }
+                override fun onStopTrackingTouch(seekBar: SeekBar) {
+                    scheduleHideControls()
+                }
             })
         }
-        muteButton = overlayButton(if (store.volume == 0f) "🔇" else "🔊") { toggleMute() }
+        muteButton = overlayButton(if (store.volume == 0f) "🔇" else "🔊") {
+            toggleMute()
+            showPlayerControls()
+        }
         fullscreenIcon = FullscreenIconDrawable(expanded = false)
         fullscreenButton = ImageButton(this).apply {
             setImageDrawable(fullscreenIcon)
@@ -580,7 +644,10 @@ class MainActivity : Activity() {
             minimumHeight = 0
             setPadding(dp(10), dp(10), dp(10), dp(10))
             background = overlayButtonBackground()
-            setOnClickListener { setFullScreen(!fullScreen) }
+            setOnClickListener {
+                setFullScreen(!fullScreen)
+                showPlayerControls()
+            }
         }
         overlayBar.addView(playPauseButton, overlayParams())
         overlayBar.addView(nextButton, overlayParams())
@@ -599,27 +666,27 @@ class MainActivity : Activity() {
             marginEnd = dp(if (isTv) 20 else 12)
             bottomMargin = dp(if (isTv) 20 else 12)
         })
-        // Glass info bar under the video (Qwen's 62dp bar): seek slider +
-        // real channel name + LIVE badge. No fake "Now/Next" program names —
-        // there is no EPG data, so only the real channel name is shown.
-        infoBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = glassShape(18)
-            setPadding(dp(22), 0, dp(22), 0)
-            minimumHeight = dp(62)
-            visibility = View.GONE
-        }
+        // Seek row ON the video, YouTube-style: it floats just above the
+        // overlay pill at the bottom of the screen and only appears for
+        // seekable playback (movies) — live channels never show it. On
+        // touch devices it hides together with the pill after 3 seconds;
+        // in fullscreen it is on the video too, so it stays reachable.
         seekRow = LinearLayout(this).apply {
             visibility = View.GONE
             gravity = Gravity.CENTER_VERTICAL
+            background = shape(overlayDark, 0x1affffff.toInt(), 24, 1)
+            setPadding(dp(14), dp(4), dp(14), dp(4))
+            elevation = dp(6).toFloat()
         }
         seekBar = SeekBar(this).apply {
             isFocusable = true
             // A taller seek bar is easier to drag by touch.
             if (!isTv) minimumHeight = dp(48)
             progressTintList = ColorStateList.valueOf(cyan)
-            thumbTintList = ColorStateList.valueOf(Color.WHITE)
+            // Custom round thumb (white dot + cyan ring); the tint is
+            // cleared so it does not wash out the ring.
+            thumbTintList = null
+            thumb = seekThumb()
             progressBackgroundTintList = ColorStateList.valueOf(0x38ffffff.toInt())
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -631,9 +698,11 @@ class MainActivity : Activity() {
                 }
                 override fun onStartTrackingTouch(seekBar: SeekBar) {
                     scrubbing = true
+                    mainHandler.removeCallbacks(hideControlsRunnable)
                 }
                 override fun onStopTrackingTouch(seekBar: SeekBar) {
                     scrubbing = false
+                    scheduleHideControls()
                 }
             })
         }
@@ -643,10 +712,38 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             marginStart = dp(8)
         })
-        infoBar.addView(seekRow, LinearLayout.LayoutParams(0, -2, 1.1f))
+        // The overlay pill reaches ~80dp (TV) / ~68dp (touch) up from the
+        // bottom edge; the seek row floats above it (TV needs more room
+        // because the meta chip also sits at the bottom-left there).
+        screen.addView(seekRow, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
+            marginStart = dp(if (isTv) 20 else 12)
+            marginEnd = dp(if (isTv) 20 else 12)
+            bottomMargin = dp(if (isTv) 92 else 72)
+        })
+        // Tap the video to show/hide the controls (touch only). The
+        // PlayerView has no click handler of its own (useController=false),
+        // so taps on it reach this listener; taps on the overlay buttons
+        // are consumed by the buttons themselves. WebView embeds (YouTube)
+        // consume their own touches, so this does not fire for web channels
+        // — their controls never auto-hide either (see hidePlayerControls).
+        screen.setOnClickListener { if (!isTv) togglePlayerControls() }
+        // Glass info bar under the video (Qwen's 62dp bar): real channel
+        // name + LIVE badge. No fake "Now/Next" program names — there is no
+        // EPG data, so only the real channel name is shown. The seek slider
+        // used to live here; it moved ONTO the video (YouTube-style).
+        infoBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = glassShape(18)
+            setPadding(dp(22), 0, dp(22), 0)
+            minimumHeight = dp(62)
+            elevation = dp(2).toFloat()
+            visibility = View.GONE
+        }
         infoName = TextView(this).apply {
             text = "Select a channel"
-            textSize = if (isTv) 16f else 15f
+            // Mobile par chhota naam (13sp), TV par 16sp waisa hi.
+            textSize = if (isTv) 16f else 13f
             setTypeface(null, Typeface.BOLD)
             setTextColor(textColor)
             maxLines = 1
@@ -663,7 +760,7 @@ class MainActivity : Activity() {
         // Quick Actions glass tiles (Qwen RightPanel style, real actions
         // only — no Cast, Subtitles, Audio Track or PiP tiles): favorite,
         // quality (mobile landscape only — the TopBar chip covers the rest),
-        // speed, retry, sleep timer.
+        // speed, retry. (Sleep timer removed 2026-11-18 on the user's order.)
         quickActions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             visibility = View.GONE
@@ -678,8 +775,7 @@ class MainActivity : Activity() {
         speedTile = spTile
         speedGlyph = spGlyph
         val (retryTile, _) = actionTile("↻", "Retry") { retryPlayback() }
-        val (sleepTile, _) = actionTile("⏰", "Sleep") { showSleepDialog() }
-        val tiles = listOf(favoriteTile, qualityTile, speedTile, retryTile, sleepTile)
+        val tiles = listOf(favoriteTile, qualityTile, speedTile, retryTile)
         for ((index, tile) in tiles.withIndex()) {
             quickActions.addView(tile, LinearLayout.LayoutParams(0, -2, 1f).apply {
                 if (index < tiles.size - 1) marginEnd = dp(8)
@@ -724,7 +820,7 @@ class MainActivity : Activity() {
                         status.text = "Buffering…"
                     } else {
                         buffering.visibility = View.GONE
-                        setStatusIdle()
+                        status.text = ""
                     }
                 }
                 override fun onError(message: String) {
@@ -809,24 +905,38 @@ class MainActivity : Activity() {
 
     private fun populate() {
         list.removeAllViews()
+        // Search clear row (task 2): always visible while a query is active,
+        // so there is always a way back to the full list.
+        if (query.isNotEmpty()) {
+            searchClearLabel.text = "Search: \"$query\""
+            searchClearRow.visibility = View.VISIBLE
+        } else {
+            searchClearRow.visibility = View.GONE
+        }
         val candidates = when (filter) {
             "M3U" -> imported
             "Favs" -> store.favoritesList()
             "Recent" -> store.recentList()
             else -> verifiedChannels
         }
+        // Categories match the M3U group-title (task 5) — case-insensitive,
+        // multi-group titles ("Animation;Kids") match every part. General
+        // also catches the small groups that have no category of their own
+        // (Legislative, Culture, Lifestyle, Documentary, Comedy, Business…),
+        // so every channel is reachable through some category.
         val matches = candidates.filter { channel ->
-            val group = channel.group
             val accepted = when (filter) {
-                "Urdu" -> "urd" in channel.languages
-                "Hindi" -> "hin" in channel.languages
-                "Punjabi" -> "pan" in channel.languages
-                "PK" -> channel.country == "PK" || group == "Pakistan"
-                "IN" -> channel.country == "IN" || group == "India"
-                "Cricket" -> group == "Cricket" ||
-                    (group.equals("Sports", true) && cricketBroadcasters.matches(channel.name))
-                "Drama" -> group.equals("Drama", true) || group.equals("Entertainment", true) ||
-                    group.equals("Series", true)
+                "News" -> groupMatches(channel, "news")
+                "Entertainment" -> groupMatches(channel, "entertainment")
+                "Movies" -> groupMatches(channel, "movies")
+                "Music" -> groupMatches(channel, "music")
+                "Religious" -> groupMatches(channel, "religious")
+                "Cricket" -> groupMatches(channel, "cricket") ||
+                    (groupMatches(channel, "sports") && cricketBroadcasters.matches(channel.name))
+                "Kids" -> groupMatches(channel, "kids", "animation")
+                "Drama" -> groupMatches(channel, "drama")
+                "General" -> groupMatches(channel, "general", "undefined") ||
+                    !categoryGroups.any { groupMatches(channel, it) }
                 else -> true
             }
             accepted && (query.isEmpty() || channel.name.contains(query, ignoreCase = true))
@@ -849,8 +959,8 @@ class MainActivity : Activity() {
             })
         matches.drop(start).take(pageSize).forEach { channel ->
             list.addView(channelRow(channel), LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(4)
-                bottomMargin = dp(4)
+                topMargin = dp(5)
+                bottomMargin = dp(5)
             })
         }
         if (start + pageSize < matches.size) {
@@ -860,9 +970,44 @@ class MainActivity : Activity() {
                     bottomMargin = dp(4)
                 })
         }
-        if (matches.isEmpty()) list.addView(label("No matching channels.", if (isTv) 16 else 14, muted))
+        if (matches.isEmpty()) {
+            if (query.isNotEmpty()) {
+                // No-result state (task 2): say so AND offer the way back —
+                // the user was stuck here with no exit before.
+                list.addView(label("Koi natija nahi mila — \"$query\"", if (isTv) 16 else 14, muted))
+                list.addView(button("← Poori list wapas") { clearSearch() },
+                    LinearLayout.LayoutParams(-1, -2).apply {
+                        topMargin = dp(8)
+                    })
+            } else {
+                // Contextual empty states (task 10): say WHY the list is
+                // empty and what fixes it, instead of a bare "No matches".
+                val emptyText = when (filter) {
+                    "Favs" -> "Koi favorite nahi hai — kisi channel card par ♥ dabayein."
+                    "Recent" -> "Abhi koi recent channel nahi hai."
+                    "M3U" -> "Koi playlist import nahi hui — Import M3U dabayein."
+                    else -> "Is category mein koi channel nahi hai."
+                }
+                list.addView(label(emptyText, if (isTv) 16 else 14, muted))
+            }
+        }
         listScroll.post { listScroll.scrollTo(0, 0) }
         markPlayingRow()
+    }
+
+    /** Case-insensitive group-title match; multi-group titles ("Animation;Kids")
+     * match each part, so the channel appears under every category it belongs to. */
+    private fun groupMatches(channel: Channel, vararg names: String): Boolean {
+        val parts = channel.group.split(';').map { it.trim().lowercase(Locale.ROOT) }
+        return names.any { it.lowercase(Locale.ROOT) in parts }
+    }
+
+    /** Clears the active search and restores the full list (task 2). */
+    private fun clearSearch() {
+        query = ""
+        page = 0
+        populate()
+        list.getChildAt(0)?.requestFocus()
     }
 
     /** Glass channel card (Qwen ChannelCard): logo tile, bold name over a
@@ -878,9 +1023,11 @@ class MainActivity : Activity() {
             isClickable = true
             // 48dp+ touch target on phones; roomier on TV for the 10-foot UI.
             minimumHeight = dp(if (isTv) 56 else 52)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setPadding(dp(14), dp(10), dp(14), dp(10))
             tag = channel.key
             background = rowBackground(isPlaying)
+            elevation = dp(3).toFloat()
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { play(channel) }
         }
         val tileSize = dp(if (isTv) 48 else 44)
@@ -916,8 +1063,8 @@ class MainActivity : Activity() {
         if (category.isNotEmpty()) {
             texts.addView(TextView(this).apply {
                 text = category
-                textSize = 12.5f
-                setTextColor(muted)
+                textSize = 12f
+                setTextColor(muted2)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
             })
@@ -1095,6 +1242,9 @@ class MainActivity : Activity() {
         // PlayerView (and the WebView) are added to the screen after the
         // overlays; re-raise the border, meta chip and overlay controls.
         bringPlayerOverlaysToFront()
+        // Touch: show the on-video controls for the new channel, then let
+        // them auto-hide (YouTube-style). On TV this is a no-op.
+        showPlayerControls()
     }
 
     private fun focusChannel(channel: Channel) {
@@ -1152,7 +1302,48 @@ class MainActivity : Activity() {
         qualityTile.visibility =
             if (showQuality && !isTv && isLandscape) View.VISIBLE else View.GONE
         speedTile.visibility = if (webChannel) View.GONE else View.VISIBLE
-        seekRow.visibility = if (webChannel || !seekable) View.GONE else View.VISIBLE
+        // The seek row lives ON the video (YouTube-style): only for seekable
+        // playback, and on touch only while the controls are shown.
+        seekRow.visibility = if (webChannel || !seekable) View.GONE
+            else if (isTv || controlsVisible) View.VISIBLE else View.GONE
+    }
+
+    /** Shows the on-video controls (overlay pill + seek row) and schedules
+     * their auto-hide on touch devices. On TV this is a no-op — the controls
+     * always stay visible for D-pad navigation. Called on video tap, on any
+     * control interaction, and when playback starts. */
+    private fun showPlayerControls() {
+        if (isTv) return
+        mainHandler.removeCallbacks(hideControlsRunnable)
+        controlsVisible = true
+        overlayBar.visibility = View.VISIBLE
+        applyControlVisibility()
+        scheduleHideControls()
+    }
+
+    /** Hides the on-video controls (touch only). Never hides while the user
+     * is scrubbing, and never hides for web channels — a WebView consumes
+     * its own touches, so a tap could not bring the controls back. */
+    private fun hidePlayerControls() {
+        if (isTv || scrubbing || selected?.web == true) return
+        controlsVisible = false
+        overlayBar.visibility = View.GONE
+        seekRow.visibility = View.GONE
+    }
+
+    private fun scheduleHideControls() {
+        if (isTv || selected?.web == true) return
+        mainHandler.removeCallbacks(hideControlsRunnable)
+        mainHandler.postDelayed(hideControlsRunnable, CONTROLS_HIDE_DELAY_MS)
+    }
+
+    private fun togglePlayerControls() {
+        if (controlsVisible) {
+            mainHandler.removeCallbacks(hideControlsRunnable)
+            hidePlayerControls()
+        } else {
+            showPlayerControls()
+        }
     }
 
     /** Keeps the TopBar quality chip and the quick-actions quality tile in
@@ -1211,34 +1402,6 @@ class MainActivity : Activity() {
                 setSpeedText(labels[which])
                 dialog.dismiss()
             }.show()
-    }
-
-    private fun showSleepDialog() {
-        val options = arrayOf("Off", "15 min", "30 min", "60 min", "90 min")
-        val minutes = intArrayOf(0, 15, 30, 60, 90)
-        val checked = minutes.indexOfFirst { it == sleepTimer.minutesRemaining }
-            .let { if (it < 0) 0 else it }
-        AlertDialog.Builder(this).setTitle("Sleep timer")
-            .setSingleChoiceItems(options, checked) { dialog, which ->
-                val value = minutes[which]
-                if (value == 0) {
-                    sleepTimer.cancel()
-                    toast("Sleep timer off.")
-                } else {
-                    sleepTimer.start(value)
-                    toast("Sleep timer set: $value min.")
-                }
-                setStatusIdle()
-                dialog.dismiss()
-            }.show()
-    }
-
-    private fun setStatusIdle() {
-        status.text = if (sleepTimer.minutesRemaining > 0) {
-            "Sleep timer: ${sleepTimer.minutesRemaining} min"
-        } else {
-            ""
-        }
     }
 
     private fun startSeekUpdates() {
@@ -1442,9 +1605,11 @@ class MainActivity : Activity() {
     }
 
     /** Search dialog, opened from the TopBar search pill and the footer
-     * Search button (the pill is hidden on phones in landscape). */
+     * Search button (the pill is hidden on phones in landscape). The
+     * current query is pre-filled, so the user can refine it instead of
+     * retyping; clearing it restores the full list. */
     private fun openSearch() {
-        askText("Search channels", "Channel name") { value ->
+        askText("Search channels", "Channel name", query) { value ->
             query = value
             page = 0
             populate()
@@ -1452,11 +1617,13 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun askText(title: String, hint: String, action: (String) -> Unit) {
+    private fun askText(title: String, hint: String, initial: String = "", action: (String) -> Unit) {
         val input = EditText(this).apply {
             isSingleLine = true
             inputType = InputType.TYPE_CLASS_TEXT
             this.hint = hint
+            setText(initial)
+            setSelection(initial.length)
         }
         AlertDialog.Builder(this).setTitle(title).setView(input).setNegativeButton("Cancel", null)
             .setPositiveButton("OK") { _, _ -> action(input.text.toString().trim()) }.show()
@@ -1804,7 +1971,6 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
-        sleepTimer.cancel()
         // Capture the movie position BEFORE stopPlayback releases the player,
         // so coming back from background resumes the movie where it left off.
         if (playingMovie != null) savedMoviePosition = playerController?.position() ?: 0L
@@ -1836,10 +2002,13 @@ class MainActivity : Activity() {
             }
         } else if (fullScreen) {
             setFullScreen(false)
+        } else if (query.isNotEmpty()) {
+            // Back from a search restores the full list (task 2) — the user
+            // is never stuck on a filtered (or empty) result.
+            clearSearch()
         } else if (selected == null && playingMovie == null) {
             super.onBackPressed()
         } else {
-            sleepTimer.cancel()
             stopPlayback()
             selected = null
             playingMovie = null
@@ -1856,9 +2025,12 @@ class MainActivity : Activity() {
 
     // ---- MovieBox movies (v1) ----
     //
-    // A full-screen overlay (same Qwen navy-glass look) over the Live TV
-    // layout: search → results (poster + name + year + HINDI badge) →
+    // A full-screen Movies SECTION (same Qwen navy-glass look) beside Live
+    // TV: header with a "Live TV" way back, a now-playing bar, quick-search
+    // chips, then search → results (poster + name + year + HINDI badge) →
     // details → audio (dub) + quality pickers → Play in the main player.
+    // Technically it is an overlay view over the Live TV layout, so opening
+    // it never detaches the player view underneath.
     // All MovieBox calls run on the `imports` executor; stale results are
     // dropped with a per-request counter, the same pattern as playEmbed.
 
@@ -1877,12 +2049,34 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        header.addView(button("‹ Back") { closeMovies() },
+        header.addView(button("‹ Live TV") { closeMovies() },
             LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(12) })
         header.addView(label("🎬 Movies", if (isTv) 26 else 22, textColor).apply {
             setTypeface(null, Typeface.BOLD)
+            letterSpacing = 0.02f
         })
         view.addView(header)
+        // Now-playing bar: when a movie is already playing, the section
+        // says so and offers a shortcut back to the player.
+        movieNowPlayingBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = glassShape(16)
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            visibility = View.GONE
+        }
+        movieNowPlayingLabel = TextView(this).apply {
+            textSize = if (isTv) 15f else 14f
+            setTextColor(textColor)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        movieNowPlayingBar.addView(movieNowPlayingLabel, LinearLayout.LayoutParams(0, -2, 1f))
+        movieNowPlayingBar.addView(button("▶ Player") { closeMovies() },
+            LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
+        view.addView(movieNowPlayingBar, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(10)
+        })
 
         // ---- Search + results pane ----
         moviesListPane = column()
@@ -1916,6 +2110,23 @@ class MainActivity : Activity() {
         searchRow.addView(button("Search") { searchMovies() })
         moviesListPane.addView(searchRow, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(12)
+            bottomMargin = dp(8)
+        })
+        // Quick searches: one tap runs a real MovieBox search for a popular
+        // term (no fake listings — these are just search shortcuts).
+        val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        for (term in listOf("Marvel", "DC", "Bollywood", "Punjabi", "Action", "Comedy")) {
+            val quickChip = chip(term) { quickSearchMovie(term) }
+            quickRow.addView(quickChip, LinearLayout.LayoutParams(-2, -2).apply {
+                marginEnd = dp(8)
+            })
+        }
+        val quickScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(quickRow)
+        }
+        moviesListPane.addView(quickScroll, LinearLayout.LayoutParams(-1, -2).apply {
             bottomMargin = dp(8)
         })
         movieStatus = label(
@@ -2007,6 +2218,14 @@ class MainActivity : Activity() {
     private fun openMovies() {
         moviesOpen = true
         moviesView.visibility = View.VISIBLE
+        // Now-playing bar: show it only when a movie is actually playing.
+        val movie = playingMovie
+        if (movie != null) {
+            movieNowPlayingLabel.text = "▶ Abhi chal rahi hai: ${movie.title}"
+            movieNowPlayingBar.visibility = View.VISIBLE
+        } else {
+            movieNowPlayingBar.visibility = View.GONE
+        }
         showMoviesList()
     }
 
@@ -2026,6 +2245,12 @@ class MainActivity : Activity() {
     private fun showMoviesDetails() {
         moviesListPane.visibility = View.GONE
         moviesDetailsPane.visibility = View.VISIBLE
+    }
+
+    /** One-tap quick search: fills the search box and runs the search. */
+    private fun quickSearchMovie(term: String) {
+        movieSearchInput.setText(term)
+        searchMovies()
     }
 
     private fun searchMovies() {
@@ -2085,8 +2310,10 @@ class MainActivity : Activity() {
             isFocusable = true
             isClickable = true
             minimumHeight = dp(if (isTv) 96 else 88)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setPadding(dp(14), dp(10), dp(14), dp(10))
             background = rowBackground(false)
+            elevation = dp(3).toFloat()
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { openMovieDetails(movie) }
         }
         val posterWidth = dp(if (isTv) 60 else 56)
@@ -2122,7 +2349,7 @@ class MainActivity : Activity() {
             texts.addView(TextView(this).apply {
                 text = movie.year
                 textSize = 13f
-                setTextColor(muted)
+                setTextColor(muted2)
             })
         }
         row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f).apply {
@@ -2364,6 +2591,7 @@ class MainActivity : Activity() {
         playerController?.play(url, headers)
         if (positionMs > 0) playerController?.seekTo(positionMs)
         bringPlayerOverlaysToFront()
+        showPlayerControls()
     }
 
     private fun setMovieMeta(movie: MovieBox.Movie) {
@@ -2435,13 +2663,32 @@ class MainActivity : Activity() {
             addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 24))
             addState(intArrayOf(), glassShape(24))
         }
-        setOnFocusChangeListener { _, _ -> refreshFilterText(this) }
+        setOnFocusChangeListener { _, hasFocus ->
+            refreshFilterText(this)
+            animateFocusScale(this, hasFocus)
+        }
         setOnClickListener { action() }
     }
 
     /** White text on the active (gradient) or focused filter, muted otherwise. */
     private fun refreshFilterText(view: Button) {
         view.setTextColor(if (view.isSelected || view.isFocused) Color.WHITE else muted)
+    }
+
+    /** Subtle lift on focus (TV remote + keyboard): the focused item scales
+     * up slightly, so it visibly rises above its neighbours. */
+    private fun animateFocusScale(view: View, focused: Boolean) {
+        val scale = if (focused) 1.03f else 1f
+        view.animate().scaleX(scale).scaleY(scale).setDuration(120).start()
+    }
+
+    /** Round seek thumb: white dot with a cyan ring (YouTube-style), sized
+     * for touch on phones and smaller on TV. */
+    private fun seekThumb() = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(Color.WHITE)
+        setStroke(dp(2), cyan)
+        setSize(dp(if (isTv) 16 else 20), dp(if (isTv) 16 else 20))
     }
 
     private fun markActiveFilter() {
@@ -2510,21 +2757,24 @@ class MainActivity : Activity() {
     }
 
     /** PlayerView/WebView are added to [screen] after the overlays were built;
-     * re-raise the border, meta chip, overlay controls and number popup above
-     * them. Called at the end of [play] and after adding a WebView. */
+     * re-raise the border, meta chip, seek row, overlay controls and number
+     * popup above them. Called at the end of [play] and after adding a WebView. */
     private fun bringPlayerOverlaysToFront() {
         screenBorder.bringToFront()
         metaChip.bringToFront()
+        seekRow.bringToFront()
         overlayBar.bringToFront()
         numberOverlay.bringToFront()
         buffering.bringToFront()
     }
 
-    /** Glass fill: vertical gradient GlassHi → Glass + 1dp stroke. */
+    /** Glass fill: 3-stop vertical gradient (light top edge → GlassHi →
+     * Glass) + 1dp stroke. The light top edge is what makes the glass
+     * read as a raised panel instead of a flat fill. */
     private fun glassShape(radiusDp: Int = 22, strokeColor: Int = glassStroke, strokeDp: Int = 1) =
         GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(glassHi, glass),
+            intArrayOf(0xa832468f.toInt(), glassHi, glass),
         ).apply {
             setStroke(dp(strokeDp), strokeColor)
             cornerRadius = dp(radiusDp).toFloat()
@@ -2565,7 +2815,10 @@ class MainActivity : Activity() {
         minimumHeight = dp(48)
         setPadding(dp(19), dp(12), dp(19), dp(12))
         background = navItemBackground()
-        setOnFocusChangeListener { _, _ -> refreshFilterText(this) }
+        setOnFocusChangeListener { _, hasFocus ->
+            refreshFilterText(this)
+            animateFocusScale(this, hasFocus)
+        }
         setOnClickListener { action() }
     }
 
@@ -2596,6 +2849,8 @@ class MainActivity : Activity() {
                 addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 18))
                 addState(intArrayOf(), glassShape(18))
             }
+            elevation = dp(2).toFloat()
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             addView(glyphView)
             addView(labelView)
             setOnClickListener { action() }
@@ -2636,38 +2891,12 @@ class MainActivity : Activity() {
     private fun liveBadge() = TextView(this).apply {
         text = "LIVE"
         textSize = 12f
+        letterSpacing = 0.08f
         setTypeface(null, Typeface.BOLD)
         setTextColor(Color.WHITE)
         gravity = Gravity.CENTER
         setPadding(dp(11), dp(4), dp(11), dp(4))
         background = shape(liveRed, liveRed, 8, 0)
-    }
-
-    /** Qwen logo mark: two overlapping gradient dots (cyan/blue + magenta/purple). */
-    private fun logoMark(): View {
-        val size = dp(44)
-        val dot = dp(26)
-        fun dotDrawable(from: Int, to: Int) = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            colors = intArrayOf(from, to)
-            orientation = GradientDrawable.Orientation.TL_BR
-        }
-        return FrameLayout(this).apply {
-            addView(View(this@MainActivity).apply {
-                background = dotDrawable(cyan, blue)
-            }, FrameLayout.LayoutParams(dot, dot).apply {
-                leftMargin = dp(3)
-                topMargin = dp(14)
-            })
-            addView(View(this@MainActivity).apply {
-                background = dotDrawable(magenta, purple)
-            }, FrameLayout.LayoutParams(dot, dot).apply {
-                leftMargin = dp(16)
-                topMargin = dp(4)
-            })
-        }.apply {
-            layoutParams = LinearLayout.LayoutParams(size, size)
-        }
     }
 
     /** YouTube-style fullscreen toggle icon, drawn in code (no vector asset
@@ -2738,6 +2967,7 @@ class MainActivity : Activity() {
     companion object {
         private const val PAGE_SIZE = 60
         private const val AUTO_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000L
+        private const val CONTROLS_HIDE_DELAY_MS = 3000L
         private const val STATE_FULLSCREEN = "fullscreen"
         private const val STATE_MOVIE_URL = "movie_url"
         private const val STATE_MOVIE_TITLE = "movie_title"
