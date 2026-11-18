@@ -18,11 +18,12 @@ sed 's/<manifest /<manifest package="com.sadique.iptv" /' \
 "$tools_directory/aapt2" compile --dir "$source_directory/res" -o "$build_directory/resources.zip"
 "$tools_directory/aapt2" link -I "$android_jar" -o "$build_directory/unsigned.apk" \
     --manifest "$build_directory/AndroidManifest.xml" --min-sdk-version 23 \
-    --target-sdk-version 34 --version-code 2 --version-name 1.1 \
+    --target-sdk-version 34 --version-code 3 --version-name 1.2 \
     "$build_directory/resources.zip"
 kotlin_compiler="${KOTLINC:-kotlinc}"
 kotlin_stdlib="${KOTLIN_STDLIB:-$(dirname "$(command -v "$kotlin_compiler")")/../lib/kotlin-stdlib.jar}"
-"$kotlin_compiler" -version 2>&1 | grep -q 'kotlinc-jvm 2\.4\.21' || {
+compiler_version="$("$kotlin_compiler" -version 2>&1)"
+[[ "$compiler_version" == *"kotlinc-jvm 2.4.21"* ]] || {
     echo 'Kotlin compiler 2.4.21 is required.' >&2
     exit 1
 }

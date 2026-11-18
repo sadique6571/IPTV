@@ -79,8 +79,11 @@ class MainActivity : Activity() {
 
         val filters = LinearLayout(this)
         left.addView(filters)
-        for (name in listOf("All", "PK", "IN", "Cricket", "M3U")) {
-            filters.addView(button(name) {
+        val moreFilters = LinearLayout(this)
+        left.addView(moreFilters)
+        for (name in listOf("All", "PK", "IN", "Cricket", "Drama", "M3U")) {
+            val row = if (name == "Drama" || name == "M3U") moreFilters else filters
+            row.addView(button(name) {
                 filter = name
                 limit = 80
                 populate()
@@ -116,9 +119,9 @@ class MainActivity : Activity() {
         val candidates = if (filter == "M3U") imported else builtInChannels + imported
         val matches = candidates.filter { channel ->
             when (filter) {
-                "PK" -> channel.group == "Pakistan"
+                "PK" -> channel.group == "Pakistan" || channel.group == "Drama"
                 "IN" -> channel.group == "India"
-                "Cricket" -> channel.group == "Cricket"
+                "Cricket", "Drama" -> channel.group == filter
                 else -> true
             }
         }

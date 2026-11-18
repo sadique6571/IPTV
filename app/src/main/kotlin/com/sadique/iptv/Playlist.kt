@@ -45,6 +45,7 @@ internal object Playlist {
                     val code = country.find(line)?.groupValues?.get(1).orEmpty()
                     category = when {
                         "cricket" in label -> "Cricket"
+                        "drama" in label -> "Drama"
                         "pakistan" in label || code.equals("PK", true) -> "Pakistan"
                         "india" in label || code.equals("IN", true) -> "India"
                         else -> "Imported"
