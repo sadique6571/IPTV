@@ -38,6 +38,10 @@ old build command still works.
 
 - Media3 is pinned to 1.9.2: it is the newest stable that still builds against
   `compileSdk` 35 (1.11.x requires `compileSdk` 36).
+- HLS and DASH need their own Media3 modules (`media3-exoplayer-hls`,
+  `media3-exoplayer-dash`): the core `media3-exoplayer` artifact does not
+  include them, and a `.m3u8` URL crashes the app instantly without the HLS
+  module.
 - Picture-in-picture is intentionally not included: on TV, PiP needs Android 14
   or higher, and Google's TV app quality guidelines do not allow media playback
   in PiP mode.
