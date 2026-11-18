@@ -19,6 +19,10 @@ import java.util.concurrent.Executors
  * Small async channel-logo loader: memory LRU cache plus a disk cache under
  * cacheDir. No image-library dependency — logos are tiny and few are on screen
  * at once. A failed logo simply leaves the letter tile behind it visible.
+ *
+ * Two logo forms are supported: an http(s) URL (downloaded and cached), and
+ * "asset:<drawable-name>" (a PNG bundled in the APK, e.g. "asset:logo_hstv"
+ * for channels whose logo exists nowhere online).
  */
 internal object LogoLoader {
     private const val MAX_LOGO_BYTES = 512 * 1024
@@ -26,7 +30,7 @@ internal object LogoLoader {
     private val memoryCache = object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
-    private var pool: ExecutorService = Executors.newFixedThreadPool(3)
+    private var pool: ExecutorService = Executors.newFixedThreadPool(6)
 
     fun load(context: Context, url: String, target: ImageView) {
         target.tag = url
@@ -39,7 +43,7 @@ internal object LogoLoader {
         // out). Reopening the app in the same process reuses this singleton,
         // so a dead pool must be recreated — otherwise the first logo load
         // throws RejectedExecutionException and crashes the app.
-        if (pool.isShutdown) pool = Executors.newFixedThreadPool(3)
+        if (pool.isShutdown) pool = Executors.newFixedThreadPool(6)
         val appContext = context.applicationContext
         pool.execute {
             try {
@@ -57,6 +61,8 @@ internal object LogoLoader {
     }
 
     private fun fetch(context: Context, url: String): Bitmap? {
+        // Bundled manual logo — no network, no disk cache needed.
+        if (url.startsWith("asset:")) return fetchAsset(context, url.substringAfter("asset:"))
         val uri = runCatching { URI.create(url) }.getOrNull() ?: return null
         if (uri.scheme != "https" && uri.scheme != "http") return null
         if (uri.host == null) return null
@@ -67,8 +73,17 @@ internal object LogoLoader {
             file.delete()
         }
         val connection = uri.toURL().openConnection() as HttpURLConnection
-        connection.connectTimeout = 8000
-        connection.readTimeout = 8000
+        // Some CDNs (notably Indian telecom image hosts) reject requests
+        // without a browser User-Agent, so send one plus an image Accept
+        // header; follow redirects explicitly.
+        connection.setRequestProperty(
+            "User-Agent",
+            "Mozilla/5.0 (Linux; Android 11; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+        )
+        connection.setRequestProperty("Accept", "image/*")
+        connection.instanceFollowRedirects = true
+        connection.connectTimeout = 12000
+        connection.readTimeout = 12000
         try {
             if (connection.responseCode != 200) return null
             val bytes = connection.inputStream.use { input ->
@@ -88,6 +103,25 @@ internal object LogoLoader {
         } finally {
             connection.disconnect()
         }
+    }
+
+    /**
+     * Loads a bundled drawable by name ("asset:logo_hstv" -> R.drawable.logo_hstv),
+     * downsampled to the same MAX_DIMENSION as network logos. Returns null when
+     * the drawable does not exist, so the letter tile behind stays visible.
+     */
+    private fun fetchAsset(context: Context, name: String): Bitmap? {
+        val resId = context.resources.getIdentifier(name, "drawable", context.packageName)
+        if (resId == 0) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeResource(context.resources, resId, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / sample > MAX_DIMENSION || bounds.outHeight / sample > MAX_DIMENSION) {
+            sample *= 2
+        }
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        return BitmapFactory.decodeResource(context.resources, resId, options)
     }
 
     private fun decode(bytes: ByteArray): Bitmap? {

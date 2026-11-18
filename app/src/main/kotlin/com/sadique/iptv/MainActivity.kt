@@ -80,13 +80,13 @@ class MainActivity : Activity() {
     private val purple = 0xff8b5cff.toInt()
     private val liveRed = 0xffff3b4e.toInt()
     private val overlayDark = 0x99060a1e.toInt() // Qwen meta chip / overlay pill
-    private val cricketBroadcasters = Regex("(?i).*(ptv sports|a sports|dd sports|willow|ten sports|star sports).*")
-    // Group-titles that have their own category (task 5). A channel whose
+    // Group-titles that have their own category. A channel whose
     // group matches none of these falls under General (the catch-all), so
-    // no channel is reachable only through "All".
+    // no channel is reachable only through "All". "cricket" and
+    // "religious" stay as legacy matches for imported playlists.
     private val categoryGroups = setOf(
-        "news", "entertainment", "movies", "music", "religious",
-        "cricket", "kids", "animation", "drama",
+        "news", "sports", "cricket", "islamic", "religious",
+        "kids", "animation",
     )
     private val accent = cyan // focus strokes, status text, list counts
     private val imports = Executors.newSingleThreadExecutor()
@@ -176,6 +176,7 @@ class MainActivity : Activity() {
     // a signed movie URL must never land in Recent or last-channel, or the
     // app would auto-play an expired link on the next launch.
     private lateinit var movieBox: MovieBox
+    private lateinit var movieStore: MovieStore
     private lateinit var moviesView: LinearLayout
     private lateinit var moviesListPane: LinearLayout
     private lateinit var moviesDetailsPane: LinearLayout
@@ -194,8 +195,16 @@ class MainActivity : Activity() {
     private lateinit var movieDubRow: LinearLayout
     private lateinit var movieQualityRow: LinearLayout
     private lateinit var moviePlayButton: Button
+    private lateinit var movieFavButton: Button
     private lateinit var movieDetailsStatus: TextView
     private var moviesOpen = false
+    // True while search results are on screen; false while the Movies home
+    // (Continue Watching + Fav Movies) is showing.
+    private var movieResultsAreSearch = false
+    private var movieResumeRequest = 0
+    // seekUpdater ticks every 500ms; every 20th tick (~10s) the playing
+    // movie's position is saved to Continue Watching.
+    private var movieProgressTick = 0
     private var playingMovie: MovieBox.Movie? = null
     private var playingMovieUrl: String? = null
     private var playingMovieHeaders: Map<String, String> = emptyMap()
@@ -208,6 +217,39 @@ class MainActivity : Activity() {
     private var currentPlayTitle = ""
     private var selectedDubId: String? = null
     private var selectedQuality = 0
+
+    // Geo Dramas (v17): Har Pal Geo dramas from YouTube (GeoDramas client).
+    // Same full-screen overlay pattern as Movies: drama list → episode
+    // list → Play in the main player (WebView embed, loop off). Episodes
+    // never touch the channel store — no recent entry, no last-channel.
+    private lateinit var geoDramas: GeoDramas
+    private lateinit var dramasView: LinearLayout
+    private lateinit var dramasListPane: LinearLayout
+    private lateinit var dramasEpisodesPane: LinearLayout
+    private lateinit var dramaAvatar: ImageView
+    private lateinit var dramaStatus: TextView
+    private lateinit var dramaProgress: ProgressBar
+    private lateinit var dramaResults: LinearLayout
+    private lateinit var dramaResultsScroll: ScrollView
+    private lateinit var dramaNowPlayingBar: LinearLayout
+    private lateinit var dramaNowPlayingLabel: TextView
+    private lateinit var dramaEpisodesTitle: TextView
+    private lateinit var dramaEpisodesMeta: TextView
+    private lateinit var dramaEpisodesStatus: TextView
+    private lateinit var dramaEpisodesList: LinearLayout
+    private lateinit var dramaEpisodesScroll: ScrollView
+    private var dramasOpen = false
+    private var playingDrama: GeoDramas.Episode? = null
+    private var playingDramaTitle = ""
+    private var dramaListRequest = 0
+    private var dramaEpisodesRequest = 0
+    private var dramaDatesRequest = 0
+    private var currentDramas: List<GeoDramas.Drama> = emptyList()
+    private var dramasLoadedAt = 0L
+    // The latest-episode date refresh runs here — NOT on `imports` — so a
+    // long background re-sort never queues behind (or blocks) a user's
+    // episode tap or movie search.
+    private val dramaDates = Executors.newSingleThreadExecutor()
 
     // Adaptive UI: TV (D-pad, 10-foot) vs touch devices, and orientation.
     // Computed once in onCreate; rotation recreates the activity (no
@@ -226,6 +268,16 @@ class MainActivity : Activity() {
                     seekBar.max = (duration / 1000).toInt()
                     seekBar.progress = (position / 1000).toInt()
                     seekLabel.text = formatTime(position) + " / " + formatTime(duration)
+                }
+                // Save the playing movie's position every ~10 seconds so
+                // Continue Watching stays fresh without touching the player
+                // thread — the store write itself runs on `imports`.
+                if (playingMovie != null) {
+                    movieProgressTick++
+                    if (movieProgressTick >= MOVIE_PROGRESS_SAVE_TICKS) {
+                        movieProgressTick = 0
+                        saveMovieProgress(async = true)
+                    }
                 }
                 mainHandler.postDelayed(this, 500)
             }
@@ -347,12 +399,11 @@ class MainActivity : Activity() {
         val left = column().also { libraryPane = it }
         playerPane = column()
 
-        // Categories follow the M3U group-titles (News, Entertainment,
-        // Movies, Music, Religious, Cricket, Kids, Drama, General) — the
-        // old language/country filters (Urdu/Hindi/Punjabi/PK/IN) did not
-        // match any group, so the biggest groups had no category at all.
-        // "Undefined" channels show under General (see populate()).
-        val filterNames = listOf("All", "Favs", "Recent", "News", "Entertainment", "Movies", "Music", "Religious", "Cricket", "Kids", "Drama", "General", "M3U")
+        // Categories follow the M3U group-titles — only five: News,
+        // Sports, Islamic, Kids, General. Everything that is not news,
+        // sports, Islamic or kids lives under General (the catch-all),
+        // so the sidebar stays short.
+        val filterNames = listOf("All", "Favs", "Recent", "News", "Sports", "Islamic", "Kids", "General", "M3U")
         val filterLabels = mapOf("Favs" to "♥ Favorites", "Recent" to "◷ Recent")
         val chipAction: (String) -> Unit = { name ->
             filter = name
@@ -363,7 +414,7 @@ class MainActivity : Activity() {
             // TV: LEFT glass sidebar with the real channel categories only.
             // This is a Live TV app, so there is no Home/Series/Catch Up/
             // Settings nav — those sections do not exist. The active item
-            // is a cyan→blue gradient pill (Qwen sidebar). Thirteen items
+            // is a cyan→blue gradient pill (Qwen sidebar). Nine items
             // do not fit a short TV screen, so the list scrolls; D-pad
             // focus auto-scrolls to the focused item.
             val sidebarItems = column()
@@ -377,6 +428,11 @@ class MainActivity : Activity() {
             // Movies live outside the channel filters — a plain nav item
             // (not in filterChips, so it never becomes the active filter).
             sidebarItems.addView(navItem("🎬 Movies") { openMovies() },
+                LinearLayout.LayoutParams(-1, -2).apply {
+                    topMargin = dp(8)
+                })
+            // Geo Dramas live outside the channel filters too.
+            sidebarItems.addView(navItem("📺 Geo Dramas") { openDramas() },
                 LinearLayout.LayoutParams(-1, -2).apply {
                     topMargin = dp(8)
                 })
@@ -507,6 +563,16 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams(0, -2, 1f).apply {
                     marginStart = dp(4)
                 })
+        }
+        if (!isTv) {
+            // Touch devices have no sidebar, so Geo Dramas gets its own
+            // footer row under Update/Movies (on TV it is a sidebar item).
+            val dramasRow = LinearLayout(this)
+            left.addView(dramasRow, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(6)
+            })
+            dramasRow.addView(button("📺 Geo Dramas") { openDramas() },
+                LinearLayout.LayoutParams(-1, -2))
         }
 
         // Player card (Qwen PlayerCard): 16:9, 24dp rounded corners, 1dp
@@ -829,7 +895,14 @@ class MainActivity : Activity() {
                     if (!isDestroyed) status.text = message
                 }
                 override fun onEnded() {
-                    if (!isDestroyed) status.text = "Playback ended."
+                    if (isDestroyed) return
+                    status.text = "Playback ended."
+                    // A finished movie leaves Continue Watching by itself.
+                    val movie = playingMovie
+                    if (movie != null && movie.subjectId.isNotEmpty()) {
+                        movieStore.removeContinue(movie.subjectId)
+                        if (moviesOpen && !movieResultsAreSearch) showMoviesHome()
+                    }
                 }
                 override fun onPlayingChanged(isPlaying: Boolean) {
                     if (!isDestroyed) playPauseButton.text = if (isPlaying) "❚❚" else "▶"
@@ -860,10 +933,15 @@ class MainActivity : Activity() {
         // The Movies overlay sits on top of the Live TV layout in a frame,
         // so opening it never detaches the player view underneath.
         movieBox = MovieBox(applicationContext)
+        movieStore = MovieStore(applicationContext)
         moviesView = buildMoviesView()
+        // Same overlay pattern for Geo Dramas.
+        geoDramas = GeoDramas(applicationContext)
+        dramasView = buildDramasView()
         val contentFrame = FrameLayout(this)
         contentFrame.addView(rootView, FrameLayout.LayoutParams(-1, -1))
         contentFrame.addView(moviesView, FrameLayout.LayoutParams(-1, -1))
+        contentFrame.addView(dramasView, FrameLayout.LayoutParams(-1, -1))
         setContentView(contentFrame)
         populate()
         list.getChildAt(0)?.requestFocus()
@@ -889,6 +967,8 @@ class MainActivity : Activity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putBoolean(STATE_FULLSCREEN, fullScreen)
+        // A rotation must not lose the movie's place in Continue Watching.
+        saveMovieProgress(async = false)
         // Save a playing movie (URL + headers + position) so a rotation —
         // including the one the fullscreen toggle triggers — resumes it.
         // The signed URL stays valid for hours, so this is safe.
@@ -921,22 +1001,17 @@ class MainActivity : Activity() {
             "Recent" -> store.recentList()
             else -> verifiedChannels
         }
-        // Categories match the M3U group-title (task 5) — case-insensitive,
+        // Categories match the M3U group-title — case-insensitive,
         // multi-group titles ("Animation;Kids") match every part. General
-        // also catches the small groups that have no category of their own
-        // (Legislative, Culture, Lifestyle, Documentary, Comedy, Business…),
-        // so every channel is reachable through some category.
+        // is the catch-all: every group without its own category
+        // (Entertainment, Movies, Music, Drama, Legislative…) lands
+        // there, so every channel is reachable through some category.
         val matches = candidates.filter { channel ->
             val accepted = when (filter) {
                 "News" -> groupMatches(channel, "news")
-                "Entertainment" -> groupMatches(channel, "entertainment")
-                "Movies" -> groupMatches(channel, "movies")
-                "Music" -> groupMatches(channel, "music")
-                "Religious" -> groupMatches(channel, "religious")
-                "Cricket" -> groupMatches(channel, "cricket") ||
-                    (groupMatches(channel, "sports") && cricketBroadcasters.matches(channel.name))
+                "Sports" -> groupMatches(channel, "sports", "cricket")
+                "Islamic" -> groupMatches(channel, "islamic", "religious")
                 "Kids" -> groupMatches(channel, "kids", "animation")
-                "Drama" -> groupMatches(channel, "drama")
                 "General" -> groupMatches(channel, "general", "undefined") ||
                     !categoryGroups.any { groupMatches(channel, it) }
                 else -> true
@@ -1213,11 +1288,15 @@ class MainActivity : Activity() {
     }
 
     private fun play(channel: Channel) {
+        // Switching to a channel must not lose the movie's place in
+        // Continue Watching — save it before the movie state is cleared.
+        saveMovieProgress(async = false)
         stopWeb()
         selected = channel
         playingMovie = null
         playingMovieUrl = null
         playingMovieHeaders = emptyMap()
+        playingDrama = null
         // Keep the list on the page the playing channel belongs to.
         val matchIndex = currentMatches.indexOfFirst { it.key == channel.key }
         if (matchIndex >= 0) {
@@ -1281,6 +1360,11 @@ class MainActivity : Activity() {
     }
 
     private fun retryPlayback() {
+        val drama = playingDrama
+        if (drama != null) {
+            startDramaPlayback(drama, playingDramaTitle)
+            return
+        }
         if (playingMovie != null) {
             playerController?.retry()
             return
@@ -1314,7 +1398,10 @@ class MainActivity : Activity() {
 
     /** Shows only the controls that apply to the current channel and stream. */
     private fun applyControlVisibility() {
-        val webChannel = selected?.web == true
+        // A drama episode plays in the same WebView as a web channel, so
+        // the ExoPlayer controls (play/pause, volume, speed, seek) stay
+        // hidden for it too — the WebView consumes its own touches.
+        val webChannel = selected?.web == true || playingDrama != null
         playPauseButton.visibility = if (webChannel) View.GONE else View.VISIBLE
         volumeSeekBar.visibility = if (webChannel) View.GONE else View.VISIBLE
         muteButton.visibility = if (webChannel) View.GONE else View.VISIBLE
@@ -1349,14 +1436,14 @@ class MainActivity : Activity() {
      * is scrubbing, and never hides for web channels — a WebView consumes
      * its own touches, so a tap could not bring the controls back. */
     private fun hidePlayerControls() {
-        if (isTv || scrubbing || selected?.web == true) return
+        if (isTv || scrubbing || selected?.web == true || playingDrama != null) return
         controlsVisible = false
         overlayBar.visibility = View.GONE
         seekRow.visibility = View.GONE
     }
 
     private fun scheduleHideControls() {
-        if (isTv || selected?.web == true) return
+        if (isTv || selected?.web == true || playingDrama != null) return
         mainHandler.removeCallbacks(hideControlsRunnable)
         mainHandler.postDelayed(hideControlsRunnable, CONTROLS_HIDE_DELAY_MS)
     }
@@ -1443,10 +1530,10 @@ class MainActivity : Activity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        // While the Movies browser is open, channel number jumps and
-        // up/down channel switching stay off — D-pad navigation belongs to
-        // the movie list.
-        if (moviesOpen) return super.onKeyDown(keyCode, event)
+        // While the Movies browser or the Geo Dramas browser is open,
+        // channel number jumps and up/down channel switching stay off —
+        // D-pad navigation belongs to the open section.
+        if (moviesOpen || dramasOpen) return super.onKeyDown(keyCode, event)
         if (currentFocus is EditText) return super.onKeyDown(keyCode, event)
         val digit = when (keyCode) {
             KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_NUMPAD_0 -> 0
@@ -1538,7 +1625,7 @@ class MainActivity : Activity() {
         play(currentMatches[next])
     }
 
-    private fun playEmbed(videoId: String) {
+    private fun playEmbed(videoId: String, loop: Boolean = true) {
         if (videoId.startsWith("yt-live:")) {
             status.text = "Finding the live video…"
             val request = playbackRequest
@@ -1557,13 +1644,26 @@ class MainActivity : Activity() {
         // in-player fullscreen — the app's own overlay controls (incl. its
         // fullscreen toggle) are the only UI the user ever sees, so the
         // channel looks like any other channel, not a YouTube embed.
+        // Plain video IDs (recorded videos, e.g. Quran TV) loop so the
+        // channel never goes silent when the video ends; live streams are
+        // unaffected — a live stream has no end for the loop to trigger on.
+        // Drama episodes pass loop=false (see playDramaEpisode) so an
+        // episode ends instead of replaying itself.
+        val isPlainVideo = videoId.matches(Regex("[A-Za-z0-9_-]{11}"))
+        val loopParams = if (loop && isPlainVideo) "&amp;loop=1&amp;playlist=$videoId" else ""
         val embedUrl = when {
-            videoId.matches(Regex("[A-Za-z0-9_-]{11}")) ->
-                "https://www.youtube-nocookie.com/embed/$videoId?autoplay=1&amp;playsinline=1&amp;controls=0&amp;modestbranding=1&amp;rel=0&amp;iv_load_policy=3&amp;disablekb=1&amp;fs=0"
+            isPlainVideo ->
+                "https://www.youtube-nocookie.com/embed/$videoId?autoplay=1&amp;playsinline=1&amp;controls=0&amp;modestbranding=1&amp;rel=0&amp;iv_load_policy=3&amp;disablekb=1&amp;fs=0$loopParams"
             videoId.matches(Regex("yt-channel:UC[A-Za-z0-9_-]{22}")) ->
                 "https://www.youtube-nocookie.com/embed/live_stream?channel=${videoId.substringAfter(':')}&amp;autoplay=1&amp;playsinline=1&amp;controls=0&amp;modestbranding=1&amp;rel=0&amp;iv_load_policy=3&amp;disablekb=1&amp;fs=0"
             videoId.matches(Regex("dm:[A-Za-z0-9]{5,12}")) ->
                 "https://www.dailymotion.com/embed/video/${videoId.substringAfter(':')}?autoplay=1&amp;ui-logo=false&amp;ui-start-screen-info=false&amp;sharing-enable=false"
+            // Generic web-player embed (playsza.st): the player page loads
+            // as-is in the iframe — no de-branding params exist for it.
+            // A Cloudflare check may appear on first load; on a real phone
+            // it usually passes on its own, otherwise the user taps it.
+            videoId.startsWith("web:") ->
+                videoId.substringAfter(':').replace("&", "&amp;")
             else -> {
                 status.text = "This listing needs a direct video or embeddable stream URL."
                 return
@@ -1584,7 +1684,8 @@ class MainActivity : Activity() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val host = request.url.host.orEmpty()
                 return request.isForMainFrame || request.url.scheme != "https" ||
-                    (host !in setOf("www.youtube.com", "www.youtube-nocookie.com", "www.dailymotion.com"))
+                    (host !in setOf("www.youtube.com", "www.youtube-nocookie.com", "www.dailymotion.com",
+                        "playsza.st", "challenges.cloudflare.com"))
             }
         }
         screen.addView(player, FrameLayout.LayoutParams(-1, -1))
@@ -1989,9 +2090,14 @@ class MainActivity : Activity() {
         super.onStart()
         if (stoppedForBackground) {
             stoppedForBackground = false
+            val drama = playingDrama
             val movie = playingMovie
             val url = playingMovieUrl
-            if (movie != null && url != null) {
+            if (drama != null) {
+                // A drama episode restarts from the beginning — WebView
+                // playback has no position to restore.
+                startDramaPlayback(drama, playingDramaTitle)
+            } else if (movie != null && url != null) {
                 playMovieStream(movie, url, playingMovieHeaders, savedMoviePosition)
             } else {
                 selected?.let(::play)
@@ -2003,6 +2109,7 @@ class MainActivity : Activity() {
         // Capture the movie position BEFORE stopPlayback releases the player,
         // so coming back from background resumes the movie where it left off.
         if (playingMovie != null) savedMoviePosition = playerController?.position() ?: 0L
+        saveMovieProgress(async = false)
         stopPlayback()
         stoppedForBackground = true
         super.onStop()
@@ -2013,6 +2120,7 @@ class MainActivity : Activity() {
         updateDownloadDialog?.dismiss()
         updateDownloadDialog = null
         imports.shutdownNow()
+        dramaDates.shutdownNow()
         // LogoLoader's pool is shared across activity instances: killing it
         // on a rotation would crash the recreated activity the first time it
         // loads a channel logo — and fullscreen rotates on every toggle.
@@ -2023,7 +2131,13 @@ class MainActivity : Activity() {
 
     @Deprecated("Use the system back gesture callback on newer Android versions")
     override fun onBackPressed() {
-        if (moviesOpen) {
+        if (dramasOpen) {
+            if (dramasEpisodesPane.visibility == View.VISIBLE) {
+                showDramasList()
+            } else {
+                closeDramas()
+            }
+        } else if (moviesOpen) {
             if (moviesDetailsPane.visibility == View.VISIBLE) {
                 showMoviesList()
             } else {
@@ -2035,14 +2149,19 @@ class MainActivity : Activity() {
             // Back from a search restores the full list (task 2) — the user
             // is never stuck on a filtered (or empty) result.
             clearSearch()
-        } else if (selected == null && playingMovie == null) {
+        } else if (selected == null && playingMovie == null && playingDrama == null) {
             super.onBackPressed()
         } else {
+            // Back while something plays stops it — save the movie's place
+            // in Continue Watching before the player is released.
+            saveMovieProgress(async = false)
             stopPlayback()
             selected = null
             playingMovie = null
             playingMovieUrl = null
             playingMovieHeaders = emptyMap()
+            playingDrama = null
+            playingDramaTitle = ""
             quickActions.visibility = View.GONE
             infoBar.visibility = View.GONE
             playPauseButton.text = "▶"
@@ -2142,8 +2261,13 @@ class MainActivity : Activity() {
             bottomMargin = dp(8)
         })
         // Quick searches: one tap runs a real MovieBox search for a popular
-        // term (no fake listings — these are just search shortcuts).
+        // term (no fake listings — these are just search shortcuts). The
+        // Home chip goes back to Continue Watching + Fav Movies.
         val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val homeChip = chip("⌂ Home") { showMoviesHome() }
+        quickRow.addView(homeChip, LinearLayout.LayoutParams(-2, -2).apply {
+            marginEnd = dp(8)
+        })
         for (term in listOf("Marvel", "DC", "Bollywood", "Punjabi", "Action", "Comedy")) {
             val quickChip = chip(term) { quickSearchMovie(term) }
             quickRow.addView(quickChip, LinearLayout.LayoutParams(-2, -2).apply {
@@ -2237,6 +2361,10 @@ class MainActivity : Activity() {
         detailsInner.addView(moviePlayButton, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(12)
         })
+        movieFavButton = button("♡ Favorite") { toggleFavoriteMovie() }
+        detailsInner.addView(movieFavButton, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(8)
+        })
         detailsInner.addView(button("‹ Back to results") { showMoviesList() },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         moviesDetailsPane.addView(detailsScroll, LinearLayout.LayoutParams(-1, -1))
@@ -2268,6 +2396,9 @@ class MainActivity : Activity() {
     private fun showMoviesList() {
         moviesDetailsPane.visibility = View.GONE
         moviesListPane.visibility = View.VISIBLE
+        // No search on screen — show (and refresh) the Movies home:
+        // Continue Watching + Fav Movies. A search result stays as it is.
+        if (!movieResultsAreSearch) showMoviesHome()
         movieSearchInput.requestFocus()
     }
 
@@ -2288,6 +2419,7 @@ class MainActivity : Activity() {
             toast("Movie ka naam likhein.")
             return
         }
+        movieResultsAreSearch = true
         val request = ++movieSearchRequest
         // Hide the keyboard so the results are visible on phones.
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
@@ -2330,6 +2462,223 @@ class MainActivity : Activity() {
         movieResults.getChildAt(0)?.requestFocus()
     }
 
+    /** Movies home: Continue Watching (top) + Fav Movies, shown when the
+     * section opens and whenever no search results are on screen. */
+    private fun showMoviesHome() {
+        movieResultsAreSearch = false
+        movieProgress.visibility = View.GONE
+        movieResults.removeAllViews()
+        val continuing = movieStore.continueWatching()
+        val favs = movieStore.favoritesList()
+        if (continuing.isEmpty() && favs.isEmpty()) {
+            movieStatus.text = "Abhi koi Continue Watching ya Fav Movie nahi hai — neeche search karke movie dekhein."
+        } else {
+            movieStatus.text = "Continue Watching · Fav Movies"
+        }
+        if (continuing.isNotEmpty()) {
+            movieResults.addView(sectionLabel("▶ Continue Watching"))
+            for (entry in continuing) {
+                movieResults.addView(continueRow(entry),
+                    LinearLayout.LayoutParams(-1, -2).apply {
+                        topMargin = dp(4)
+                        bottomMargin = dp(4)
+                    })
+            }
+        }
+        if (favs.isNotEmpty()) {
+            movieResults.addView(sectionLabel("♥ Fav Movies"))
+            for (movie in favs) {
+                movieResults.addView(movieRow(movie),
+                    LinearLayout.LayoutParams(-1, -2).apply {
+                        topMargin = dp(4)
+                        bottomMargin = dp(4)
+                    })
+            }
+        }
+        movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
+    }
+
+    private fun sectionLabel(text: String) =
+        label(text, if (isTv) 17 else 16, textColor).apply {
+            setTypeface(null, Typeface.BOLD)
+            setPadding(0, dp(10), 0, dp(4))
+        }
+
+    /** Continue Watching row: poster + title + remaining time + a cyan
+     * progress bar, with an ✕ button to remove it by hand. Tapping the
+     * row resumes the movie where it stopped. */
+    private fun continueRow(entry: MovieStore.ContinueEntry): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isFocusable = true
+            isClickable = true
+            minimumHeight = dp(if (isTv) 96 else 88)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = rowBackground(false)
+            elevation = dp(3).toFloat()
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { resumeMovie(entry) }
+        }
+        val posterWidth = dp(if (isTv) 60 else 56)
+        val posterHeight = dp(if (isTv) 90 else 84)
+        row.addView(
+            posterTile(entry.posterUrl, entry.title),
+            LinearLayout.LayoutParams(posterWidth, posterHeight),
+        )
+        val texts = column()
+        texts.addView(TextView(this).apply {
+            text = entry.title
+            textSize = if (isTv) 17f else 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(textColor)
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        })
+        texts.addView(TextView(this).apply {
+            text = "${(entry.progress * 100).toInt()}% dekhi · ${formatTime(entry.remainingMs)} baaki"
+            textSize = 13f
+            setTextColor(muted2)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        })
+        val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = (entry.progress * 100).toInt()
+            progressTintList = ColorStateList.valueOf(cyan)
+            progressBackgroundTintList = ColorStateList.valueOf(glassHi)
+        }
+        texts.addView(bar, LinearLayout.LayoutParams(-1, dp(6)).apply {
+            topMargin = dp(6)
+        })
+        row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            marginStart = dp(12)
+        })
+        row.addView(iconButton("✕") {
+            movieStore.removeContinue(entry.subjectId)
+            toast("Continue Watching se nikal di.")
+            showMoviesHome()
+        }, LinearLayout.LayoutParams(-2, -2).apply {
+            marginStart = dp(8)
+        })
+        return row
+    }
+
+    /** 2:3 poster tile with a letter tile behind it while the image loads. */
+    private fun posterTile(posterUrl: String, title: String): View {
+        val tileView = FrameLayout(this)
+        val initial = TextView(this).apply {
+            text = title.take(1).uppercase()
+            textSize = if (isTv) 22f else 20f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = shape(glassHi, glassHi, 12)
+        }
+        tileView.addView(initial, FrameLayout.LayoutParams(-1, -1))
+        if (posterUrl.isNotEmpty()) {
+            val posterView = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+            }
+            tileView.addView(posterView, FrameLayout.LayoutParams(-1, -1))
+            LogoLoader.load(this, posterUrl, posterView)
+        }
+        return tileView
+    }
+
+    /** Small square icon button (♥ favorite, ✕ remove) for movie rows. */
+    private fun iconButton(value: String, action: (Button) -> Unit) = Button(this).apply {
+        text = value
+        isAllCaps = false
+        setTextColor(muted)
+        textSize = if (isTv) 17f else 16f
+        minimumWidth = 0
+        minimumHeight = dp(44)
+        setPadding(dp(12), dp(6), dp(12), dp(6))
+        background = glassStateList(12)
+        setOnClickListener { action(this) }
+    }
+
+    /** Resume a Continue Watching movie: the signed stream URL is never
+     * stored (it expires within hours), so details + streams are resolved
+     * fresh from the subjectId, then the movie plays at the saved
+     * position — the same quality as before when it is still available. */
+    private fun resumeMovie(entry: MovieStore.ContinueEntry) {
+        val request = ++movieResumeRequest
+        movieProgress.visibility = View.VISIBLE
+        movieStatus.text = "Movie load ho rahi hai…"
+        imports.execute {
+            try {
+                val details = movieBox.details(entry.subjectId)
+                val streams = movieBox.streams(details)
+                runOnUiThread {
+                    if (isDestroyed || request != movieResumeRequest) return@runOnUiThread
+                    movieProgress.visibility = View.GONE
+                    val stream = streams.firstOrNull { it.resolution == entry.quality }
+                        ?: streams.first()
+                    selectedQuality = stream.resolution
+                    closeMovies()
+                    playMovieStream(
+                        details.movie.copy(title = entry.title),
+                        stream.url, stream.headers, entry.positionMs,
+                    )
+                }
+            } catch (error: IOException) {
+                runOnUiThread {
+                    if (isDestroyed || request != movieResumeRequest) return@runOnUiThread
+                    movieProgress.visibility = View.GONE
+                    movieStatus.text = "Resume nahi ho saka: ${error.message}"
+                }
+            }
+        }
+    }
+
+    /** Favorite toggle from the details pane (the movie itself, not the
+     * selected dub — a dub is the same movie in another language). */
+    private fun toggleFavoriteMovie() {
+        val details = currentMovieDetails ?: return
+        val nowFav = movieStore.toggleFavorite(details.movie)
+        updateMovieFavButton()
+        toast(if (nowFav) "Fav Movies mein add ho gayi." else "Fav Movies se nikal di.")
+    }
+
+    private fun updateMovieFavButton() {
+        val movie = currentMovieDetails?.movie
+        val fav = movie != null && movieStore.isFavorite(movie)
+        movieFavButton.text = if (fav) "♥ Favorite" else "♡ Favorite"
+    }
+
+    /**
+     * Saves the playing movie's position to Continue Watching. The
+     * position is read here on the main thread (ExoPlayer's thread); the
+     * store write runs on `imports` for the periodic tick (async) and
+     * synchronously for lifecycle hooks that run right before the player
+     * is released (sync) — either way the player is never blocked. A
+     * movie past 95% is finished: the store drops it instead of saving.
+     */
+    private fun saveMovieProgress(async: Boolean) {
+        val movie = playingMovie ?: return
+        if (movie.subjectId.isEmpty()) return
+        val controller = playerController ?: return
+        val position = controller.position()
+        val duration = controller.duration()
+        if (duration <= 0 || position < MIN_SAVE_POSITION_MS) return
+        val entry = MovieStore.ContinueEntry(
+            subjectId = movie.subjectId,
+            title = movie.title,
+            posterUrl = movie.posterUrl,
+            positionMs = position,
+            durationMs = duration,
+            quality = selectedQuality,
+            updatedAt = System.currentTimeMillis(),
+        )
+        if (async) {
+            imports.execute { movieStore.saveProgress(entry) }
+        } else {
+            movieStore.saveProgress(entry)
+        }
+    }
+
     /** Glass movie card: 2:3 poster (letter tile behind it while it loads),
      * bold title + year, and a cyan HINDI badge for Hindi-dubbed titles. */
     private fun movieRow(movie: MovieBox.Movie): View {
@@ -2347,24 +2696,10 @@ class MainActivity : Activity() {
         }
         val posterWidth = dp(if (isTv) 60 else 56)
         val posterHeight = dp(if (isTv) 90 else 84)
-        val tileView = FrameLayout(this)
-        val initial = TextView(this).apply {
-            text = movie.title.take(1).uppercase()
-            textSize = if (isTv) 22f else 20f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            background = shape(glassHi, glassHi, 12)
-        }
-        tileView.addView(initial, FrameLayout.LayoutParams(-1, -1))
-        if (movie.posterUrl.isNotEmpty()) {
-            val posterView = ImageView(this).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
-            }
-            tileView.addView(posterView, FrameLayout.LayoutParams(-1, -1))
-            LogoLoader.load(this, movie.posterUrl, posterView)
-        }
-        row.addView(tileView, LinearLayout.LayoutParams(posterWidth, posterHeight))
+        row.addView(
+            posterTile(movie.posterUrl, movie.title),
+            LinearLayout.LayoutParams(posterWidth, posterHeight),
+        )
         val texts = column()
         texts.addView(TextView(this).apply {
             text = movie.title
@@ -2395,6 +2730,20 @@ class MainActivity : Activity() {
                 background = shape(cyan, cyan, 8, 0)
             })
         }
+        // Favorite heart: red when this movie is in Fav Movies. Tapping
+        // it only toggles the favorite — the row itself still opens the
+        // details pane.
+        val heart = iconButton(if (movieStore.isFavorite(movie)) "♥" else "♡") { btn ->
+            val nowFav = movieStore.toggleFavorite(movie)
+            btn.text = if (nowFav) "♥" else "♡"
+            btn.setTextColor(if (nowFav) liveRed else muted)
+            toast(if (nowFav) "Fav Movies mein add ho gayi." else "Fav Movies se nikal di.")
+            if (moviesOpen && !movieResultsAreSearch) showMoviesHome()
+        }
+        heart.setTextColor(if (movieStore.isFavorite(movie)) liveRed else muted)
+        row.addView(heart, LinearLayout.LayoutParams(-2, -2).apply {
+            marginStart = dp(8)
+        })
         return row
     }
 
@@ -2412,6 +2761,7 @@ class MainActivity : Activity() {
         movieQualityRow.removeAllViews()
         moviePlayButton.isEnabled = false
         movieDetailsStatus.text = "Details load ho rahe hain…"
+        updateMovieFavButton()
         showMoviesDetails()
         imports.execute {
             try {
@@ -2433,6 +2783,7 @@ class MainActivity : Activity() {
         currentMovieDetails = details
         currentPlayTitle = details.movie.title
         selectedDubId = details.movie.subjectId
+        updateMovieFavButton()
         movieDetailsTitle.text = details.movie.title
         val metaParts = mutableListOf<String>()
         if (details.movie.year.isNotEmpty()) metaParts += details.movie.year
@@ -2577,7 +2928,14 @@ class MainActivity : Activity() {
         if (streams.isEmpty()) return
         val stream = streams.firstOrNull { it.resolution == selectedQuality } ?: streams.first()
         closeMovies()
-        playMovieStream(details.movie.copy(title = currentPlayTitle), stream.url, stream.headers)
+        // The played subject is the SELECTED DUB (a dub is a different
+        // subject with its own files) — Continue Watching must resume the
+        // same audio the user actually played, not the original.
+        val played = details.movie.copy(
+            subjectId = selectedDubId ?: details.movie.subjectId,
+            title = currentPlayTitle,
+        )
+        playMovieStream(played, stream.url, stream.headers)
     }
 
     /**
@@ -2593,11 +2951,16 @@ class MainActivity : Activity() {
         headers: Map<String, String>,
         positionMs: Long = 0L,
     ) {
+        // A new movie replaces the old one — save the old movie's place
+        // in Continue Watching before the player switches streams.
+        saveMovieProgress(async = false)
+        movieProgressTick = 0
         stopWeb()
         selected = null
         playingMovie = movie
         playingMovieUrl = url
         playingMovieHeaders = headers
+        playingDrama = null
         setMovieMeta(movie)
         val showBars = !(fullScreen && !isTv)
         quickActions.visibility = if (showBars) View.VISIBLE else View.GONE
@@ -2643,6 +3006,475 @@ class MainActivity : Activity() {
                 if (parts.size == 2) parts[0] to parts[1] else null
             }.toMap()
         playMovieStream(MovieBox.Movie(title = title), url, headers, position)
+    }
+
+    // ---- Geo Dramas (v17) ----
+    //
+    // A full-screen section beside Live TV (same overlay pattern as
+    // Movies): Har Pal Geo drama list (thumbnail + episode count + latest
+    // episode) → episode list (newest first) → Play in the main player.
+    // The list shows immediately in playlists-tab order; a background pass
+    // fetches each drama's latest-episode date and re-sorts, so the drama
+    // with the newest episode sits on top. New episodes appear by
+    // themselves: the section re-reads YouTube (6h disk cache) whenever it
+    // is opened after the cache expires, and Refresh forces a fresh read.
+    // All GeoDramas calls run off the main thread; stale results are
+    // dropped with a per-request counter, the same pattern as playEmbed.
+
+    private fun buildDramasView(): LinearLayout {
+        val view = column().apply {
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(bg0, bg1, bg2),
+            )
+            isClickable = true
+            isFocusable = true
+            visibility = View.GONE
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(button("‹ Live TV") { closeDramas() },
+            LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(12) })
+        // Har Pal Geo avatar (loaded from YouTube) over a "G" tile fallback.
+        val avatarTile = FrameLayout(this)
+        val avatarInitial = TextView(this).apply {
+            text = "G"
+            textSize = if (isTv) 20f else 18f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = shape(glassHi, glassHi, 12)
+        }
+        avatarTile.addView(avatarInitial, FrameLayout.LayoutParams(-1, -1))
+        dramaAvatar = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
+        avatarTile.addView(dramaAvatar, FrameLayout.LayoutParams(-1, -1))
+        header.addView(avatarTile, LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+            marginEnd = dp(10)
+        })
+        header.addView(label("Geo Dramas", if (isTv) 26 else 22, textColor).apply {
+            setTypeface(null, Typeface.BOLD)
+            letterSpacing = 0.02f
+        })
+        view.addView(header)
+        // Now-playing bar: when an episode is already playing, the section
+        // says so and offers a shortcut back to the player.
+        dramaNowPlayingBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = glassShape(16)
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            visibility = View.GONE
+        }
+        dramaNowPlayingLabel = TextView(this).apply {
+            textSize = if (isTv) 15f else 14f
+            setTextColor(textColor)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        dramaNowPlayingBar.addView(dramaNowPlayingLabel, LinearLayout.LayoutParams(0, -2, 1f))
+        dramaNowPlayingBar.addView(button("▶ Player") { closeDramas() },
+            LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
+        view.addView(dramaNowPlayingBar, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(10)
+        })
+
+        // ---- Drama list pane ----
+        dramasListPane = column()
+        val statusRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        dramaStatus = label("Geo ke latest dramas — Har Pal Geo (YouTube).", if (isTv) 15 else 13, muted)
+        statusRow.addView(dramaStatus, LinearLayout.LayoutParams(0, -2, 1f))
+        statusRow.addView(button("↻ Refresh") { loadDramas(forceRefresh = true) },
+            LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
+        dramasListPane.addView(statusRow, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(12)
+            bottomMargin = dp(4)
+        })
+        dramaProgress = ProgressBar(this).apply {
+            visibility = View.GONE
+            indeterminateTintList = ColorStateList.valueOf(cyan)
+        }
+        dramasListPane.addView(dramaProgress, LinearLayout.LayoutParams(-2, -2).apply {
+            topMargin = dp(8)
+            bottomMargin = dp(8)
+        })
+        dramaResults = column()
+        dramaResultsScroll = ScrollView(this).apply { addView(dramaResults) }
+        dramasListPane.addView(dramaResultsScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        view.addView(dramasListPane, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        // ---- Episodes pane ----
+        dramasEpisodesPane = column().apply { visibility = View.GONE }
+        dramasEpisodesPane.addView(button("‹ Dramas") { showDramasList() },
+            LinearLayout.LayoutParams(-2, -2).apply {
+                topMargin = dp(12)
+                bottomMargin = dp(4)
+            })
+        dramaEpisodesTitle = TextView(this).apply {
+            textSize = if (isTv) 24f else 20f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(textColor)
+        }
+        dramasEpisodesPane.addView(dramaEpisodesTitle)
+        dramaEpisodesMeta = label("", if (isTv) 15 else 13, muted)
+        dramasEpisodesPane.addView(dramaEpisodesMeta)
+        dramaEpisodesStatus = label("", if (isTv) 15 else 13, muted)
+        dramasEpisodesPane.addView(dramaEpisodesStatus)
+        dramaEpisodesList = column()
+        dramaEpisodesScroll = ScrollView(this).apply { addView(dramaEpisodesList) }
+        dramasEpisodesPane.addView(dramaEpisodesScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        view.addView(dramasEpisodesPane, LinearLayout.LayoutParams(-1, 0, 1f))
+        return view
+    }
+
+    private fun openDramas() {
+        dramasOpen = true
+        dramasView.visibility = View.VISIBLE
+        // Now-playing bar: show it only when an episode is actually playing.
+        val drama = playingDrama
+        if (drama != null) {
+            dramaNowPlayingLabel.text = "▶ Abhi chal raha hai: $playingDramaTitle — ${drama.shortTitle}"
+            dramaNowPlayingBar.visibility = View.VISIBLE
+        } else {
+            dramaNowPlayingBar.visibility = View.GONE
+        }
+        showDramasList()
+        // Reload when the in-memory list is stale (6h, matching the disk
+        // cache) so new episodes show up by themselves day after day.
+        if (currentDramas.isEmpty() ||
+            System.currentTimeMillis() - dramasLoadedAt > DRAMA_REFRESH_AFTER_MS) {
+            loadDramas()
+        } else {
+            loadDramaAvatar()
+        }
+    }
+
+    private fun closeDramas() {
+        dramasOpen = false
+        dramasView.visibility = View.GONE
+        // An episode keeps playing underneath when the browser is closed.
+        list.getChildAt(0)?.requestFocus()
+    }
+
+    private fun showDramasList() {
+        dramasEpisodesPane.visibility = View.GONE
+        dramasListPane.visibility = View.VISIBLE
+        dramaResults.getChildAt(0)?.requestFocus()
+    }
+
+    private fun showDramaEpisodesPane() {
+        dramasListPane.visibility = View.GONE
+        dramasEpisodesPane.visibility = View.VISIBLE
+    }
+
+    /** Loads the Har Pal Geo avatar into the header icon (parsed from the
+     * playlists response — no extra request). No-op until dramas() ran once. */
+    private fun loadDramaAvatar() {
+        val url = geoDramas.channelAvatarUrl
+        if (url.isNotEmpty()) LogoLoader.load(this, url, dramaAvatar)
+    }
+
+    private fun loadDramas(forceRefresh: Boolean = false) {
+        val request = ++dramaListRequest
+        dramaProgress.visibility = View.VISIBLE
+        dramaStatus.text = "Dramas load ho rahe hain…"
+        dramaResults.removeAllViews()
+        imports.execute {
+            try {
+                if (forceRefresh) geoDramas.clearCache()
+                val dramas = geoDramas.dramas()
+                runOnUiThread {
+                    if (isDestroyed || request != dramaListRequest) return@runOnUiThread
+                    dramaProgress.visibility = View.GONE
+                    loadDramaAvatar()
+                    if (dramas.isEmpty()) {
+                        dramaStatus.text = "Dramas nahi mile — internet check karke Refresh dabayein."
+                    } else {
+                        currentDramas = dramas
+                        dramasLoadedAt = System.currentTimeMillis()
+                        dramaStatus.text = "${dramas.size} dramas — sab se nayi episode wala upar aayega."
+                        showDramaRows(dramas)
+                        refreshDramaDates(request)
+                    }
+                }
+            } catch (error: IOException) {
+                runOnUiThread {
+                    if (isDestroyed || request != dramaListRequest) return@runOnUiThread
+                    dramaProgress.visibility = View.GONE
+                    dramaStatus.text = "Dramas nahi mile: ${error.message}"
+                }
+            }
+        }
+    }
+
+    /**
+     * Background re-sort: fetches each drama's latest-episode date (one
+     * playlist page per drama — each fetch also warms that drama's episode
+     * cache, so opening it later is instant) and re-sorts the list once,
+     * newest episode on top. Runs on the dedicated `dramaDates` executor
+     * so it never blocks a user's episode tap. The list only rebuilds when
+     * the order actually changed, so D-pad focus is not disturbed.
+     */
+    private fun refreshDramaDates(listRequest: Int) {
+        val request = ++dramaDatesRequest
+        dramaDates.execute {
+            val dated = mutableListOf<GeoDramas.Drama>()
+            for (drama in currentDramas) {
+                if (isDestroyed || request != dramaDatesRequest || listRequest != dramaListRequest) return@execute
+                val episodes = geoDramas.episodes(drama.playlistId)
+                val latestMs = episodes.maxOfOrNull { it.publishedMs } ?: 0L
+                val latest = episodes.firstOrNull()
+                val label = when {
+                    latest == null -> ""
+                    latest.dateLabel.isNotEmpty() -> "${latest.shortTitle} · ${latest.dateLabel}"
+                    else -> latest.shortTitle
+                }
+                dated += drama.copy(latestMs = latestMs, latestLabel = label)
+            }
+            runOnUiThread {
+                if (isDestroyed || request != dramaDatesRequest || listRequest != dramaListRequest) return@runOnUiThread
+                val before = currentDramas.map { it.playlistId }
+                currentDramas = dated.sortedWith(
+                    compareByDescending<GeoDramas.Drama> { it.latestMs > 0 }
+                        .thenByDescending { it.latestMs },
+                )
+                if (dramasOpen && dramasListPane.visibility == View.VISIBLE &&
+                    currentDramas.map { it.playlistId } != before) {
+                    showDramaRows(currentDramas)
+                }
+            }
+        }
+    }
+
+    private fun showDramaRows(dramas: List<GeoDramas.Drama>) {
+        dramaResults.removeAllViews()
+        for (drama in dramas) {
+            dramaResults.addView(dramaRow(drama), LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(4)
+            })
+        }
+        dramaResultsScroll.post { dramaResultsScroll.scrollTo(0, 0) }
+        dramaResults.getChildAt(0)?.requestFocus()
+    }
+
+    /** Glass drama card: 16:9 thumbnail (letter tile behind it while it
+     * loads), bold title, episode count + latest-episode label. */
+    private fun dramaRow(drama: GeoDramas.Drama): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isFocusable = true
+            isClickable = true
+            minimumHeight = dp(if (isTv) 96 else 88)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = rowBackground(false)
+            elevation = dp(3).toFloat()
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { openDramaEpisodes(drama) }
+        }
+        val thumbWidth = dp(if (isTv) 144 else 128)
+        val thumbHeight = dp(if (isTv) 81 else 72)
+        val tileView = FrameLayout(this)
+        val initial = TextView(this).apply {
+            text = drama.title.take(1).uppercase()
+            textSize = if (isTv) 22f else 20f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = shape(glassHi, glassHi, 12)
+        }
+        tileView.addView(initial, FrameLayout.LayoutParams(-1, -1))
+        if (drama.thumbnailUrl.isNotEmpty()) {
+            val thumbView = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+            }
+            tileView.addView(thumbView, FrameLayout.LayoutParams(-1, -1))
+            LogoLoader.load(this, drama.thumbnailUrl, thumbView)
+        }
+        row.addView(tileView, LinearLayout.LayoutParams(thumbWidth, thumbHeight))
+        val texts = column()
+        texts.addView(TextView(this).apply {
+            text = drama.title
+            textSize = if (isTv) 17f else 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(textColor)
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        })
+        val metaParts = mutableListOf<String>()
+        if (drama.episodeCount > 0) metaParts += "${drama.episodeCount} episodes"
+        if (drama.latestLabel.isNotEmpty()) metaParts += drama.latestLabel
+        if (metaParts.isNotEmpty()) {
+            texts.addView(TextView(this).apply {
+                text = metaParts.joinToString(" · ")
+                textSize = 13f
+                setTextColor(muted2)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            })
+        }
+        row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            marginStart = dp(12)
+        })
+        return row
+    }
+
+    private fun openDramaEpisodes(drama: GeoDramas.Drama) {
+        val request = ++dramaEpisodesRequest
+        dramaEpisodesTitle.text = drama.title
+        dramaEpisodesMeta.text =
+            if (drama.episodeCount > 0) "${drama.episodeCount} episodes" else ""
+        dramaEpisodesStatus.text = "Episodes load ho rahe hain…"
+        dramaEpisodesList.removeAllViews()
+        showDramaEpisodesPane()
+        imports.execute {
+            val episodes = geoDramas.episodes(drama.playlistId)
+            runOnUiThread {
+                if (isDestroyed || request != dramaEpisodesRequest) return@runOnUiThread
+                if (episodes.isEmpty()) {
+                    dramaEpisodesStatus.text = "Episodes nahi mile — internet check karke dobara kholein."
+                } else {
+                    dramaEpisodesStatus.text = "${episodes.size} episodes — sab se nayi upar hai."
+                    showDramaEpisodes(drama, episodes)
+                }
+            }
+        }
+    }
+
+    private fun showDramaEpisodes(drama: GeoDramas.Drama, episodes: List<GeoDramas.Episode>) {
+        dramaEpisodesList.removeAllViews()
+        for (episode in episodes) {
+            dramaEpisodesList.addView(episodeRow(drama, episode), LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(4)
+            })
+        }
+        dramaEpisodesScroll.post { dramaEpisodesScroll.scrollTo(0, 0) }
+        dramaEpisodesList.getChildAt(0)?.requestFocus()
+    }
+
+    /** Glass episode card: small 16:9 thumbnail, "Episode N", air date +
+     * views. Tap plays the episode in the main player. */
+    private fun episodeRow(drama: GeoDramas.Drama, episode: GeoDramas.Episode): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isFocusable = true
+            isClickable = true
+            minimumHeight = dp(if (isTv) 80 else 72)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = rowBackground(false)
+            elevation = dp(3).toFloat()
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { playDramaEpisode(drama, episode) }
+        }
+        val thumbWidth = dp(if (isTv) 112 else 104)
+        val thumbHeight = dp(if (isTv) 63 else 59)
+        val tileView = FrameLayout(this)
+        val initial = TextView(this).apply {
+            text = episode.shortTitle.take(1).uppercase()
+            textSize = if (isTv) 20f else 18f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = shape(glassHi, glassHi, 12)
+        }
+        tileView.addView(initial, FrameLayout.LayoutParams(-1, -1))
+        val thumbView = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
+        tileView.addView(thumbView, FrameLayout.LayoutParams(-1, -1))
+        LogoLoader.load(this, "https://i.ytimg.com/vi/${episode.videoId}/hqdefault.jpg", thumbView)
+        row.addView(tileView, LinearLayout.LayoutParams(thumbWidth, thumbHeight))
+        val texts = column()
+        texts.addView(TextView(this).apply {
+            text = episode.shortTitle
+            textSize = if (isTv) 16f else 15f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(textColor)
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        })
+        val metaParts = mutableListOf<String>()
+        if (episode.dateLabel.isNotEmpty()) metaParts += episode.dateLabel
+        if (episode.views.isNotEmpty()) metaParts += episode.views
+        if (metaParts.isNotEmpty()) {
+            texts.addView(TextView(this).apply {
+                text = metaParts.joinToString(" · ")
+                textSize = 13f
+                setTextColor(muted2)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            })
+        }
+        row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            marginStart = dp(12)
+        })
+        return row
+    }
+
+    private fun playDramaEpisode(drama: GeoDramas.Drama, episode: GeoDramas.Episode) {
+        closeDramas()
+        startDramaPlayback(episode, drama.title)
+    }
+
+    /**
+     * Plays a drama episode in the main player, with the same setup as
+     * [play] but without touching the channel store: no recent entry, no
+     * last-channel — an episode is not a channel. The episode plays as a
+     * WebView embed (loop off, so it ends instead of replaying), and the
+     * ExoPlayer controls stay hidden exactly as for web channels.
+     */
+    private fun startDramaPlayback(episode: GeoDramas.Episode, dramaTitle: String) {
+        // An episode replaces a movie — save the movie's place first.
+        saveMovieProgress(async = false)
+        stopWeb()
+        selected = null
+        playingMovie = null
+        playingMovieUrl = null
+        playingMovieHeaders = emptyMap()
+        playingDrama = episode
+        playingDramaTitle = dramaTitle
+        setDramaMeta(episode, dramaTitle)
+        val showBars = !(fullScreen && !isTv)
+        quickActions.visibility = if (showBars) View.VISIBLE else View.GONE
+        infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
+        playPauseButton.text = "❚❚"
+        mutedVolume = false
+        muteButton.text = if (store.volume == 0f) "🔇" else "🔊"
+        volumeSeekBar.progress = (store.volume * 100).toInt()
+        speed = 1f
+        playerController?.setSpeed(1f)
+        setSpeedText("1x")
+        videoOptions = emptyList()
+        selectedVideoIndex = -1
+        seekable = false
+        stopSeekUpdates()
+        updateFavoriteButton()
+        applyControlVisibility()
+        markPlayingRow()
+        playerController?.stop()
+        playEmbed(episode.videoId, loop = false)
+        bringPlayerOverlaysToFront()
+        showPlayerControls()
+    }
+
+    private fun setDramaMeta(episode: GeoDramas.Episode, dramaTitle: String) {
+        val name = "$dramaTitle — ${episode.shortTitle}"
+        metaName.text = name
+        infoName.text = name
+        metaCategory.text = "Geo Dramas"
+        metaCategory.visibility = View.VISIBLE
+        metaLiveBadge.visibility = View.GONE
+        infoLiveBadge.visibility = View.GONE
     }
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
@@ -2996,11 +3828,17 @@ class MainActivity : Activity() {
     companion object {
         private const val PAGE_SIZE = 60
         private const val AUTO_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000L
+        private const val DRAMA_REFRESH_AFTER_MS = 6 * 60 * 60 * 1000L
         private const val CONTROLS_HIDE_DELAY_MS = 3000L
         private const val STATE_FULLSCREEN = "fullscreen"
         private const val STATE_MOVIE_URL = "movie_url"
         private const val STATE_MOVIE_TITLE = "movie_title"
         private const val STATE_MOVIE_POS = "movie_pos"
         private const val STATE_MOVIE_HEADERS = "movie_headers"
+        // Continue Watching: ignore positions under 5s (a fresh start is
+        // not "continue watching"), and save every 20 seek ticks (20 ×
+        // 500ms ≈ 10s) while a movie plays.
+        private const val MIN_SAVE_POSITION_MS = 5_000L
+        private const val MOVIE_PROGRESS_SAVE_TICKS = 20
     }
 }

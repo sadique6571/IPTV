@@ -99,6 +99,11 @@ internal object Playlist {
     private fun embedSource(uri: URI): String? {
         val host = uri.host.lowercase(Locale.ROOT).removePrefix("www.").removePrefix("m.")
         val path = uri.path.orEmpty().trim('/').split('/')
+        // Generic web-player embeds (CricHD's playsza.st player pages):
+        // the URL itself is the embed — playEmbed loads it in the WebView
+        // as-is. Only this host is allowlisted (see playEmbed's client),
+        // so a rotated embed host needs a one-line change there too.
+        if (host == "playsza.st") return "web:$uri"
         if (host == "dai.ly" || host == "dailymotion.com") {
             val id = if (host == "dai.ly") path.first() else path.last()
             if (id.matches(Regex("[A-Za-z0-9]{5,12}"))) return "dm:$id"
@@ -137,6 +142,7 @@ internal object Playlist {
 
     fun serializedUrl(channel: Channel): String = when {
         !channel.web -> channel.url
+        channel.url.startsWith("web:") -> channel.url.substringAfter(':')
         channel.url.startsWith("dm:") -> "https://www.dailymotion.com/video/${channel.url.substringAfter(':')}"
         channel.url.startsWith("yt-live:") -> "https://www.youtube.com/${channel.url.substringAfter(':')}"
         channel.url.startsWith("yt-channel:") -> "https://www.youtube.com/channel/${channel.url.substringAfter(':')}/live"
