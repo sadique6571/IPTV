@@ -20,7 +20,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * MovieBox movie resolver (v1 — movies only, no series).
+ * MovieBox movie + series resolver (v2.0.27 adds series).
  *
  * MovieBox is an aggregator: it hosts nothing, it resolves a playable file
  * per title at play time. Its links are signed and expire within hours, so
@@ -32,8 +32,8 @@ import org.json.JSONObject
  *
  * How a movie becomes playable:
  *  1. Visitor login (no account) → JWT, valid 7 days, kept in prefs.
- *  2. Search → subjects (movies with hasResource only; series, adult and
- *     CAM titles filtered out).
+ *  2. Search → subjects (movies + series with hasResource only; adult
+ *     and CAM titles filtered out).
  *  3. Details → dubs (Hindi is usually a separate subject), subtitles,
  *     resourceDetectors (the real signed mp4 files, one per resolution).
  *  4. play-info/v2 → DASH manifest (decoded from the signCookie policy) or
@@ -59,7 +59,19 @@ internal class MovieBox(context: Context) {
         val year: String = "",
         val posterUrl: String = "",
         val isHindi: Boolean = false,
+        val isSeries: Boolean = false,
     )
+
+    /** One season of a series, with its episodes (titles when the API gives them). */
+    data class Season(
+        val number: Int,
+        val name: String = "",
+        val episodes: List<EpisodeRef> = emptyList(),
+    ) {
+        val episodeCount: Int get() = episodes.size
+    }
+
+    data class EpisodeRef(val number: Int, val title: String = "")
 
     data class Dub(val subjectId: String, val language: String, val label: String)
 
@@ -90,7 +102,7 @@ internal class MovieBox(context: Context) {
         val label: String get() = if (resolution > 0) "${resolution}p" else "Auto"
     }
 
-    /** A title the app refuses to show (adult, CAM, or series in v1). */
+    /** A title the app refuses to show (adult or CAM). */
     class BlockedException(message: String) : IOException(message)
 
     private class AuthException(message: String) : IOException(message)
@@ -150,7 +162,6 @@ internal class MovieBox(context: Context) {
         val data = request("GET", "$BASE/subject-api/get?subjectId=${urlEncode(subjectId)}", null)
         val subject = data.optJSONObject("subject") ?: data
         val stype = subject.optLong("subjectType", subject.optLong("stype", 1))
-        if (stype == 2L) throw BlockedException("Series abhi is version mein nahi hain.")
         val title = subject.optString("title", "Unknown")
         val genres = stringList(subject, "genre", "genres")
         if (genres.any { isAdultGenre(it) }) {
@@ -189,6 +200,7 @@ internal class MovieBox(context: Context) {
                 year = extractYear(subject.optString("releaseDate", subject.optString("year", ""))),
                 posterUrl = poster.orEmpty(),
                 isHindi = title.contains("hindi", ignoreCase = true),
+                isSeries = stype == 2L,
             ),
             description = subject.optString("description", subject.optString("intro", "")),
             rating = rating,
@@ -313,13 +325,14 @@ internal class MovieBox(context: Context) {
 
     // ---- Parsing ----
 
-    private fun parseSearchMovie(s: JSONObject?): Movie? {
+    internal fun parseSearchMovie(s: JSONObject?): Movie? {
         if (s == null) return null
         val id = idString(s, "subjectId", "id").orEmpty()
         if (id.isEmpty()) return null
-        // v1 is movies only — series (subjectType 2) are not shown.
+        // Movies (subjectType 1) and series (subjectType 2) both show;
+        // anything else (shorts, games) is not a title this app plays.
         val stype = s.optLong("subjectType", s.optLong("stype", 1))
-        if (stype != 1L) return null
+        if (stype != 1L && stype != 2L) return null
         if (!s.optBoolean("hasResource", false)) return null
         val title = s.optString("title", s.optString("name", "")).orEmpty()
         if (title.isEmpty()) return null
@@ -337,6 +350,7 @@ internal class MovieBox(context: Context) {
             year = year,
             posterUrl = poster.orEmpty(),
             isHindi = title.contains("hindi", ignoreCase = true),
+            isSeries = stype == 2L,
         )
     }
 
@@ -358,7 +372,7 @@ internal class MovieBox(context: Context) {
         )
     }
 
-    private fun parseResourceItem(item: JSONObject): MovieStream? {
+    internal fun parseResourceItem(item: JSONObject): MovieStream? {
         val url = item.optString("resourceLink", item.optString("url", "")).orEmpty()
         if (url.isEmpty() || isDeprecationNoticeUrl(url)) return null
         val title = item.optString("fileName", item.optString("title", "")).orEmpty()
@@ -373,7 +387,7 @@ internal class MovieBox(context: Context) {
         )
     }
 
-    private fun parsePlayInfoStream(stream: JSONObject?, displayResolutions: String): MovieStream? {
+    internal fun parsePlayInfoStream(stream: JSONObject?, displayResolutions: String): MovieStream? {
         if (stream == null) return null
         val signCookie = stream.optString("signCookie", "").orEmpty()
         val streamUrl = stream.optString("url", "").orEmpty()
@@ -403,7 +417,7 @@ internal class MovieBox(context: Context) {
         )
     }
 
-    private fun recoverResource(
+    internal fun recoverResource(
         subjectId: String,
         resourceId: String,
         failUrl: String,
@@ -524,7 +538,7 @@ internal class MovieBox(context: Context) {
      * instead of the real file. Three known file hashes, the notice name,
      * and the whole macdn /other/ directory are placeholders.
      */
-    private fun isDeprecationNoticeUrl(url: String): Boolean {
+    internal fun isDeprecationNoticeUrl(url: String): Boolean {
         val lower = url.lowercase(Locale.US)
         return "1c7de0bd3393702d9191801f15f88f8d" in lower ||
             "9a0461bc39da389663bf3dbb17091d3f" in lower ||
@@ -533,7 +547,7 @@ internal class MovieBox(context: Context) {
             ("macdn.aoneroom.com" in lower && "/other/" in lower)
     }
 
-    private fun isCamTitle(title: String): Boolean = CAM_TITLE_REGEX.containsMatchIn(title)
+    internal fun isCamTitle(title: String): Boolean = CAM_TITLE_REGEX.containsMatchIn(title)
 
     private fun isAdultTitle(title: String): Boolean = ADULT_TITLE_REGEX.containsMatchIn(title)
 
@@ -597,7 +611,7 @@ internal class MovieBox(context: Context) {
 
     // ---- Signed requests with host rotation ----
 
-    private fun request(method: String, path: String, body: String?): JSONObject {
+    internal fun request(method: String, path: String, body: String?): JSONObject {
         val token = ensureToken()
         try {
             return requestHosts(method, path, body, token)
@@ -822,7 +836,7 @@ internal class MovieBox(context: Context) {
 
     // ---- Small helpers ----
 
-    private fun idString(obj: JSONObject, vararg keys: String): String? {
+    internal fun idString(obj: JSONObject, vararg keys: String): String? {
         for (key in keys) {
             if (!obj.has(key) || obj.isNull(key)) continue
             val value = when (val raw = obj.opt(key)) {
@@ -835,7 +849,7 @@ internal class MovieBox(context: Context) {
         return null
     }
 
-    private fun longValue(obj: JSONObject, key: String): Long {
+    internal fun longValue(obj: JSONObject, key: String): Long {
         if (!obj.has(key) || obj.isNull(key)) return 0
         return when (val raw = obj.opt(key)) {
             is Number -> raw.toLong()
@@ -878,7 +892,7 @@ internal class MovieBox(context: Context) {
         return 0
     }
 
-    private fun urlEncode(value: String): String = try {
+    internal fun urlEncode(value: String): String = try {
         URLEncoder.encode(value, "UTF-8")
     } catch (_: Exception) {
         value
@@ -907,9 +921,9 @@ internal class MovieBox(context: Context) {
     }
 
     companion object {
-        private const val BASE = "/wefeed-mobile-bff"
+        internal const val BASE = "/wefeed-mobile-bff"
         private const val STREAM_REFERER = "https://sportslive.wine"
-        private const val USER_AGENT =
+        internal const val USER_AGENT =
             "com.community.oneroom/50020044 (Linux; U; Android 11; en_US; " +
                 "2201117TY; Build/RP1A.200720.011; Cronet/135.0.7012.3)"
         private const val CERT_SHA256 =

@@ -25,7 +25,14 @@ internal class MovieStore(context: Context) {
         val durationMs: Long,
         val quality: Int,
         val updatedAt: Long,
+        // Series episodes: one entry per series (the latest episode watched).
+        val season: Int = 0,
+        val episode: Int = 0,
+        val isSeries: Boolean = false,
     ) {
+        /** "S1 · E3" for episodes, "" for movies. */
+        val episodeLabel: String
+            get() = if (isSeries && season > 0 && episode > 0) "S$season · E$episode" else ""
         val progress: Float
             get() = if (durationMs > 0) {
                 (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
@@ -110,6 +117,9 @@ internal class MovieStore(context: Context) {
                     durationMs = o.optLong("dur", 0L),
                     quality = o.optInt("q", 0),
                     updatedAt = o.optLong("ts", 0L),
+                    season = o.optInt("se", 0),
+                    episode = o.optInt("ep", 0),
+                    isSeries = o.optBoolean("series", false),
                 )
             }
         } catch (_: Exception) {
@@ -132,6 +142,9 @@ internal class MovieStore(context: Context) {
                         put("dur", e.durationMs)
                         put("q", e.quality)
                         put("ts", e.updatedAt)
+                        put("se", e.season)
+                        put("ep", e.episode)
+                        put("series", e.isSeries)
                     },
                 )
             }
@@ -156,6 +169,7 @@ internal class MovieStore(context: Context) {
                     year = o.optString("year", ""),
                     posterUrl = o.optString("poster", ""),
                     isHindi = o.optBoolean("hindi", false),
+                    isSeries = o.optBoolean("series", false),
                 )
             }
         } catch (_: Exception) {
@@ -175,6 +189,7 @@ internal class MovieStore(context: Context) {
                         put("year", m.year)
                         put("poster", m.posterUrl)
                         put("hindi", m.isHindi)
+                        put("series", m.isSeries)
                     },
                 )
             }
