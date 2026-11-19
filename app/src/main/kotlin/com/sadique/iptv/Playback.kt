@@ -115,7 +115,7 @@ internal fun MainActivity.play(channel: Channel) {
         }
         else -> {
             status.text = "Connecting to stream…"
-            playerController?.play(channel.url)
+            playerController?.play(channel.url, live = true, backup = channelBackups[channel.key])
         }
     }
     // PlayerView (and the WebView) are added to the screen after the

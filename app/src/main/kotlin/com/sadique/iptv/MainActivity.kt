@@ -163,6 +163,14 @@ class MainActivity : Activity() {
     // True once a playing movie has ended (it still counts as the
     // current movie for Retry, but the browse pane comes back).
     internal var movieEnded = false
+    internal val channelBackups by lazy {
+        assets.open("channel-backups.tsv").bufferedReader().useLines { lines ->
+            lines.associate { line ->
+                val (name, primary, alternate) = line.split('\t')
+                (name + "\u0000" + primary) to alternate
+            }
+        }
+    }
     internal var verifiedChannels = emptyList<Channel>()
     internal var playbackRequest = 0
     // YouTube live (yt-live:) tracking: the token to re-resolve when the
@@ -1060,7 +1068,10 @@ class MainActivity : Activity() {
                     }
                 }
                 override fun onPlayingChanged(isPlaying: Boolean) {
-                    if (!isDestroyed) playPauseButton.text = if (isPlaying) "❚❚" else "▶"
+                    if (!isDestroyed) {
+                        playPauseButton.text = if (isPlaying) "❚❚" else "▶"
+                        if (isPlaying) status.text = ""
+                    }
                 }
                 override fun onTracksChanged(
                     options: List<PlayerController.VideoOption>,

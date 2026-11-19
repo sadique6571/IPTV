@@ -79,29 +79,29 @@ internal class ChannelStore(context: Context) {
         if (recent.removeAll { it.url == retiredUrl }) saveFile(recentFile, recent)
         if (lastChannel?.url == retiredUrl) lastChannel = null
 
-        fun oldGeo(channel: Channel?) =
-            channel?.name == "Geo News" && channel.url == "yt-live:@GeoNews/live"
+        fun needsUpdate(channel: Channel?) = channel != null && legacyFeeds[channel.url] == channel.name
 
-        if (favorites.any(::oldGeo) || recent.any(::oldGeo) || oldGeo(lastChannel)) {
-            val replacement = try {
+        if (favorites.any(::needsUpdate) || recent.any(::needsUpdate) || needsUpdate(lastChannel)) {
+            val catalog = try {
                 context.assets.open("verified-channels.m3u").use {
-                    Playlist.parse(Playlist.read(it)).firstOrNull { ch -> ch.name == "Geo News" && !ch.web }
+                    Playlist.parse(Playlist.read(it)).associateBy { ch -> ch.name }
                 }
             } catch (_: IOException) {
-                null
+                emptyMap()
             }
-            if (replacement != null) {
-                fun update(entries: MutableList<Channel>, file: File) {
-                    if (entries.none(::oldGeo)) return
-                    val migrated = entries.map { if (oldGeo(it)) replacement else it }.distinctBy { it.key }
-                    entries.clear()
-                    entries.addAll(migrated)
-                    saveFile(file, entries)
-                }
-                update(favorites, favoritesFile)
-                update(recent, recentFile)
-                if (oldGeo(lastChannel)) lastChannel = replacement
+            fun replace(channel: Channel): Channel =
+                if (needsUpdate(channel)) catalog[channel.name] ?: channel else channel
+
+            fun update(entries: MutableList<Channel>, file: File) {
+                val migrated = entries.map(::replace).distinctBy { it.key }
+                if (entries == migrated) return
+                entries.clear()
+                entries.addAll(migrated)
+                saveFile(file, entries)
             }
+            update(favorites, favoritesFile)
+            update(recent, recentFile)
+            lastChannel?.takeIf(::needsUpdate)?.let { lastChannel = replace(it) }
         }
     }
 
@@ -133,6 +133,21 @@ internal class ChannelStore(context: Context) {
     }
 
     companion object {
+        private val legacyFeeds = mapOf(
+            "https://cdn4.mjunoon.tv:8087/streamtest/166M/chunks.m3u8" to "Green Entertainment",
+            "https://cdn4.mjunoon.tv:8087/streamtest/146M/chunks.m3u8" to "24 News HD",
+            "http://175.107.244.52:4456/play/a06o" to "Geo News",
+            "https://cdn4.mjunoon.tv:8087/streamtest/131M/chunks.m3u8" to "8XM",
+            "http://124.109.47.101/hls/stream1.m3u8" to "aurLife HD",
+            "https://jmp2.uk/stvp-IN46000140Q" to "NH BollyFlix",
+            "https://samitaorigin.tangotv.in/PUNJABITV/SAMITAORIGIN/index.m3u8" to "Punjabi TV",
+            "http://103.86.132.58:9981/stream/channelid/1808607399" to "Hum News HD",
+            "http://103.86.132.58:9981/stream/channelid/1933780354" to "A Sports HD",
+            "http://175.107.244.52:4456/play/a06h" to "Geo Entertainment",
+            "http://175.107.244.52:4456/play/a042" to "PTV Sports HD",
+            "http://175.107.244.52:4456/play/a05v" to "Ten Sports Pakistan",
+            "yt-live:@GeoNews/live" to "Geo News",
+        )
         private const val MAX_RECENT = 20
         private const val KEY_LAST_CHANNEL = "last_channel"
         private const val KEY_VOLUME = "volume"

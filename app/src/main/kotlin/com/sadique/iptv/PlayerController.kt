@@ -55,22 +55,40 @@ internal class PlayerController(
     // player's HTTP data source factory, so a header change rebuilds the
     // player; plain channel switches (no headers) reuse the same player.
     private var currentHeaders: Map<String, String> = emptyMap()
+    private var liveChannel = false
+    private var backupUrl: String? = null
+    private val bufferTimeout = Runnable {
+        if (player?.playbackState == Player.STATE_BUFFERING && player?.playWhenReady == true) useBackup()
+    }
+    private var bufferEvents = 0
+    private val stablePlayback = Runnable {
+        retryCount = 0
+        bufferEvents = 0
+    }
     private var retryCount = 0
     private var triedHlsFallback = false
     private val retryHandler = Handler(Looper.getMainLooper())
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(state: Int) {
+            retryHandler.removeCallbacks(bufferTimeout)
             when (state) {
-                Player.STATE_BUFFERING -> events.onBuffering(true)
+                Player.STATE_BUFFERING -> {
+                    events.onBuffering(true)
+                    if (backupUrl != null) {
+                        bufferEvents++
+                        retryHandler.postDelayed(bufferTimeout, if (bufferEvents >= 4) 0L else 20_000L)
+                    }
+                }
                 Player.STATE_READY -> {
                     events.onBuffering(false)
-                    retryCount = 0
                     reportSeekable()
                 }
                 Player.STATE_ENDED -> {
                     events.onBuffering(false)
-                    events.onEnded()
+                    if (liveChannel && player?.playWhenReady == true) {
+                        if (!useBackup()) reconnectLive()
+                    } else events.onEnded()
                 }
                 Player.STATE_IDLE -> events.onBuffering(false)
             }
@@ -85,6 +103,8 @@ internal class PlayerController(
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            retryHandler.removeCallbacks(stablePlayback)
+            if (isPlaying) retryHandler.postDelayed(stablePlayback, 30_000L)
             events.onPlayingChanged(isPlaying)
         }
     }
@@ -93,17 +113,21 @@ internal class PlayerController(
 
     fun isPlaying(): Boolean = player?.isPlaying == true
 
-    fun play(url: String, headers: Map<String, String> = emptyMap()) {
+    fun play(url: String, headers: Map<String, String> = emptyMap(), live: Boolean = false, backup: String? = null) {
         retryHandler.removeCallbacksAndMessages(null)
         if (headers != currentHeaders) {
             currentHeaders = headers
             stop()
         }
+        bufferEvents = 0
+        liveChannel = live
+        backupUrl = backup
         currentUrl = url
         retryCount = 0
         triedHlsFallback = false
         ensurePlayer()
         val active = player ?: return
+        selectTrack(null)
         active.setMediaItem(mediaItemFor(url))
         active.prepare()
         active.playWhenReady = true
@@ -124,7 +148,7 @@ internal class PlayerController(
     /** Returns true when playback is running after the toggle. */
     fun togglePlayPause(): Boolean {
         val active = player ?: return false
-        if (active.isPlaying) active.pause() else active.play()
+        if (active.playWhenReady) active.pause() else active.play()
         return active.isPlaying
     }
 
@@ -163,6 +187,9 @@ internal class PlayerController(
     /** Releases the player and removes its view. Safe to call repeatedly. */
     fun stop() {
         retryHandler.removeCallbacksAndMessages(null)
+        liveChannel = false
+        backupUrl = null
+        player?.removeListener(playerListener)
         player?.release()
         player = null
         trackSelector = null
@@ -246,6 +273,36 @@ internal class PlayerController(
         events.onSeekableChanged(seekable, if (duration == C.TIME_UNSET) 0L else duration)
     }
 
+    private fun useBackup(): Boolean {
+        val url = backupUrl ?: return false
+        val active = player ?: return false
+        retryHandler.removeCallbacksAndMessages(null)
+        backupUrl = null
+        currentUrl = url
+        triedHlsFallback = false
+        events.onError("Switching to backup feed…")
+        selectTrack(null)
+        active.setMediaItem(mediaItemFor(url))
+        active.prepare()
+        return true
+    }
+
+    private fun reconnectLive() {
+        val active = player ?: return
+        if (retryCount >= MAX_RETRIES) {
+            events.onError("Live feed interrupted. Select the channel to reconnect.")
+            return
+        }
+        val delay = minOf(RETRY_BASE_MS shl retryCount, 16_000L)
+        retryCount++
+        events.onError("Reconnecting to live TV…")
+        retryHandler.postDelayed({
+            if (active.isCurrentMediaItemLive && active.playbackState != Player.STATE_ENDED) active.seekToDefaultPosition()
+            else currentUrl?.let { active.setMediaItem(mediaItemFor(it, triedHlsFallback)) }
+            active.prepare()
+        }, delay)
+    }
+
     private fun handleError(error: PlaybackException) {
         events.onBuffering(false)
         val active = player
@@ -265,6 +322,14 @@ internal class PlayerController(
             active.setMediaItem(mediaItemFor(url, forceHls = true))
             active.prepare()
             active.playWhenReady = true
+            return
+        }
+        if (liveChannel) {
+            if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && retryCount == 0) {
+                reconnectLive()
+            } else if (!useBackup()) {
+                reconnectLive()
+            }
             return
         }
         if (retryCount < MAX_RETRIES) {
