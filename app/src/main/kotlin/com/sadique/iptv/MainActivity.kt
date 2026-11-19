@@ -154,7 +154,6 @@ class MainActivity : Activity() {
     // TV browse levels: the left pane shows either the categories or the
     // channels of the picked category — never both (the old sidebar is
     // gone). Touch devices have no levels; they always stay on CHANNELS.
-    internal enum class BrowseLevel { CATEGORIES, CHANNELS }
     internal var browseLevel = BrowseLevel.CHANNELS
     internal lateinit var categoryListScroll: ScrollView // TV only
     // True once a playing movie has ended (it still counts as the
@@ -1580,14 +1579,7 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        internal const val AUTO_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000L
-        internal const val DRAMA_REFRESH_AFTER_MS = 6 * 60 * 60 * 1000L
-        internal const val CONTROLS_HIDE_DELAY_MS = 3000L
         private const val STATE_FULLSCREEN = "fullscreen"
-        internal const val STATE_MOVIE_URL = "movie_url"
-        internal const val STATE_MOVIE_TITLE = "movie_title"
-        internal const val STATE_MOVIE_POS = "movie_pos"
-        internal const val STATE_MOVIE_HEADERS = "movie_headers"
         private const val STATE_DRAMA_VIDEO = "drama_video"
         private const val STATE_DRAMA_TITLE = "drama_title"
         private const val STATE_DRAMA_EPISODE = "drama_episode"
@@ -1595,11 +1587,26 @@ class MainActivity : Activity() {
         // YouTube live re-resolve poll: while a yt-live channel plays,
         // re-check /live this often and rejoin when the video ID changes
         // (the broadcaster restarted the stream).
-        internal const val YT_LIVE_POLL_MS = 5 * 60 * 1000L
         // Continue Watching: ignore positions under 5s (a fresh start is
         // not "continue watching"), and save every 20 seek ticks (20 ×
         // 500ms ≈ 10s) while a movie plays.
-        internal const val MIN_SAVE_POSITION_MS = 5_000L
         private const val MOVIE_PROGRESS_SAVE_TICKS = 20
     }
 }
+
+// Top-level (package) scope: the split extension files (Playback,
+// ChannelBrowser, MovieDetails, DramasSection, PlaylistDialogs) use these
+// bare. Companion-object members are NOT visible bare from extension
+// functions in other files — that is why CI failed with 26 unresolved
+// references. The private consts stay in the companion object.
+internal enum class BrowseLevel { CATEGORIES, CHANNELS }
+
+internal const val AUTO_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000L
+internal const val DRAMA_REFRESH_AFTER_MS = 6 * 60 * 60 * 1000L
+internal const val CONTROLS_HIDE_DELAY_MS = 3000L
+internal const val STATE_MOVIE_URL = "movie_url"
+internal const val STATE_MOVIE_TITLE = "movie_title"
+internal const val STATE_MOVIE_POS = "movie_pos"
+internal const val STATE_MOVIE_HEADERS = "movie_headers"
+internal const val YT_LIVE_POLL_MS = 5 * 60 * 1000L
+internal const val MIN_SAVE_POSITION_MS = 5_000L

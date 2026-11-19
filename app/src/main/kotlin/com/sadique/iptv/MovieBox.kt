@@ -921,11 +921,7 @@ internal class MovieBox(context: Context) {
     }
 
     companion object {
-        internal const val BASE = "/wefeed-mobile-bff"
         private const val STREAM_REFERER = "https://sportslive.wine"
-        internal const val USER_AGENT =
-            "com.community.oneroom/50020044 (Linux; U; Android 11; en_US; " +
-                "2201117TY; Build/RP1A.200720.011; Cronet/135.0.7012.3)"
         private const val CERT_SHA256 =
             "03d4b741632d136bc23e2de4c6adcdb7712f1980b619c183221801730bbd0410"
         private const val MAX_RESPONSE_BYTES = 4 * 1024 * 1024
@@ -967,3 +963,11 @@ internal class MovieBox(context: Context) {
         )
     }
 }
+
+// Top-level (package) scope: MovieBoxFeeds / MovieBoxSeries use these bare.
+// Companion-object members are NOT visible bare from extension functions in
+// other files (CI: unresolved references). Private consts stay in the companion.
+internal const val BASE = "/wefeed-mobile-bff"
+internal const val USER_AGENT =
+    "com.community.oneroom/50020044 (Linux; U; Android 11; en_US; " +
+        "2201117TY; Build/RP1A.200720.011; Cronet/135.0.7012.3)"
