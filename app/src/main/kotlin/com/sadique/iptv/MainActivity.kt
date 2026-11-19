@@ -806,7 +806,7 @@ class MainActivity : Activity() {
             setPadding(dp(10), dp(10), dp(10), dp(10))
             background = overlayButtonBackground()
             setOnClickListener {
-                setFullScreen(!fullScreen)
+                applyFullScreen(!fullScreen)
                 showPlayerControls()
             }
         }
@@ -1169,7 +1169,7 @@ class MainActivity : Activity() {
         }
     }
 
-    internal fun setFullScreen(enabled: Boolean) {
+    internal fun applyFullScreen(enabled: Boolean) {
         if (fullScreen == enabled) return
         fullScreen = enabled
         if (!isTv) {
@@ -1239,7 +1239,7 @@ class MainActivity : Activity() {
 
     /**
      * Applies the current [fullScreen] state to the UI. Called from
-     * [setFullScreen] and from onCreate when restoring after a process death.
+     * [applyFullScreen] and from onCreate when restoring after a process death.
      * Touch devices get real fullscreen: immersive system UI, and only the
      * player on screen (the landscape layout already lets it fill the pane).
      * The on-video overlay — including the fullscreen toggle — stays visible
@@ -1421,7 +1421,7 @@ class MainActivity : Activity() {
                 closeMovies()
             }
         } else if (fullScreen) {
-            setFullScreen(false)
+            applyFullScreen(false)
         } else if (query.isNotEmpty()) {
             // Back from a search restores the full list (task 2) — the user
             // is never stuck on a filtered (or empty) result.

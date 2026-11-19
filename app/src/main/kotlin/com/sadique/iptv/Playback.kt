@@ -70,7 +70,7 @@ internal fun MainActivity.play(channel: Channel) {
     if (channel.key == selected?.key &&
         ((channel.web && web != null) || playerController?.isPlaying() == true)) {
         focusChannel(channel)
-        if (!fullScreen) setFullScreen(true)
+        if (!fullScreen) applyFullScreen(true)
         return
     }
     // Switching to a channel must not lose the movie's place in

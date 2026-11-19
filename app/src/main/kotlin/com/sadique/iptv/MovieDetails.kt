@@ -123,7 +123,7 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry) {
                     episodeSeason = if (entry.isSeries) entry.season else 0,
                     episodeNumber = if (entry.isSeries) entry.episode else 0,
                 )
-                setFullScreen(true)
+                applyFullScreen(true)
             }
         } catch (error: IOException) {
             runOnUiThread {
@@ -549,7 +549,7 @@ internal fun MainActivity.playSelectedMovie() {
         episodeSeason = if (isSeries) selectedSeason else 0,
         episodeNumber = if (isSeries) selectedEpisode else 0,
     )
-    setFullScreen(true)
+    applyFullScreen(true)
 }
 
 
