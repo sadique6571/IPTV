@@ -186,6 +186,7 @@ class MainActivity : Activity() {
     private var allowMainFrameHosts: Set<String> = emptySet()
     private val ytLivePollRunnable = Runnable { pollYtLive() }
     private var fullScreen = false
+    private var highlightedRow: View? = null
     private var currentMatches = emptyList<Channel>()
     // Pakistani entertainment channels pinned to the top of the All /
     // General lists in the user's own order — 1-5 are his picks, the
@@ -587,7 +588,14 @@ class MainActivity : Activity() {
             bottomMargin = dp(4)
         })
         list = column()
-        listScroll = ScrollView(this).apply { addView(list) }
+        listScroll = ScrollView(this).apply {
+            addView(list)
+            setOnScrollChangeListener { _, _, y, _, oldY ->
+                if (y > oldY && list.height - y < height * 2) {
+                    appendChannelRows(list.childCount + 12)
+                }
+            }
+        }
         left.addView(listScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         if (!isTv) {
             // Touch: the action buttons live under the list (the narrow
@@ -1211,6 +1219,8 @@ class MainActivity : Activity() {
      * (filter/search changes). */
     private fun populate(preserveScroll: Boolean = false) {
         val savedScrollY = if (preserveScroll) listScroll.scrollY else 0
+        val previousRowCount = list.childCount
+        highlightedRow = null
         list.removeAllViews()
         // Search clear row (task 2): always visible while a query is active,
         // so there is always a way back to the full list — but only on the
@@ -1278,12 +1288,7 @@ class MainActivity : Activity() {
         }
         catalogTitle.text = "$sourceName · ${matches.size}" +
             if (query.isEmpty()) "" else " · $query"
-        matches.forEach { channel ->
-            list.addView(channelRow(channel), LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(if (isTv) 3 else 5)
-                bottomMargin = dp(if (isTv) 3 else 5)
-            })
-        }
+        appendChannelRows(if (preserveScroll) maxOf(previousRowCount, 16) else 16)
         if (matches.isEmpty()) {
             if (query.isNotEmpty()) {
                 // No-result state (task 2): say so AND offer the way back —
@@ -1580,10 +1585,23 @@ class MainActivity : Activity() {
         showPlayerControls()
     }
 
+    private fun appendChannelRows(limit: Int) {
+        for (index in list.childCount until minOf(limit, currentMatches.size)) {
+            val channel = currentMatches[index]
+            val row = channelRow(channel)
+            list.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(if (isTv) 3 else 5)
+                bottomMargin = topMargin
+            })
+            if (channel.key == selected?.key) highlightedRow = row
+        }
+    }
+
     private fun focusChannel(channel: Channel) {
         // One list, no pages: the row index IS the match index.
         val index = currentMatches.indexOfFirst { it.key == channel.key }
         if (index < 0) return
+        appendChannelRows(index + 1)
         list.getChildAt(index)?.requestFocus()
     }
 
@@ -4258,17 +4276,18 @@ class MainActivity : Activity() {
     /** Highlights the playing row (rows carry the channel key as their tag)
      * and toggles its cyan playing indicator. */
     private fun markPlayingRow() {
-        val playingKey = selected?.key
-        for (index in 0 until list.childCount) {
-            val child = list.getChildAt(index)
-            if (child is LinearLayout) {
-                val key = child.tag as? String ?: continue
-                val playing = key == playingKey
-                child.background = rowBackground(playing)
-                child.findViewWithTag<View>("eq")?.visibility =
-                    if (playing) View.VISIBLE else View.GONE
-            }
+        val key = selected?.key
+        val next = key?.let { list.findViewWithTag<View>(it) }
+        if (highlightedRow === next) return
+        highlightedRow?.apply {
+            background = rowBackground(false)
+            findViewWithTag<View>("eq")?.visibility = View.GONE
         }
+        next?.apply {
+            background = rowBackground(true)
+            findViewWithTag<View>("eq")?.visibility = View.VISIBLE
+        }
+        highlightedRow = next
     }
 
     private fun shape(color: Int, stroke: Int, radiusDp: Int = 10, strokeDp: Int = 2) =

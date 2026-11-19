@@ -167,8 +167,8 @@ https://stream.ottlive.co.in/zingabad/index.m3u8
 https://plus.gigabitcdn.net/live-stream/apna-punjab-H3sE/playlist.m3u8
 #EXTINF:-1 group-title="General" tvg-country="CA" tvg-language="pan" tvg-logo="https://i.imgur.com/ArRZRM3.png",Gaunda Punjab TV
 http://cdn6.live247stream.com/gaundapunjab/tv/playlist.m3u8
-#EXTINF:-1 group-title="General" tvg-country="CA" tvg-language="hin" tvg-logo="https://i.imgur.com/reHjjRZ.png",Hyder TV
-https://cdn.live247stream.com/hyder/tv/playlist.m3u8
+#EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd",ARUJ TV
+http://103.86.132.58:9981/stream/channelid/1391980280
 #EXTINF:-1 group-title="General" tvg-country="MY" tvg-language="pan" tvg-logo="https://i.imgur.com/V2jREQ5.png",Okey
 https://d25tgymtnqzu8s.cloudfront.net/smil:okey/playlist.m3u8?id=3
 #EXTINF:-1 group-title="General" tvg-country="CA" tvg-language="pan" tvg-logo="https://upload.wikimedia.org/wikipedia/en/8/88/PTC_Punjabi.png",PTC Punjabi Canada

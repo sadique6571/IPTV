@@ -74,6 +74,11 @@ internal class ChannelStore(context: Context) {
         }
 
     init {
+        val retiredUrl = "https://cdn.live247stream.com/hyder/tv/playlist.m3u8"
+        if (favorites.removeAll { it.url == retiredUrl }) saveFile(favoritesFile, favorites)
+        if (recent.removeAll { it.url == retiredUrl }) saveFile(recentFile, recent)
+        if (lastChannel?.url == retiredUrl) lastChannel = null
+
         fun oldGeo(channel: Channel?) =
             channel?.name == "Geo News" && channel.url == "yt-live:@GeoNews/live"
 
