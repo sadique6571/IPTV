@@ -5,10 +5,10 @@ Free online TV channels for Android TV / Google TV. Kotlin, AndroidX Media3
 
 ## Features
 
-- 200+ checked built-in channels (Pakistani drama, entertainment, news, sports,
+- 100 built-in channels (Pakistani drama, entertainment, news, sports,
   cricket) in `app/src/main/assets/verified-channels.m3u`
 - Media3 ExoPlayer playback: adaptive HLS/DASH, quality selection, playback
-  speed, volume, seek bar on seekable streams
+  speed, system volume, seek bar on movies
 - Channel logos (`tvg-logo`) with a lightweight async loader and cache
 - Favorites, recent channels, and resume-last-channel on launch
 - M3U import (HTTPS URL or local file), multiple saved playlists with

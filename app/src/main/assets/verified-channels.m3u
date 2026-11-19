@@ -189,3 +189,13 @@ https://r2.amml.in/sony-ten-3-hd/live.m3u8
 https://real-vk.proxy.nellaiiptv.com/SDMEDIA/index.m3u8
 #EXTINF:-1 group-title="News" tvg-country="PK" tvg-language="urd" tvg-logo="https://i.ytimg.com/vi/KNvaWHgOBMw/hqdefault.jpg",Express News
 https://www.youtube.com/@ExpressNewspkofficial/live
+#EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd",ARY Zindagi
+http://103.86.132.58:9981/stream/channelid/2101709770
+#EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd",Geo Kahani
+http://175.107.244.52:4456/play/a06i
+#EXTINF:-1 group-title="News" tvg-country="PK" tvg-language="urd",Hum News HD
+http://103.86.132.58:9981/stream/channelid/1808607399
+#EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd",ARY Musik
+http://103.86.132.58:9981/stream/channelid/1567867194
+#EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="urd",A Sports HD
+http://103.86.132.58:9981/stream/channelid/1933780354

@@ -121,10 +121,9 @@ class MainActivity : Activity() {
     private lateinit var infoName: TextView
     // On-video corner buttons (the tiles under the player are gone — the
     // user asked for the buttons ON the screen itself): Favorite
-    // top-right, Retry bottom-left, Quality bottom-right. Speed lives in
+    // top-right and Quality bottom-right. Speed lives in
     // the overlay pill (movies only — channels never need it).
     private lateinit var favButton: Button
-    private lateinit var retryButton: Button
     private lateinit var qualityButton: Button
     private lateinit var speedButton: Button
     private lateinit var seekRow: LinearLayout
@@ -136,8 +135,6 @@ class MainActivity : Activity() {
     private var controlsVisible = true
     private val hideControlsRunnable = Runnable { hidePlayerControls() }
     private lateinit var playPauseButton: Button
-    private lateinit var volumeSeekBar: SeekBar
-    private lateinit var muteButton: Button
     private lateinit var fullscreenButton: ImageButton
     private lateinit var fullscreenIcon: FullscreenIconDrawable
     private lateinit var catalogTitle: TextView
@@ -150,7 +147,6 @@ class MainActivity : Activity() {
     // stays as the second way in).
     private lateinit var paneSearchBar: LinearLayout
     private lateinit var paneSearchLabel: TextView
-    private var mutedVolume = false
     private var playerController: PlayerController? = null
     private var web: WebView? = null
     // Transparent tap catcher above an iframe embed (below the app's own
@@ -756,44 +752,6 @@ class MainActivity : Activity() {
             showPlayerControls()
         }
         playPauseButton.id = View.generateViewId()
-        val nextButton = overlayButton("⏭") {
-            stepChannel(1)
-            showPlayerControls()
-        }
-        nextButton.id = View.generateViewId()
-        volumeSeekBar = SeekBar(this).apply {
-            max = 100
-            progress = (store.volume * 100).toInt()
-            id = View.generateViewId()
-            progressTintList = ColorStateList.valueOf(cyan)
-            // Custom round thumb (white dot + cyan ring); the tint is
-            // cleared so it does not wash out the ring.
-            thumbTintList = null
-            thumb = seekThumb()
-            progressBackgroundTintList = ColorStateList.valueOf(0x38ffffff.toInt())
-            isFocusable = true
-            setOnFocusChangeListener { _, hasFocus ->
-                // D-pad focus must be visible on TV: the bar brightens.
-                animateFocusScale(this, hasFocus)
-                progressTintList = ColorStateList.valueOf(if (hasFocus) Color.WHITE else cyan)
-            }
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                    if (fromUser) setVolume(progress / 100f)
-                }
-                override fun onStartTrackingTouch(seekBar: SeekBar) {
-                    mainHandler.removeCallbacks(hideControlsRunnable)
-                }
-                override fun onStopTrackingTouch(seekBar: SeekBar) {
-                    scheduleHideControls()
-                }
-            })
-        }
-        muteButton = overlayButton(if (store.volume == 0f) "🔇" else "🔊") {
-            toggleMute()
-            showPlayerControls()
-        }
-        muteButton.id = View.generateViewId()
         // Playback speed in the pill (movies only — the old tile under the
         // player is gone). Narrow text, so it gets its own sizing instead
         // of the fixed 48dp overlay slot ("1.25x" would clip in it).
@@ -831,15 +789,6 @@ class MainActivity : Activity() {
             }
         }
         overlayBar.addView(playPauseButton, overlayParams())
-        overlayBar.addView(nextButton, overlayParams())
-        overlayBar.addView(volumeSeekBar, LinearLayout.LayoutParams(
-            dp(if (isTv) 140 else 80), -2,
-        ).apply {
-            marginStart = dp(6)
-            marginEnd = dp(6)
-            gravity = Gravity.CENTER_VERTICAL
-        })
-        overlayBar.addView(muteButton, overlayParams())
         overlayBar.addView(speedButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 48 else 44)).apply {
             marginStart = dp(3)
             marginEnd = dp(3)
@@ -911,13 +860,7 @@ class MainActivity : Activity() {
             marginEnd = dp(if (isTv) 20 else 12)
             bottomMargin = dp(if (isTv) 92 else 72)
         })
-        // On-video corner buttons (the tiles under the player are gone):
-        // Favorite top-right, Retry bottom-left, Quality bottom-right.
-        // They sit ON the video, so they stay reachable in fullscreen too.
-        // Quality is a text pill ("720p") — a round glyph button would
-        // clip the label. All three start hidden; applyControlVisibility
-        // owns them (Favorite/Retry while a channel plays, Quality for
-        // multi-track streams).
+        // Channel preview actions. Fullscreen has no corner buttons.
         val cornerMargin = dp(if (isTv) 20 else 12)
         favButton = Button(this).apply {
             text = "☆"
@@ -945,33 +888,6 @@ class MainActivity : Activity() {
         ).apply {
             marginEnd = cornerMargin
             topMargin = cornerMargin
-        })
-        retryButton = Button(this).apply {
-            text = "↻"
-            isAllCaps = false
-            contentDescription = "Retry"
-            setTextColor(Color.WHITE)
-            textSize = if (isTv) 22f else 20f
-            gravity = Gravity.CENTER
-            id = View.generateViewId()
-            minimumWidth = 0
-            minimumHeight = 0
-            setPadding(0, 0, 0, 0)
-            background = StateListDrawable().apply {
-                addState(intArrayOf(android.R.attr.state_focused), glassShape(24, cyan, 2))
-                addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 24))
-                addState(intArrayOf(), glassShape(24))
-            }
-            visibility = View.GONE
-            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
-            setOnClickListener { retryPlayback() }
-        }
-        screen.addView(retryButton, FrameLayout.LayoutParams(
-            dp(if (isTv) 48 else 44), dp(if (isTv) 48 else 44),
-            Gravity.BOTTOM or Gravity.START,
-        ).apply {
-            marginStart = cornerMargin
-            bottomMargin = cornerMargin
         })
         qualityButton = Button(this).apply {
             text = "Quality"
@@ -1004,11 +920,9 @@ class MainActivity : Activity() {
             bottomMargin = cornerMargin
         })
         // D-pad between the corners: right column (Fav ↓ Quality),
-        // bottom row (Retry → Quality).
+        // Move between the two preview controls.
         favButton.nextFocusDownId = qualityButton.id
         qualityButton.nextFocusUpId = favButton.id
-        retryButton.nextFocusRightId = qualityButton.id
-        qualityButton.nextFocusLeftId = retryButton.id
         // Tap the video to show/hide the controls (touch only). The
         // PlayerView has no click handler of its own (useController=false),
         // so taps on it reach this listener; taps on the overlay buttons
@@ -1084,7 +998,7 @@ class MainActivity : Activity() {
             topMargin = dp(12)
         })
 
-        playerController = PlayerController(this, screen, store.volume,
+        playerController = PlayerController(this, screen, 1f,
             object : PlayerController.Listener {
                 override fun onBuffering(isBuffering: Boolean) {
                     if (isDestroyed) return
@@ -1210,7 +1124,9 @@ class MainActivity : Activity() {
         if (movie != null && url != null) {
             outState.putString(STATE_MOVIE_URL, url)
             outState.putString(STATE_MOVIE_TITLE, movie.title)
-            outState.putLong(STATE_MOVIE_POS, playerController?.position() ?: 0L)
+            outState.putString("movie_subject_id", movie.subjectId)
+            outState.putInt("movie_quality", selectedQuality)
+            outState.putLong(STATE_MOVIE_POS, if (stoppedForBackground) savedMoviePosition else playerController?.position() ?: 0L)
             outState.putStringArrayList(
                 STATE_MOVIE_HEADERS,
                 ArrayList(playingMovieHeaders.map { (k, v) -> "$k\u0001$v" }),
@@ -1313,7 +1229,7 @@ class MainActivity : Activity() {
             // Search is global: a query searches every bundled channel,
             // whatever category is showing — otherwise a search from the
             // News filter can never find a General channel like Express.
-            query.isNotEmpty() -> verifiedChannels
+            query.isNotEmpty() -> (verifiedChannels + imported).distinctBy { it.key }
             filter == "M3U" -> imported
             filter == "Favs" -> store.favoritesList()
             filter == "Recent" -> store.recentList()
@@ -1352,7 +1268,7 @@ class MainActivity : Activity() {
                         }
                     },
             )
-        }
+        }.take(100)
         currentMatches = matches
         val sourceName = when (filter) {
             "M3U" -> playlistStore.active()?.name ?: "My playlist"
@@ -1516,11 +1432,13 @@ class MainActivity : Activity() {
             // Rotation recreates the activity; the state is saved and
             // re-applied in onCreate, so there is no toggle loop.
             requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
         updateFullscreenUi()
+        applyControlVisibility()
         if (enabled) {
-            if (fullscreenButton.isShown) fullscreenButton.requestFocus()
+            if (playingMovie != null) playPauseButton.requestFocus()
+            else if (fullscreenButton.isShown) fullscreenButton.requestFocus()
         } else {
             focusBrowse()
         }
@@ -1598,16 +1516,10 @@ class MainActivity : Activity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
-    private fun play(channel: Channel, forceRestart: Boolean = false) {
-        // Pressing OK on the channel that is already playing does NOT
-        // restart it — it takes it fullscreen. The channel screen has
-        // no controls anymore, so OK is the fullscreen switch (Back
-        // leaves fullscreen). Web channels join in: the selected-key
-        // match is the only signal a WebView gives. Retry bypasses
-        // this with forceRestart — otherwise the Retry button on a web
-        // channel would just go fullscreen instead of reloading.
-        if (!forceRestart && channel.key == selected?.key &&
-            (channel.web || playerController?.isPlaying() == true)) {
+    private fun play(channel: Channel) {
+        // A second OK expands a channel only while its player exists.
+        if (channel.key == selected?.key &&
+            ((channel.web && web != null) || playerController?.isPlaying() == true)) {
             focusChannel(channel)
             if (!fullScreen) setFullScreen(true)
             return
@@ -1638,9 +1550,6 @@ class MainActivity : Activity() {
         playPauseButton.text = "❚❚"
         // A fresh player starts at the stored volume, so a muted session
         // does not survive a channel change — reset the mute state here.
-        mutedVolume = false
-        muteButton.text = if (store.volume == 0f) "🔇" else "🔊"
-        volumeSeekBar.progress = (store.volume * 100).toInt()
         speed = 1f
         playerController?.setSpeed(1f)
         setSpeedText("1x")
@@ -1678,20 +1587,6 @@ class MainActivity : Activity() {
         list.getChildAt(index)?.requestFocus()
     }
 
-    private fun retryPlayback() {
-        val drama = playingDrama
-        if (drama != null) {
-            startDramaPlayback(drama, playingDramaTitle)
-            return
-        }
-        if (playingMovie != null) {
-            playerController?.retry()
-            return
-        }
-        val channel = selected ?: return
-        if (channel.web) play(channel, forceRestart = true) else playerController?.retry()
-    }
-
     private fun updateFavoriteButton() {
         val channel = selected
         val isFav = channel != null && store.isFavorite(channel)
@@ -1721,13 +1616,11 @@ class MainActivity : Activity() {
      * overlay pill, so the first visible pill button is the landing.
      * Channels play on a clean screen (no pill) — RIGHT goes to the
      * on-video corner buttons: Quality first when it is showing
-     * (multi-track stream), else Favorite, else Retry. */
+     * (multi-track stream), otherwise Favorite. */
     private fun firstOverlayControlId(): Int {
         if (overlayBar.visibility == View.VISIBLE) {
             return when {
                 playPauseButton.visibility == View.VISIBLE -> playPauseButton.id
-                volumeSeekBar.visibility == View.VISIBLE -> volumeSeekBar.id
-                muteButton.visibility == View.VISIBLE -> muteButton.id
                 speedButton.visibility == View.VISIBLE -> speedButton.id
                 else -> fullscreenButton.id
             }
@@ -1735,7 +1628,6 @@ class MainActivity : Activity() {
         return when {
             qualityButton.visibility == View.VISIBLE -> qualityButton.id
             favButton.visibility == View.VISIBLE -> favButton.id
-            retryButton.visibility == View.VISIBLE -> retryButton.id
             // Nothing on screen (no channel playing yet) — the pill is
             // gone, so FocusFinder falls back to geometry; any id works.
             else -> fullscreenButton.id
@@ -1760,19 +1652,12 @@ class MainActivity : Activity() {
         // chip — the video is just the video. Movies keep their controls
         // (play/pause, seek); dramas keep the fullscreen button.
         val channelPlaying = selected != null && playingMovie == null && playingDrama == null
-        overlayBar.visibility = if (channelPlaying) View.GONE else View.VISIBLE
+        overlayBar.visibility = if (channelPlaying || (!isTv && !controlsVisible && playingDrama == null)) View.GONE else View.VISIBLE
         metaChip.visibility = if (channelPlaying || isTv) View.GONE else View.VISIBLE
         playPauseButton.visibility = if (webChannel) View.GONE else View.VISIBLE
-        volumeSeekBar.visibility = if (webChannel) View.GONE else View.VISIBLE
-        muteButton.visibility = if (webChannel) View.GONE else View.VISIBLE
-        // On-video corner buttons: Favorite + Retry show while a channel
-        // plays (the tiles under the player are gone); Quality shows for
-        // multi-track streams, on the video's bottom-right corner. Speed
-        // lives in the overlay pill and only applies to movies.
-        val showQuality = !webChannel && videoOptions.size >= 2
+        val showQuality = channelPlaying && !fullScreen && !webChannel && videoOptions.size >= 2
         qualityButton.visibility = if (showQuality) View.VISIBLE else View.GONE
-        favButton.visibility = if (channelPlaying) View.VISIBLE else View.GONE
-        retryButton.visibility = if (channelPlaying) View.VISIBLE else View.GONE
+        favButton.visibility = if (channelPlaying && !fullScreen) View.VISIBLE else View.GONE
         speedButton.visibility = if (playingMovie != null) View.VISIBLE else View.GONE
         // The seek row lives ON the video (YouTube-style): movies only —
         // live channels report "seekable" when the stream has a DVR
@@ -1785,6 +1670,14 @@ class MainActivity : Activity() {
         // back); rows always point RIGHT at the first visible control.
         playPauseButton.nextFocusUpId =
             if (seekRow.visibility == View.VISIBLE) seekBar.id else View.NO_ID
+        if (playingMovie != null) {
+            playPauseButton.nextFocusRightId = speedButton.id
+            speedButton.nextFocusLeftId = playPauseButton.id
+            speedButton.nextFocusRightId = fullscreenButton.id
+            fullscreenButton.nextFocusLeftId = speedButton.id
+            speedButton.nextFocusUpId = playPauseButton.nextFocusUpId
+            fullscreenButton.nextFocusUpId = playPauseButton.nextFocusUpId
+        }
         seekBar.nextFocusDownId = playPauseButton.id
         syncRowFocusTargets()
     }
@@ -1835,22 +1728,6 @@ class MainActivity : Activity() {
 
     private fun setSpeedText(label: String) {
         speedButton.text = label
-    }
-
-    private fun setVolume(value: Float) {
-        val clamped = value.coerceIn(0f, 1f)
-        mutedVolume = false
-        store.volume = clamped
-        playerController?.setVolume(clamped)
-        volumeSeekBar.progress = (clamped * 100).toInt()
-        muteButton.text = if (clamped == 0f) "🔇" else "🔊"
-    }
-
-    private fun toggleMute() {
-        mutedVolume = !mutedVolume
-        playerController?.setVolume(if (mutedVolume) 0f else store.volume)
-        volumeSeekBar.progress = if (mutedVolume) 0 else (store.volume * 100).toInt()
-        muteButton.text = if (mutedVolume) "🔇" else "🔊"
     }
 
     private fun showQualityDialog() {
@@ -1974,14 +1851,14 @@ class MainActivity : Activity() {
      * overlay pill and any text field. Movies and dramas never zap —
      * their up/down belongs to the player controls. */
     private fun channelSwitchKeysActive(): Boolean {
+        if (playingMovie != null || playingDrama != null || selected == null) return false
         if (fullScreen) return true
-        if (playingMovie != null || playingDrama != null) return false
         var view: View? = currentFocus ?: return false
         while (view != null) {
             // Navigation surfaces keep their own up/down.
             if (view === categoryListScroll || view === headerView ||
                 view === overlayBar || view === metaChip || view === numberOverlay ||
-                view === favButton || view === retryButton || view === qualityButton) return false
+                view === favButton || view === qualityButton) return false
             // A channel row — or the video surface itself — zaps. (With
             // no matches on screen the list holds only the empty-state
             // button, so up/down keeps navigating instead of zapping
@@ -2779,7 +2656,7 @@ class MainActivity : Activity() {
             val code = event.keyCode
             if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 val focused = currentFocus
-                if (focused === playPauseButton || focused === seekBar) {
+                if (focused === seekBar && !moviesOpen && !dramasOpen) {
                     seekMovieBy(if (code == KeyEvent.KEYCODE_DPAD_RIGHT) 10_000L else -10_000L)
                     return true
                 }
@@ -2879,6 +2756,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         movieSearchInput = EditText(this).apply {
+            id = View.generateViewId()
             isSingleLine = true
             inputType = InputType.TYPE_CLASS_TEXT
             imeOptions = EditorInfo.IME_ACTION_SEARCH
@@ -2937,6 +2815,7 @@ class MainActivity : Activity() {
         }
         // Explicit vertical links for the search box — geometry alone is
         // unreliable here (the chips sit inside a horizontal scroller).
+        backButton.nextFocusDownId = movieSearchInput.id
         movieSearchInput.nextFocusDownId = homeChip.id
         movieSearchInput.nextFocusUpId = backButton.id
         val quickScroll = HorizontalScrollView(this).apply {
@@ -3111,7 +2990,7 @@ class MainActivity : Activity() {
         } else {
             null
         } ?: firstFocusableMovieRow() ?: movieHomeChip
-        target.post { target.requestFocus() }
+        target.post { if (moviesOpen && target.isShown) target.requestFocus() }
     }
 
     /** First focusable row in the Movies results (section labels are not
@@ -3131,7 +3010,7 @@ class MainActivity : Activity() {
         // is lost and the buttons become unreachable. Fav is always
         // enabled, so it is the safe landing; Play takes focus once the
         // streams load (see loadMovieStreams).
-        movieFavButton.post { movieFavButton.requestFocus() }
+        movieFavButton.post { if (moviesOpen && movieFavButton.isShown) movieFavButton.requestFocus() }
     }
 
     /** One-tap quick search: fills the search box and runs the search. */
@@ -3387,6 +3266,7 @@ class MainActivity : Activity() {
                         details.movie.copy(title = entry.title),
                         stream.url, stream.headers, entry.positionMs,
                     )
+                    setFullScreen(true)
                 }
             } catch (error: IOException) {
                 runOnUiThread {
@@ -3719,6 +3599,7 @@ class MainActivity : Activity() {
             title = currentPlayTitle,
         )
         playMovieStream(played, stream.url, stream.headers)
+        setFullScreen(true)
     }
 
     /**
@@ -3749,9 +3630,6 @@ class MainActivity : Activity() {
         val showBars = !fullScreen
         infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
         playPauseButton.text = "❚❚"
-        mutedVolume = false
-        muteButton.text = if (store.volume == 0f) "🔇" else "🔊"
-        volumeSeekBar.progress = (store.volume * 100).toInt()
         speed = 1f
         playerController?.setSpeed(1f)
         setSpeedText("1x")
@@ -3792,7 +3670,8 @@ class MainActivity : Activity() {
                 val parts = raw.split("\u0001")
                 if (parts.size == 2) parts[0] to parts[1] else null
             }.toMap()
-        playMovieStream(MovieBox.Movie(title = title), url, headers, position)
+        selectedQuality = saved.getInt("movie_quality", 0)
+        playMovieStream(MovieBox.Movie(subjectId = saved.getString("movie_subject_id").orEmpty(), title = title), url, headers, position)
     }
 
     // ---- Geo Dramas (v17) ----
@@ -4239,9 +4118,6 @@ class MainActivity : Activity() {
         val showBars = !fullScreen
         infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
         playPauseButton.text = "❚❚"
-        mutedVolume = false
-        muteButton.text = if (store.volume == 0f) "🔇" else "🔊"
-        volumeSeekBar.progress = (store.volume * 100).toInt()
         speed = 1f
         playerController?.setSpeed(1f)
         setSpeedText("1x")
@@ -4440,7 +4316,6 @@ class MainActivity : Activity() {
         seekRow.bringToFront()
         overlayBar.bringToFront()
         favButton.bringToFront()
-        retryButton.bringToFront()
         qualityButton.bringToFront()
         numberOverlay.bringToFront()
         status.bringToFront()

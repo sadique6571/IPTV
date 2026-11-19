@@ -280,14 +280,13 @@ internal class PlayerController(
                 "(attempt $retryCount of $MAX_RETRIES)")
             retryHandler.postDelayed({
                 if (currentUrl == url) {
-                    active.setMediaItem(mediaItemFor(url, forceHls = triedHlsFallback))
                     active.prepare()
                     active.playWhenReady = true
                 }
             }, delay)
             return
         }
-        events.onError(friendlyMessage(error) + " Press Retry to try again.")
+        events.onError(friendlyMessage(error) + " Select the stream again to reconnect.")
     }
 
     private fun friendlyMessage(error: PlaybackException): String = when (error.errorCode) {
