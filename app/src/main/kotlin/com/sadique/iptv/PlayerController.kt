@@ -132,9 +132,6 @@ internal class PlayerController(
         player?.volume = volume.coerceIn(0f, 1f)
     }
 
-    fun setSpeed(speed: Float) {
-        player?.setPlaybackSpeed(speed)
-    }
 
     fun seekTo(positionMs: Long) {
         player?.seekTo(positionMs)

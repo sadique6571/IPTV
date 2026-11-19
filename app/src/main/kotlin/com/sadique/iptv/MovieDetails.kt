@@ -82,7 +82,7 @@ internal fun MainActivity.seekMovieBy(deltaMs: Long) {
     if (duration > 0) {
         seekBar.max = (duration / 1000).toInt()
         seekBar.progress = (target / 1000).toInt()
-        seekLabel.text = formatTime(target) + " / " + formatTime(duration)
+        updateMovieTimes(target, duration)
     }
     showPlayerControls()
 }
@@ -586,9 +586,6 @@ internal fun MainActivity.playMovieStream(
     val showBars = !fullScreen
     infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
     playPauseButton.text = "❚❚"
-    speed = 1f
-    playerController?.setSpeed(1f)
-    setSpeedText("1x")
     videoOptions = emptyList()
     selectedVideoIndex = -1
     seekable = false
@@ -640,4 +637,10 @@ internal fun MainActivity.restoreMoviePlayback(saved: Bundle?) {
         episodeSeason = saved.getInt("movie_season", 0),
         episodeNumber = saved.getInt("movie_episode", 0),
     )
+}
+
+
+internal fun MainActivity.updateMovieTimes(position: Long, duration: Long) {
+    seekLabel.text = formatTime(position.coerceAtLeast(0L))
+    remainingLabel.text = "−" + formatTime((duration - position).coerceAtLeast(0L))
 }

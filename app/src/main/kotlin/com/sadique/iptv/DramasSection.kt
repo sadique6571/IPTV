@@ -540,9 +540,6 @@ internal fun MainActivity.startDramaPlayback(episode: GeoDramas.Episode, dramaTi
     val showBars = !fullScreen
     infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
     playPauseButton.text = "❚❚"
-    speed = 1f
-    playerController?.setSpeed(1f)
-    setSpeedText("1x")
     videoOptions = emptyList()
     selectedVideoIndex = -1
     seekable = false

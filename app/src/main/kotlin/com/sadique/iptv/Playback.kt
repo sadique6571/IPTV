@@ -99,9 +99,6 @@ internal fun MainActivity.play(channel: Channel) {
     playPauseButton.text = "❚❚"
     // A fresh player starts at the stored volume, so a muted session
     // does not survive a channel change — reset the mute state here.
-    speed = 1f
-    playerController?.setSpeed(1f)
-    setSpeedText("1x")
     videoOptions = emptyList()
     selectedVideoIndex = -1
     seekable = false
@@ -140,7 +137,6 @@ internal fun MainActivity.firstOverlayControlId(): Int {
     if (overlayBar.visibility == View.VISIBLE) {
         return when {
             playPauseButton.visibility == View.VISIBLE -> playPauseButton.id
-            speedButton.visibility == View.VISIBLE -> speedButton.id
             else -> fullscreenButton.id
         }
     }
@@ -163,64 +159,53 @@ internal fun MainActivity.applyControlVisibility() {
     // chip — the video is just the video. Movies keep their controls
     // (play/pause, seek); dramas keep the fullscreen button.
     val channelPlaying = selected != null && playingMovie == null && playingDrama == null
-    overlayBar.visibility = if (channelPlaying || (!isTv && !controlsVisible && playingDrama == null)) View.GONE else View.VISIBLE
+    val hideForInactivity = !controlsVisible && playingDrama == null && (playingMovie != null || !isTv)
+    overlayBar.visibility = if (channelPlaying || hideForInactivity) View.GONE else View.VISIBLE
     metaChip.visibility = if (channelPlaying || isTv) View.GONE else View.VISIBLE
     playPauseButton.visibility = if (webChannel) View.GONE else View.VISIBLE
     val showQuality = channelPlaying && !fullScreen && !webChannel && videoOptions.size >= 2
     qualityButton.visibility = if (showQuality) View.VISIBLE else View.GONE
     favButton.visibility = if (channelPlaying && !fullScreen) View.VISIBLE else View.GONE
-    speedButton.visibility = if (playingMovie != null) View.VISIBLE else View.GONE
-    // The seek row lives ON the video (YouTube-style): movies only —
-    // live channels report "seekable" when the stream has a DVR
-    // window, and the bar must never appear on a channel. On touch
-    // it hides together with the pill after 3 seconds.
-    seekRow.visibility = if (webChannel || playingMovie == null || !seekable) View.GONE
-        else if (isTv || controlsVisible) View.VISIBLE else View.GONE
-    // D-pad routing onto the video: UP from play/pause reaches the
-    // seek bar only while it is shown (DOWN from the seek bar comes
-    // back); rows always point RIGHT at the first visible control.
-    playPauseButton.nextFocusUpId =
-        if (seekRow.visibility == View.VISIBLE) seekBar.id else View.NO_ID
-    if (playingMovie != null) {
-        playPauseButton.nextFocusRightId = speedButton.id
-        speedButton.nextFocusLeftId = playPauseButton.id
-        speedButton.nextFocusRightId = fullscreenButton.id
-        fullscreenButton.nextFocusLeftId = speedButton.id
-        speedButton.nextFocusUpId = playPauseButton.nextFocusUpId
-        fullscreenButton.nextFocusUpId = playPauseButton.nextFocusUpId
+    val movie = playingMovie != null
+    val width = if (movie) android.view.ViewGroup.LayoutParams.MATCH_PARENT else android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+    val params = overlayBar.layoutParams
+    if (params.width != width) {
+        params.width = width
+        overlayBar.layoutParams = params
     }
+    seekRow.visibility = if (movie && seekable) View.VISIBLE else View.GONE
+    val seekTarget = if (movie && seekable) seekBar.id else View.NO_ID
+    playPauseButton.nextFocusRightId = if (movie) fullscreenButton.id else View.NO_ID
+    fullscreenButton.nextFocusLeftId = if (movie) playPauseButton.id else View.NO_ID
+    playPauseButton.nextFocusUpId = seekTarget
+    fullscreenButton.nextFocusUpId = seekTarget
     seekBar.nextFocusDownId = playPauseButton.id
     syncRowFocusTargets()
 }
 
 
-/** Shows the on-video controls (overlay pill + seek row) and schedules
- * their auto-hide on touch devices. On TV this is a no-op — the controls
- * always stay visible for D-pad navigation. Called on video tap, on any
- * control interaction, and when playback starts. */
+/** Reveal movie controls and restart the inactivity timer. */
 internal fun MainActivity.showPlayerControls() {
-    if (isTv) return
+    if (isTv && playingMovie == null) return
     mainHandler.removeCallbacks(hideControlsRunnable)
     controlsVisible = true
-    overlayBar.visibility = View.VISIBLE
     applyControlVisibility()
     scheduleHideControls()
 }
 
 
-/** Hides the on-video controls (touch only). Never hides while the user
+/** Hides the on-video controls. Never hides while the user
  * is scrubbing, and never hides for web channels — a WebView consumes
  * its own touches, so a tap could not bring the controls back. */
 internal fun MainActivity.hidePlayerControls() {
-    if (isTv || scrubbing || selected?.web == true || playingDrama != null) return
+    if ((isTv && playingMovie == null) || scrubbing || selected?.web == true || playingDrama != null) return
     controlsVisible = false
     overlayBar.visibility = View.GONE
-    seekRow.visibility = View.GONE
 }
 
 
 internal fun MainActivity.scheduleHideControls() {
-    if (isTv || selected?.web == true || playingDrama != null) return
+    if ((isTv && playingMovie == null) || selected?.web == true || playingDrama != null) return
     mainHandler.removeCallbacks(hideControlsRunnable)
     mainHandler.postDelayed(hideControlsRunnable, CONTROLS_HIDE_DELAY_MS)
 }
@@ -243,11 +228,6 @@ internal fun MainActivity.setQualityText(label: String) {
 }
 
 
-internal fun MainActivity.setSpeedText(label: String) {
-    speedButton.text = label
-}
-
-
 internal fun MainActivity.showQualityDialog() {
     val items = mutableListOf("Auto")
     items += videoOptions.map { it.label }
@@ -262,20 +242,6 @@ internal fun MainActivity.showQualityDialog() {
                 playerController?.selectTrack(option)
                 setQualityText(option.label)
             }
-            dialog.dismiss()
-        }.show()
-}
-
-
-internal fun MainActivity.showSpeedDialog() {
-    val labels = arrayOf("0.5x", "0.75x", "1x", "1.25x", "1.5x", "2x")
-    val values = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
-    val checked = values.indexOfFirst { it == speed }.let { if (it < 0) 2 else it }
-    AlertDialog.Builder(this).setTitle("Playback speed")
-        .setSingleChoiceItems(labels, checked) { dialog, which ->
-            speed = values[which]
-            playerController?.setSpeed(speed)
-            setSpeedText(labels[which])
             dialog.dismiss()
         }.show()
 }
@@ -617,7 +583,6 @@ internal fun MainActivity.setChannelMeta(channel: Channel?) {
 internal fun MainActivity.bringPlayerOverlaysToFront() {
     screenBorder.bringToFront()
     metaChip.bringToFront()
-    seekRow.bringToFront()
     seekIndicator.bringToFront()
     overlayBar.bringToFront()
     favButton.bringToFront()

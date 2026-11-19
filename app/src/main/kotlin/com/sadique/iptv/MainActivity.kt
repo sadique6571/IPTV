@@ -114,7 +114,7 @@ class MainActivity : Activity() {
     // the overlay pill (movies only — channels never need it).
     internal lateinit var favButton: Button
     internal lateinit var qualityButton: Button
-    internal lateinit var speedButton: Button
+    internal lateinit var remainingLabel: TextView
     internal lateinit var seekRow: LinearLayout
     internal lateinit var seekBar: SeekBar
     internal lateinit var seekLabel: TextView
@@ -196,7 +196,7 @@ class MainActivity : Activity() {
     internal var scrubbing = false
     internal var numberBuffer = ""
     internal var numberTimeout: Runnable? = null
-    internal var speed = 1f
+    private var wakeKey = KeyEvent.KEYCODE_UNKNOWN
     private var stoppedForBackground = false
     internal var updateDownloadDialog: AlertDialog? = null
 
@@ -338,7 +338,7 @@ class MainActivity : Activity() {
                 if (duration > 0) {
                     seekBar.max = (duration / 1000).toInt()
                     seekBar.progress = (position / 1000).toInt()
-                    seekLabel.text = formatTime(position) + " / " + formatTime(duration)
+                    updateMovieTimes(position, duration)
                 }
                 // Save the playing movie's position every ~10 seconds so
                 // Continue Watching stays fresh without touching the player
@@ -778,27 +778,7 @@ class MainActivity : Activity() {
             showPlayerControls()
         }
         playPauseButton.id = View.generateViewId()
-        // Playback speed in the pill (movies only — the old tile under the
-        // player is gone). Narrow text, so it gets its own sizing instead
-        // of the fixed 48dp overlay slot ("1.25x" would clip in it).
-        speedButton = Button(this).apply {
-            text = "1x"
-            isAllCaps = false
-            setTextColor(Color.WHITE)
-            textSize = 14f
-            setTypeface(null, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            id = View.generateViewId()
-            minimumWidth = dp(48)
-            minimumHeight = 0
-            setPadding(dp(10), 0, dp(10), 0)
-            background = overlayButtonBackground()
-            visibility = View.GONE
-            setOnClickListener {
-                showSpeedDialog()
-                showPlayerControls()
-            }
-        }
+        playPauseButton.contentDescription = "Play / pause"
         fullscreenIcon = FullscreenIconDrawable(expanded = false)
         fullscreenButton = ImageButton(this).apply {
             setImageDrawable(fullscreenIcon)
@@ -815,29 +795,9 @@ class MainActivity : Activity() {
             }
         }
         overlayBar.addView(playPauseButton, overlayParams())
-        overlayBar.addView(speedButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 48 else 44)).apply {
-            marginStart = dp(3)
-            marginEnd = dp(3)
-            gravity = Gravity.CENTER_VERTICAL
-        })
-        overlayBar.addView(fullscreenButton, overlayParams())
-        screen.addView(overlayBar, FrameLayout.LayoutParams(
-            -2, -2, Gravity.BOTTOM or Gravity.END,
-        ).apply {
-            marginEnd = dp(if (isTv) 20 else 12)
-            bottomMargin = dp(if (isTv) 20 else 12)
-        })
-        // Seek row ON the video, YouTube-style: it floats just above the
-        // overlay pill at the bottom of the screen and only appears for
-        // seekable playback (movies) — live channels never show it. On
-        // touch devices it hides together with the pill after 3 seconds;
-        // in fullscreen it is on the video too, so it stays reachable.
         seekRow = LinearLayout(this).apply {
             visibility = View.GONE
             gravity = Gravity.CENTER_VERTICAL
-            background = shape(overlayDark, 0x1affffff.toInt(), 24, 1)
-            setPadding(dp(14), dp(4), dp(14), dp(4))
-            elevation = dp(6).toFloat()
         }
         seekBar = SeekBar(this).apply {
             isFocusable = true
@@ -864,8 +824,7 @@ class MainActivity : Activity() {
                         // movie. The real seek happens once, on release
                         // (onStopTrackingTouch) — a tap on the bar also
                         // ends there, so tap-to-jump still works.
-                        seekLabel.text = formatTime(progress * 1000L) + " / " +
-                            formatTime(playerController?.duration() ?: 0L)
+                        updateMovieTimes(progress * 1000L, playerController?.duration() ?: 0L)
                     }
                 }
                 override fun onStartTrackingTouch(seekBar: SeekBar) {
@@ -879,18 +838,17 @@ class MainActivity : Activity() {
                 }
             })
         }
-        seekLabel = label("0:00 / 0:00", if (isTv) 14 else 13, muted)
-        seekRow.addView(seekBar, LinearLayout.LayoutParams(0, -2, 1f))
-        seekRow.addView(seekLabel, LinearLayout.LayoutParams(-2, -2).apply {
-            gravity = Gravity.CENTER_VERTICAL
+        seekLabel = label("0:00", 13, Color.WHITE)
+        remainingLabel = label("−0:00", 13, Color.WHITE)
+        seekRow.addView(seekLabel)
+        seekRow.addView(seekBar, LinearLayout.LayoutParams(0, dp(48), 1f))
+        seekRow.addView(remainingLabel)
+        overlayBar.addView(seekRow, LinearLayout.LayoutParams(0, -2, 1f))
+        overlayBar.addView(fullscreenButton, overlayParams())
+        screen.addView(overlayBar, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
             marginStart = dp(8)
-        })
-        // The overlay pill reaches ~80dp (TV) / ~68dp (touch) up from the
-        // bottom edge; the seek row floats above it with clearance.
-        screen.addView(seekRow, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
-            marginStart = dp(if (isTv) 20 else 12)
-            marginEnd = dp(if (isTv) 20 else 12)
-            bottomMargin = dp(if (isTv) 92 else 72)
+            marginEnd = dp(8)
+            bottomMargin = dp(8)
         })
         // YouTube-style +-10s seek indicator: a pill on the video showing
         // "-10s" / "+10s" on the side that was double-tapped (or the
@@ -1510,14 +1468,7 @@ class MainActivity : Activity() {
      * lives here, not in onKeyDown, because in fullscreen the hidden
      * list ScrollView swallowed the keys whenever it could still
      * scroll, which is why zapping worked only sometimes.
-     * LEFT/RIGHT during a movie seek 10 seconds per press — from the
-     * seek bar (any mode) and from play/pause in fullscreen: play/pause
-     * is the default focus when a movie starts, so without it LEFT/RIGHT
-     * did nothing useful there. Windowed play/pause keeps navigating
-     * (speed button, channel list). Everywhere else LEFT/RIGHT keep
-     * navigating (corner buttons, pill buttons, header). The intercept
-     * runs in dispatchKeyEvent so the seek bar's own ±1s key handling
-     * never fires alongside it. */
+     * Movie buttons navigate horizontally. Only the focused timeline seeks. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         // Focus safety net (v2.0.27): if D-pad focus was ever lost
         // (currentFocus null — e.g. the focused row went away while
@@ -1549,16 +1500,29 @@ class MainActivity : Activity() {
             }
             return true
         }
-        if (playingMovie != null && !movieEnded && event.action == KeyEvent.ACTION_DOWN) {
-            val code = event.keyCode
-            if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                val focused = currentFocus
-                val seekFocus = focused === seekBar ||
-                    (fullScreen && focused === playPauseButton)
-                if (seekFocus && !moviesOpen && !dramasOpen) {
-                    seekMovieBy(if (code == KeyEvent.KEYCODE_DPAD_RIGHT) 10_000L else -10_000L)
-                    return true
+        val code = event.keyCode
+        if (code == wakeKey) {
+            if (event.action == KeyEvent.ACTION_UP) wakeKey = KeyEvent.KEYCODE_UNKNOWN
+            return true
+        }
+        if (playingMovie != null && !movieEnded && !moviesOpen && !dramasOpen &&
+            event.action == KeyEvent.ACTION_DOWN &&
+            (code in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_CENTER ||
+                code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER)
+        ) {
+            if (!controlsVisible) {
+                if (event.repeatCount == 0) {
+                    showPlayerControls()
+                    playPauseButton.requestFocus()
+                    wakeKey = code
                 }
+                return true
+            }
+            scheduleHideControls()
+            if (currentFocus === seekBar &&
+                (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+                seekMovieBy(if (code == KeyEvent.KEYCODE_DPAD_RIGHT) 10_000L else -10_000L)
+                return true
             }
         }
         return super.dispatchKeyEvent(event)
