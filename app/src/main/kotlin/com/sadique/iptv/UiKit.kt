@@ -65,21 +65,21 @@ import java.util.concurrent.Executors
  */
 
 /** Qwen HarmonyOS palette (moved from MainActivity). */
-internal val bg0 = 0xff050b2e.toInt()
-internal val bg1 = 0xff0a1245.toInt()
-internal val bg2 = 0xff2a1b6b.toInt()
-internal val glass = 0x8c1e2a66.toInt()
-internal val glassHi = 0x992a3a86.toInt()
+internal val bg0 = 0xff091120.toInt()
+internal val bg1 = 0xff101e32.toInt()
+internal val bg2 = 0xff202947.toInt()
+internal val glass = 0xed172539.toInt()
+internal val glassHi = 0xf122354e.toInt()
 internal val glassStroke = 0x2496acff.toInt()
 internal val strokeHi = 0x4d96acff.toInt()
 internal val textColor = 0xfff2f6ff.toInt()
 internal val muted = 0xff9aa7d6.toInt()
-internal val muted2 = 0xff6e7bad.toInt()
+internal val muted2 = 0xffa6b6ce.toInt()
 internal val cyan = 0xff22d9ee.toInt()
 internal val blue = 0xff3d7bff.toInt()
 internal val magenta = 0xffe45cff.toInt()
 internal val purple = 0xff8b5cff.toInt()
-internal val liveRed = 0xffff3b4e.toInt()
+internal val liveRed = 0xffbc334b.toInt()
 internal val overlayDark = 0x99060a1e.toInt() // Qwen meta chip / overlay pill
 internal val accent = cyan // focus strokes, status text, list counts
 
@@ -175,8 +175,8 @@ internal fun Context.chip(value: String, action: () -> Unit) = Button(this).appl
     minimumHeight = dp(if (isTvDevice()) 44 else 48)
     setPadding(dp(16), dp(8), dp(16), dp(8))
     background = StateListDrawable().apply {
-        addState(intArrayOf(android.R.attr.state_selected), gradientPill(24))
         addState(intArrayOf(android.R.attr.state_focused), glassShape(24, cyan, 2))
+        addState(intArrayOf(android.R.attr.state_selected), gradientPill(24))
         addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 24))
         addState(intArrayOf(), glassShape(24))
     }
@@ -214,9 +214,9 @@ internal fun Context.seekThumb() = GradientDrawable().apply {
 
 /** Channel-card background: glass, cyan border while this row is playing. */
 internal fun Context.rowBackground(playing: Boolean) = StateListDrawable().apply {
-    addState(intArrayOf(android.R.attr.state_focused), glassShape(22, cyan, 2))
-    addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 22))
-    addState(intArrayOf(), if (playing) glassShape(22, cyan, 2) else glassShape(22))
+    addState(intArrayOf(android.R.attr.state_focused), glassShape(16, cyan, 2))
+    addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 16))
+    addState(intArrayOf(), if (playing) shape(0xff163842.toInt(), 0xff30747c.toInt(), 16, 1) else glassShape(16))
 }
 
 
@@ -256,7 +256,7 @@ internal fun Context.dp(value: Int) = (value * resources.displayMetrics.density 
 internal fun Context.glassShape(radiusDp: Int = 22, strokeColor: Int = glassStroke, strokeDp: Int = 1) =
     GradientDrawable(
         GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(0xa832468f.toInt(), glassHi, glass),
+        intArrayOf(0xf12a405a.toInt(), glassHi, glass),
     ).apply {
         setStroke(dp(strokeDp), strokeColor)
         cornerRadius = dp(radiusDp).toFloat()
@@ -267,7 +267,7 @@ internal fun Context.glassShape(radiusDp: Int = 22, strokeColor: Int = glassStro
 internal fun Context.gradientPill(radiusDp: Int = 25) =
     GradientDrawable(
         GradientDrawable.Orientation.LEFT_RIGHT,
-        intArrayOf(cyan, blue),
+        intArrayOf(0xff156776.toInt(), 0xff294f87.toInt()),
     ).apply {
         cornerRadius = dp(radiusDp).toFloat()
     }
@@ -284,8 +284,8 @@ internal fun Context.glassStateList(radiusDp: Int) = StateListDrawable().apply {
 /** TV category item: transparent at rest, gradient pill when selected
  * (active filter), cyan ring when D-pad focused. */
 internal fun Context.navItemBackground() = StateListDrawable().apply {
-    addState(intArrayOf(android.R.attr.state_selected), gradientPill())
     addState(intArrayOf(android.R.attr.state_focused), glassShape(25, cyan, 2))
+    addState(intArrayOf(android.R.attr.state_selected), gradientPill())
     addState(intArrayOf(android.R.attr.state_pressed), glassShape(25, strokeHi, 1))
     addState(intArrayOf(), shape(Color.TRANSPARENT, Color.TRANSPARENT, 25, 0))
 }

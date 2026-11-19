@@ -195,7 +195,7 @@ internal fun MainActivity.populate(preserveScroll: Boolean = false) {
                     }
                 },
         )
-    }.take(100)
+    }
     currentMatches = matches
     val sourceName = when (filter) {
         "M3U" -> playlistStore.active()?.name ?: "My playlist"
@@ -295,7 +295,7 @@ internal fun MainActivity.channelRow(channel: Channel): View {
     val texts = column()
     val nameView = TextView(this).apply {
         text = channel.name
-        textSize = if (isTv) 15f else 15f
+        textSize = 16f
         setTypeface(null, Typeface.BOLD)
         setTextColor(textColor)
         maxLines = 1
@@ -326,13 +326,15 @@ internal fun MainActivity.channelRow(channel: Channel): View {
         setPadding(dp(4), 0, dp(8), 0)
     }
     row.addView(eq)
-    row.addView(liveBadge())
+
     // Favorite heart — touch only (not D-pad focusable, so remote
     // navigation keeps one stop per row). Tapping toggles this
     // channel's favorite; the on-screen corner button does the same
     // for the playing channel.
     val isFav = store.isFavorite(channel)
     val heart = Button(this).apply {
+        tag = "favorite"
+        contentDescription = if (isFav) "Remove ${channel.name} from favorites" else "Add ${channel.name} to favorites"
         text = if (isFav) "♥" else "♡"
         textSize = 19f
         setTextColor(if (isFav) magenta else Color.WHITE)
@@ -344,7 +346,8 @@ internal fun MainActivity.channelRow(channel: Channel): View {
         background = shape(0x9904081a.toInt(), 0x1affffff.toInt(), 18, 1)
         setOnClickListener { toggleFavoriteFor(channel) }
     }
-    row.addView(heart, LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+    val heartSize = dp(if (isTv) 36 else 48)
+    row.addView(heart, LinearLayout.LayoutParams(heartSize, heartSize).apply {
         marginStart = dp(8)
     })
     return row
@@ -383,19 +386,21 @@ internal fun MainActivity.updateFavoriteButton() {
 
 internal fun MainActivity.toggleFavorite() {
     val channel = selected ?: return
-    val nowFavorite = store.toggleFavorite(channel)
-    updateFavoriteButton()
-    populate(preserveScroll = true)
-    toast(if (nowFavorite) "Added to favorites." else "Removed from favorites.")
+    toggleFavoriteFor(channel)
 }
 
-
-/** Favorite toggle from a channel card's heart (any channel, not just
- * the playing one). The list rebuilds, as it does for the tile toggle. */
 internal fun MainActivity.toggleFavoriteFor(channel: Channel) {
     val nowFavorite = store.toggleFavorite(channel)
     updateFavoriteButton()
-    populate(preserveScroll = true)
+    if (filter == "Favs" && query.isEmpty()) {
+        populate(preserveScroll = true)
+    } else {
+        list.findViewWithTag<View>(channel.key)?.findViewWithTag<Button>("favorite")?.apply {
+            text = if (nowFavorite) "♥" else "♡"
+            setTextColor(if (nowFavorite) magenta else Color.WHITE)
+            contentDescription = if (nowFavorite) "Remove ${channel.name} from favorites" else "Add ${channel.name} to favorites"
+        }
+    }
     toast(if (nowFavorite) "Added to favorites." else "Removed from favorites.")
 }
 

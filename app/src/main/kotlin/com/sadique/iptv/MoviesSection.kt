@@ -312,7 +312,12 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         setTypeface(null, Typeface.BOLD)
         textSize = if (isTv) 18f else 16f
         minimumHeight = dp(if (isTv) 56 else 52)
-        background = gradientPill(28)
+        background = StateListDrawable().apply {
+            addState(intArrayOf(-android.R.attr.state_enabled), shape(glass, glassStroke, 28, 1))
+            addState(intArrayOf(android.R.attr.state_focused), glassShape(28, cyan, 3))
+            addState(intArrayOf(android.R.attr.state_pressed), glassShape(28, cyan, 2))
+            addState(intArrayOf(), gradientPill(28))
+        }
         isEnabled = false
         setOnClickListener { playSelectedMovie() }
     }
