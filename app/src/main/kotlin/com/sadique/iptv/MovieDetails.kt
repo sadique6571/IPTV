@@ -78,6 +78,7 @@ internal fun MainActivity.seekMovieBy(deltaMs: Long) {
         (controller.position() + deltaMs).coerceAtLeast(0L)
     }
     controller.seekTo(target)
+    showSeekIndicator(deltaMs)
     if (duration > 0) {
         seekBar.max = (duration / 1000).toInt()
         seekBar.progress = (target / 1000).toInt()

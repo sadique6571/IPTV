@@ -292,6 +292,20 @@ internal fun MainActivity.stopSeekUpdates() {
 }
 
 
+/** YouTube-style +-10s seek indicator: shows "-10s" / "+10s" on the
+ * side of the seek (left = back, right = forward) for ~900ms. Called
+ * from [seekMovieBy], so TV D-pad seeks and mobile double-taps both
+ * show it. */
+internal fun MainActivity.showSeekIndicator(deltaMs: Long) {
+    mainHandler.removeCallbacks(seekIndicatorHideRunnable)
+    seekIndicator.text = if (deltaMs < 0) "-10s" else "+10s"
+    (seekIndicator.layoutParams as FrameLayout.LayoutParams).gravity =
+        Gravity.CENTER_VERTICAL or if (deltaMs < 0) Gravity.START else Gravity.END
+    seekIndicator.visibility = View.VISIBLE
+    mainHandler.postDelayed(seekIndicatorHideRunnable, 900L)
+}
+
+
 internal fun MainActivity.showNumberBuffer() {
     numberOverlay.text = "Channel $numberBuffer"
     numberOverlay.visibility = View.VISIBLE
@@ -597,13 +611,14 @@ internal fun MainActivity.setChannelMeta(channel: Channel?) {
 
 
 /** PlayerView/WebView are added to [screen] after the overlays were built;
- * re-raise the border, meta chip, seek row, overlay controls, corner
- * buttons and number popup above them. Called at the end of [play] and
- * after adding a WebView. */
+ * re-raise the border, meta chip, seek row, seek indicator, overlay
+ * controls, corner buttons and number popup above them. Called at the
+ * end of [play] and after adding a WebView. */
 internal fun MainActivity.bringPlayerOverlaysToFront() {
     screenBorder.bringToFront()
     metaChip.bringToFront()
     seekRow.bringToFront()
+    seekIndicator.bringToFront()
     overlayBar.bringToFront()
     favButton.bringToFront()
     qualityButton.bringToFront()

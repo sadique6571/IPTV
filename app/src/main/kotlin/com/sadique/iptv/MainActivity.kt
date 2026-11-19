@@ -28,8 +28,10 @@ import android.text.Editable
 import android.text.InputType
 import android.text.TextUtils
 import android.text.TextWatcher
+import android.view.GestureDetector
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
@@ -116,11 +118,13 @@ class MainActivity : Activity() {
     internal lateinit var seekRow: LinearLayout
     internal lateinit var seekBar: SeekBar
     internal lateinit var seekLabel: TextView
+    internal lateinit var seekIndicator: TextView
     // YouTube-style on-video controls (touch only): tapping the video shows
     // the overlay pill + seek bar, and they auto-hide after 3 seconds. On TV
     // the controls always stay visible (D-pad navigation needs them).
     internal var controlsVisible = true
     internal val hideControlsRunnable = Runnable { hidePlayerControls() }
+    internal val seekIndicatorHideRunnable = Runnable { seekIndicator.visibility = View.GONE }
     internal lateinit var playPauseButton: Button
     internal lateinit var fullscreenButton: ImageButton
     private lateinit var fullscreenIcon: FullscreenIconDrawable
@@ -854,7 +858,12 @@ class MainActivity : Activity() {
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
                     if (fromUser) {
-                        playerController?.seekTo(progress * 1000L)
+                        // Preview only while dragging: seeking on every
+                        // pixel re-seeks the player dozens of times per
+                        // drag and jumps far past the target on a long
+                        // movie. The real seek happens once, on release
+                        // (onStopTrackingTouch) — a tap on the bar also
+                        // ends there, so tap-to-jump still works.
                         seekLabel.text = formatTime(progress * 1000L) + " / " +
                             formatTime(playerController?.duration() ?: 0L)
                     }
@@ -865,6 +874,7 @@ class MainActivity : Activity() {
                 }
                 override fun onStopTrackingTouch(seekBar: SeekBar) {
                     scrubbing = false
+                    playerController?.seekTo(seekBar.progress * 1000L)
                     scheduleHideControls()
                 }
             })
@@ -881,6 +891,20 @@ class MainActivity : Activity() {
             marginStart = dp(if (isTv) 20 else 12)
             marginEnd = dp(if (isTv) 20 else 12)
             bottomMargin = dp(if (isTv) 92 else 72)
+        })
+        // YouTube-style +-10s seek indicator: a pill on the video showing
+        // "-10s" / "+10s" on the side that was double-tapped (or the
+        // direction of the D-pad seek), fading after ~900ms. Side margins
+        // keep it off the screen edge on either side.
+        seekIndicator = label("", 16, Color.WHITE).apply {
+            visibility = View.GONE
+            background = shape(overlayDark, 0x1affffff.toInt(), 24, 1)
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            elevation = dp(6).toFloat()
+        }
+        screen.addView(seekIndicator, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER).apply {
+            marginStart = dp(48)
+            marginEnd = dp(48)
         })
         // Channel preview actions. Fullscreen has no corner buttons.
         val cornerMargin = dp(if (isTv) 20 else 12)
@@ -945,13 +969,36 @@ class MainActivity : Activity() {
         // Move between the two preview controls.
         favButton.nextFocusDownId = qualityButton.id
         qualityButton.nextFocusUpId = favButton.id
-        // Tap the video to show/hide the controls (touch only). The
-        // PlayerView has no click handler of its own (useController=false),
-        // so taps on it reach this listener; taps on the overlay buttons
-        // are consumed by the buttons themselves. WebView embeds (YouTube)
-        // consume their own touches, so this does not fire for web channels
-        // — their controls never auto-hide either (see hidePlayerControls).
-        screen.setOnClickListener { if (!isTv) togglePlayerControls() }
+        // Tap the video to show/hide the controls (touch only), double-tap
+        // left/right to seek -10s/+10s (YouTube-style). The PlayerView has
+        // no click handler of its own (useController=false), so taps on it
+        // reach this listener; taps on the overlay buttons are consumed by
+        // the buttons themselves. WebView embeds (YouTube) consume their
+        // own touches, so this does not fire for web channels — their
+        // controls never auto-hide either (see hidePlayerControls).
+        // SingleTapConfirmed only fires when the tap is NOT the first half
+        // of a double-tap, so the two gestures never fight.
+        if (!isTv) {
+            val gestureDetector = GestureDetector(this,
+                object : GestureDetector.SimpleOnGestureListener() {
+                    override fun onDown(e: MotionEvent): Boolean = true
+                    override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                        togglePlayerControls()
+                        return true
+                    }
+                    override fun onDoubleTap(e: MotionEvent): Boolean {
+                        if (playingMovie == null || !seekable) return false
+                        val third = screen.width / 3f
+                        when {
+                            e.x < third -> seekMovieBy(-10_000L)
+                            e.x > third * 2 -> seekMovieBy(10_000L)
+                            else -> return false
+                        }
+                        return true
+                    }
+                })
+            screen.setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
+        }
         // Glass info bar under the video (Qwen's 62dp bar): real channel
         // name + LIVE badge. No fake "Now/Next" program names — there is no
         // EPG data, so only the real channel name is shown. The seek slider
@@ -1463,12 +1510,14 @@ class MainActivity : Activity() {
      * lives here, not in onKeyDown, because in fullscreen the hidden
      * list ScrollView swallowed the keys whenever it could still
      * scroll, which is why zapping worked only sometimes.
-     * LEFT/RIGHT during a movie seek 10 seconds per press — but only
-     * when focus sits on the play/pause button or the seek bar.
-     * Everywhere else LEFT/RIGHT keep navigating (corner buttons, pill
-     * buttons, header), and a focused volume bar keeps adjusting volume.
-     * The intercept runs in dispatchKeyEvent so the seek bar's own ±1s
-     * key handling never fires alongside it. */
+     * LEFT/RIGHT during a movie seek 10 seconds per press — from the
+     * seek bar (any mode) and from play/pause in fullscreen: play/pause
+     * is the default focus when a movie starts, so without it LEFT/RIGHT
+     * did nothing useful there. Windowed play/pause keeps navigating
+     * (speed button, channel list). Everywhere else LEFT/RIGHT keep
+     * navigating (corner buttons, pill buttons, header). The intercept
+     * runs in dispatchKeyEvent so the seek bar's own ±1s key handling
+     * never fires alongside it. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         // Focus safety net (v2.0.27): if D-pad focus was ever lost
         // (currentFocus null — e.g. the focused row went away while
@@ -1504,7 +1553,9 @@ class MainActivity : Activity() {
             val code = event.keyCode
             if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 val focused = currentFocus
-                if (focused === seekBar && !moviesOpen && !dramasOpen) {
+                val seekFocus = focused === seekBar ||
+                    (fullScreen && focused === playPauseButton)
+                if (seekFocus && !moviesOpen && !dramasOpen) {
                     seekMovieBy(if (code == KeyEvent.KEYCODE_DPAD_RIGHT) 10_000L else -10_000L)
                     return true
                 }
