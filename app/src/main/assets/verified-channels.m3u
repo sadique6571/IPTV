@@ -200,7 +200,7 @@ http://103.86.132.58:9981/stream/channelid/1567867194
 #EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="urd",A Sports HD
 https://live.msnetworks.net/a-sports/master.m3u8
 #EXTINF:-1 group-title="Drama" tvg-country="PK" tvg-language="urd",Geo Entertainment
-https://live.msnetworks.net/geo-ent/master.m3u8
+http://175.107.244.52:4456/play/a06h
 #EXTINF:-1 group-title="Drama" tvg-country="PK" tvg-language="urd",Aaj Entertainment
 http://175.107.244.52:4456/play/a02z
 #EXTINF:-1 group-title="Music" tvg-country="PK" tvg-language="urd",Jalwa TV
