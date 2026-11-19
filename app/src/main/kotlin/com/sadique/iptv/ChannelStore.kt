@@ -73,6 +73,33 @@ internal class ChannelStore(context: Context) {
             }
         }
 
+    init {
+        fun oldGeo(channel: Channel?) =
+            channel?.name == "Geo News" && channel.url == "yt-live:@GeoNews/live"
+
+        if (favorites.any(::oldGeo) || recent.any(::oldGeo) || oldGeo(lastChannel)) {
+            val replacement = try {
+                context.assets.open("verified-channels.m3u").use {
+                    Playlist.parse(Playlist.read(it)).firstOrNull { ch -> ch.name == "Geo News" && !ch.web }
+                }
+            } catch (_: IOException) {
+                null
+            }
+            if (replacement != null) {
+                fun update(entries: MutableList<Channel>, file: File) {
+                    if (entries.none(::oldGeo)) return
+                    val migrated = entries.map { if (oldGeo(it)) replacement else it }.distinctBy { it.key }
+                    entries.clear()
+                    entries.addAll(migrated)
+                    saveFile(file, entries)
+                }
+                update(favorites, favoritesFile)
+                update(recent, recentFile)
+                if (oldGeo(lastChannel)) lastChannel = replacement
+            }
+        }
+    }
+
     var volume: Float
         get() = prefs.getFloat(KEY_VOLUME, 1f).coerceIn(0f, 1f)
         set(value) {
