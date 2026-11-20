@@ -22,7 +22,7 @@ internal fun MainActivity.loadMovieFeed() {
             movieFeedNew = fresh
             movieFeedRecommended = picks
             movieFeedSeries = series
-            if (moviesOpen && !movieResultsAreSearch) showMoviesHome()
+            if (moviesOpen && !movieResultsAreSearch) renderCurrentMoviesTab()
         }
     }
 }

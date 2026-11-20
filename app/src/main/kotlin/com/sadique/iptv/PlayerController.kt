@@ -12,7 +12,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
-import androidx.media3.datasource.DefaultBandwidthMeter
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -235,8 +236,12 @@ internal class PlayerController(
         val httpFactory = DefaultHttpDataSource.Factory().apply {
             if (currentHeaders.isNotEmpty()) setDefaultRequestProperties(currentHeaders)
         }
+        // DefaultDataSource routes http(s) through the header-carrying
+        // HTTP factory and file:// through a FileDataSource, so
+        // downloaded movies (MoviesDownloads.kt) play in this same
+        // player — a bare HttpDataSource cannot open local files.
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
-            .setDataSourceFactory(httpFactory)
+            .setDataSourceFactory(DefaultDataSource.Factory(context, httpFactory))
         val active = ExoPlayer.Builder(context).setTrackSelector(selector)
             .setMediaSourceFactory(mediaSourceFactory)
             .setBandwidthMeter(bandwidthMeter)

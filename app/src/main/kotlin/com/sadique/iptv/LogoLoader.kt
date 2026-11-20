@@ -32,10 +32,14 @@ internal object LogoLoader {
     }
     private var pool: ExecutorService = Executors.newFixedThreadPool(6)
 
-    fun load(context: Context, url: String, target: ImageView) {
+    // maxDimension: the hero banner loads posters larger (512) than
+    // the 192px tiles — the cache key carries the size so a small
+    // bitmap is never served to a large target (or vice versa).
+    fun load(context: Context, url: String, target: ImageView, maxDimension: Int = MAX_DIMENSION) {
         target.tag = url
         if (url.isEmpty()) return
-        memoryCache.get(url)?.let {
+        val cacheKey = "$url|$maxDimension"
+        memoryCache.get(cacheKey)?.let {
             if (target.tag == url) target.setImageBitmap(it)
             return
         }
@@ -47,8 +51,8 @@ internal object LogoLoader {
         val appContext = context.applicationContext
         pool.execute {
             try {
-                val bitmap = fetch(appContext, url) ?: return@execute
-                memoryCache.put(url, bitmap)
+                val bitmap = fetch(appContext, url, maxDimension) ?: return@execute
+                memoryCache.put(cacheKey, bitmap)
                 target.post { if (target.tag == url) target.setImageBitmap(bitmap) }
             } catch (_: IOException) {
                 // Logo stays blank; the letter tile behind it remains visible.
@@ -60,16 +64,16 @@ internal object LogoLoader {
         pool.shutdownNow()
     }
 
-    private fun fetch(context: Context, url: String): Bitmap? {
+    private fun fetch(context: Context, url: String, maxDimension: Int): Bitmap? {
         // Bundled manual logo — no network, no disk cache needed.
-        if (url.startsWith("asset:")) return fetchAsset(context, url.substringAfter("asset:"))
+        if (url.startsWith("asset:")) return fetchAsset(context, url.substringAfter("asset:"), maxDimension)
         val uri = runCatching { URI.create(url) }.getOrNull() ?: return null
         if (uri.scheme != "https" && uri.scheme != "http") return null
         if (uri.host == null) return null
         val cacheDir = File(context.cacheDir, "logos").apply { mkdirs() }
         val file = File(cacheDir, sha256(url) + ".img")
         if (file.exists() && file.length() in 1..MAX_LOGO_BYTES.toLong()) {
-            decode(file.readBytes())?.let { return it }
+            decode(file.readBytes(), maxDimension)?.let { return it }
             file.delete()
         }
         val connection = uri.toURL().openConnection() as HttpURLConnection
@@ -97,7 +101,7 @@ internal object LogoLoader {
                 }
                 out.toByteArray()
             }
-            val bitmap = decode(bytes) ?: return null
+            val bitmap = decode(bytes, maxDimension) ?: return null
             runCatching { FileOutputStream(file).use { it.write(bytes) } }
             return bitmap
         } finally {
@@ -110,26 +114,26 @@ internal object LogoLoader {
      * downsampled to the same MAX_DIMENSION as network logos. Returns null when
      * the drawable does not exist, so the letter tile behind stays visible.
      */
-    private fun fetchAsset(context: Context, name: String): Bitmap? {
+    private fun fetchAsset(context: Context, name: String, maxDimension: Int): Bitmap? {
         val resId = context.resources.getIdentifier(name, "drawable", context.packageName)
         if (resId == 0) return null
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeResource(context.resources, resId, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         var sample = 1
-        while (bounds.outWidth / sample > MAX_DIMENSION || bounds.outHeight / sample > MAX_DIMENSION) {
+        while (bounds.outWidth / sample > maxDimension || bounds.outHeight / sample > maxDimension) {
             sample *= 2
         }
         val options = BitmapFactory.Options().apply { inSampleSize = sample }
         return BitmapFactory.decodeResource(context.resources, resId, options)
     }
 
-    private fun decode(bytes: ByteArray): Bitmap? {
+    private fun decode(bytes: ByteArray, maxDimension: Int): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         var sample = 1
-        while (bounds.outWidth / sample > MAX_DIMENSION || bounds.outHeight / sample > MAX_DIMENSION) {
+        while (bounds.outWidth / sample > maxDimension || bounds.outHeight / sample > maxDimension) {
             sample *= 2
         }
         val options = BitmapFactory.Options().apply { inSampleSize = sample }

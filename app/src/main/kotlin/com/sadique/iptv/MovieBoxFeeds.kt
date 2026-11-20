@@ -96,6 +96,28 @@ internal fun MovieBox.newMovies(): List<MovieBox.Movie> {
     return feed.filter { !it.isSeries }.distinctBy { it.subjectId }.take(20)
 }
 
+/** Genre browse (v2.0.35): the filterable catalogue filtered by one
+ * genre, newest first. Best-effort — an unknown genre value returns an
+ * empty list and the tab shows the empty message. */
+internal fun MovieBox.moviesByGenre(genre: String): List<MovieBox.Movie> {
+    return try {
+        val body = JSONObject().apply {
+            put("tabId", 2)
+            put("page", 1)
+            put("perPage", 20)
+            put("classify", "All")
+            put("country", "All")
+            put("genre", genre)
+            put("sort", "Newest")
+            put("year", "All")
+        }.toString()
+        val data = request("POST", "$BASE/subject-api/list", body)
+        subjectsFrom(data).filter { !it.isSeries }.take(20)
+    } catch (_: IOException) {
+        emptyList()
+    }
+}
+
 /** Recommended: trending, then the daily curated picks, then the
  * Discover top picks, then the home feed's trending section. */
 internal fun MovieBox.recommended(): List<MovieBox.Movie> {

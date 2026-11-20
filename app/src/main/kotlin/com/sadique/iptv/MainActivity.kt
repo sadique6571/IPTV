@@ -59,6 +59,7 @@ import java.io.IOException
 import java.net.URI
 import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : Activity() {
     // HarmonyOS TV look, taken from the Qwen HarmonyOS theme file the user
@@ -202,7 +203,7 @@ class MainActivity : Activity() {
     internal var numberBuffer = ""
     internal var numberTimeout: Runnable? = null
     private var wakeKey = KeyEvent.KEYCODE_UNKNOWN
-    private var stoppedForBackground = false
+    internal var stoppedForBackground = false
     internal var updateDownloadDialog: AlertDialog? = null
 
     // MovieBox movies (v1): a full-screen overlay over the Live TV layout.
@@ -291,6 +292,40 @@ class MainActivity : Activity() {
     internal var movieFeedLoaded = false
     internal var movieFeedLoading = false
     internal var movieFeedRequest = 0
+    // Movies home v2 (v2.0.35): Netflix-style tabs + hero + rails.
+    internal var moviesTab = MoviesTab.HOME
+    internal lateinit var moviesTabRow: LinearLayout
+    internal var moviesSeeAll: MoviesSeeAll? = null
+    // Genres tab: the picked genre + a request counter that drops stale
+    // loads + the genre chips / results column (rebuilt per render).
+    internal var moviesGenre = "Action"
+    internal var moviesGenreRequest = 0
+    internal lateinit var movieGenreRow: LinearLayout
+    internal lateinit var movieGenreResults: LinearLayout
+    // Hero rotation state (MoviesHero.kt): the featured movies, the
+    // current index, a request counter that drops stale details loads,
+    // and the views the rotation rebinds (null while no hero is shown).
+    internal var heroMovies = emptyList<MovieBox.Movie>()
+    internal var heroIndex = 0
+    internal var heroRequest = 0
+    internal val heroRotateRunnable = Runnable { rotateMoviesHero() }
+    internal var heroTitleView: TextView? = null
+    internal var heroMetaView: TextView? = null
+    internal var heroPosterView: ImageView? = null
+    internal var heroWatchView: Button? = null
+    internal var heroListView: Button? = null
+    internal var heroDotsView: LinearLayout? = null
+    // Downloads (mobile only, MoviesDownloads.kt): one active download
+    // on its OWN executor — the shared `imports` executor is
+    // single-thread, and a 35-minute download would block every
+    // search/details call behind it.
+    internal val downloadExecutor = Executors.newSingleThreadExecutor()
+    internal lateinit var movieDownloadButton: Button
+    internal var downloadActive = false
+    internal var downloadActiveKey = ""
+    internal val downloadCancelFlag = AtomicBoolean(false)
+    internal var downloadProgressBar: ProgressBar? = null
+    internal var downloadProgressLabel: TextView? = null
 
     // Adaptive UI: TV (D-pad, 10-foot) vs touch devices, and orientation.
     // isLandscape is refreshed in onConfigurationChanged; rotation no
@@ -970,7 +1005,7 @@ class MainActivity : Activity() {
                     val movie = playingMovie
                     if (movie != null && movie.subjectId.isNotEmpty()) {
                         movieStore.removeContinue(movie.subjectId)
-                        if (moviesOpen && !movieResultsAreSearch) showMoviesHome()
+                        if (moviesOpen && !movieResultsAreSearch) renderCurrentMoviesTab()
                     }
                     // A finished movie is not playing anymore — the browse
                     // pane comes back (Retry still replays it).
@@ -1283,6 +1318,9 @@ class MainActivity : Activity() {
                 selected?.let(::play)
             }
         }
+        // The hero rotation pauses while the app is backgrounded (see
+        // rotateMoviesHero) — restart it when the Movies home is showing.
+        if (moviesOpen && moviesTab == MoviesTab.HOME) scheduleMoviesHero()
     }
 
     override fun onStop() {
@@ -1300,6 +1338,7 @@ class MainActivity : Activity() {
         updateDownloadDialog?.dismiss()
         updateDownloadDialog = null
         imports.shutdownNow()
+        downloadExecutor.shutdownNow()
         // LogoLoader's pool is shared across activity instances: killing it
         // on a rotation would crash the recreated activity the first time it
         // loads a channel logo — and fullscreen rotates on every toggle.
@@ -1313,6 +1352,10 @@ class MainActivity : Activity() {
         if (moviesOpen) {
             if (moviesDetailsPane.visibility == View.VISIBLE) {
                 showMoviesList()
+            } else if (moviesSeeAll != null) {
+                // Back from a See All list returns to its tab.
+                moviesSeeAll = null
+                renderCurrentMoviesTab()
             } else {
                 closeMovies()
             }

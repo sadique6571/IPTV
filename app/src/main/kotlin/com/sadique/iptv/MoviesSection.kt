@@ -213,6 +213,17 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     moviesListPane.addView(quickScroll, LinearLayout.LayoutParams(-1, -2).apply {
         bottomMargin = dp(8)
     })
+    // Tabs (v2.0.35): Home / Movies / TV Shows / Genres / My List
+    // (+ Downloads on mobile) — the Netflix-style home navigation.
+    moviesTabRow = buildMoviesTabsRow()
+    val tabScroll = HorizontalScrollView(this).apply {
+        isHorizontalScrollBarEnabled = false
+        overScrollMode = View.OVER_SCROLL_NEVER
+        addView(moviesTabRow)
+    }
+    moviesListPane.addView(tabScroll, LinearLayout.LayoutParams(-1, -2).apply {
+        bottomMargin = dp(8)
+    })
     movieStatus = label(
         "Movie ka naam likh kar search karein — Hindi dubbed bhi milti hai.",
         if (isTv) 15 else 13, muted,
@@ -328,6 +339,13 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     detailsInner.addView(movieFavButton, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(8)
     })
+    // Download (v2.0.35, mobile only — the user did not approve TV
+    // downloads): saves the movie file so it plays without internet.
+    movieDownloadButton = button("⬇ Download") { startMovieDownload() }
+    movieDownloadButton.visibility = if (isTv) View.GONE else View.VISIBLE
+    detailsInner.addView(movieDownloadButton, LinearLayout.LayoutParams(-1, -2).apply {
+        topMargin = dp(8)
+    })
     detailsInner.addView(button("‹ Back to results") { showMoviesList() },
         LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
     moviesDetailsPane.addView(detailsScroll, LinearLayout.LayoutParams(-1, -1))
@@ -387,6 +405,7 @@ internal fun MainActivity.openMovies() {
 
 
 internal fun MainActivity.closeMovies() {
+    stopMoviesHero()
     moviesOpen = false
     moviesView.visibility = View.GONE
     // Release the focus trap before focus goes back to the Live TV layout.
@@ -399,9 +418,10 @@ internal fun MainActivity.closeMovies() {
 internal fun MainActivity.showMoviesList() {
     moviesDetailsPane.visibility = View.GONE
     moviesListPane.visibility = View.VISIBLE
-    // No search on screen — show (and refresh) the Movies home:
-    // Continue Watching + Fav Movies. A search result stays as it is.
-    if (!movieResultsAreSearch) showMoviesHome()
+    // No search on screen — re-render whatever tab (or See All list)
+    // was showing, so a favorite toggle or a finished movie is
+    // reflected. A search result stays as it is.
+    if (!movieResultsAreSearch) renderCurrentMoviesTab()
     // Focus landing: Back from a movie's details returns to the row
     // it came from; otherwise the first row (not the search box —
     // focusing it pops the keyboard and D-pad up/down can die on it).
@@ -412,19 +432,8 @@ internal fun MainActivity.showMoviesList() {
         movieResults.getChildAt(returnRow)?.takeIf { it.isFocusable }
     } else {
         null
-    } ?: firstFocusableMovieRow() ?: movieHomeChip
+    } ?: firstFocusableDeep(movieResults) ?: movieHomeChip
     target.post { if (moviesOpen && target.isShown) target.requestFocus() }
-}
-
-
-/** First focusable row in the Movies results (section labels are not
- * focusable, so child 0 is not always a row). */
-internal fun MainActivity.firstFocusableMovieRow(): View? {
-    for (i in 0 until movieResults.childCount) {
-        val child = movieResults.getChildAt(i)
-        if (child.isFocusable) return child
-    }
-    return null
 }
 
 
@@ -460,6 +469,7 @@ internal fun MainActivity.searchMovies() {
     movieProgress.visibility = View.VISIBLE
     movieStatus.text = "Search ho raha hai…"
     movieResults.removeAllViews()
+    stopMoviesHero()
     imports.execute {
         try {
             val results = movieBox.search(query)
@@ -496,21 +506,23 @@ internal fun MainActivity.showMovieResults(movies: List<MovieBox.Movie>) {
         })
     }
     linkMovieRowActions(rows)
-    // UP from the first row reaches the quick chips (geometry alone
-    // is unreliable across the scroller boundary).
-    rows.firstOrNull()?.nextFocusUpId = movieHomeChip.id
+    // UP from the first row reaches the tabs (geometry alone is
+    // unreliable across the scroller boundary).
+    rows.firstOrNull()?.nextFocusUpId = firstMoviesTabChipId()
     syncMovieChipFocusTargets()
+    linkMoviesTabFocus()
     movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
     movieResults.getChildAt(0)?.requestFocus()
 }
 
-/** Points every quick chip's DOWN at the first movie row — geometry
- * alone is unreliable across the scroller boundary (see the matching
- * UP link on the first row), and without it DOWN from a chip could
- * land outside the Movies section and the selection would vanish.
- * Re-run on every render, since the first row changes. */
+/** Points every quick chip's DOWN at the first tab chip — geometry
+ * alone is unreliable across the scroller boundary, and without it
+ * DOWN from a chip could land outside the Movies section and the
+ * selection would vanish. */
 internal fun MainActivity.syncMovieChipFocusTargets() {
-    val targetId = firstFocusableMovieRow()?.id ?: View.NO_ID
+    // DOWN from a quick chip reaches the tabs (the tabs' own DOWN
+    // targets point at the content — see linkMoviesTabFocus).
+    val targetId = firstMoviesTabChipId()
     for (i in 0 until movieQuickRow.childCount) {
         movieQuickRow.getChildAt(i)?.nextFocusDownId = targetId
     }
@@ -532,79 +544,10 @@ internal fun MainActivity.linkMovieRowActions(rows: List<View>) {
 }
 
 
-/** Movies home: Continue Watching (top) + Fav Movies, shown when the
- * section opens and whenever no search results are on screen. */
+/** Movies home tab: the Home chip lands here — hero + Continue
+ * Watching + Trending / Popular rails (see renderMoviesHome). */
 internal fun MainActivity.showMoviesHome() {
-    movieResultsAreSearch = false
-    movieProgress.visibility = View.GONE
-    movieResults.removeAllViews()
-    val rows = mutableListOf<View>()
-    val continuing = movieStore.continueWatching()
-    val favs = movieStore.favoritesList()
-    // Feed sections (v2.0.27): kick off the one-time background load;
-    // the home re-renders with the sections when it arrives.
-    val feedPending = !movieFeedLoaded
-    if (feedPending) loadMovieFeed()
-    val hasFeed = movieFeedNew.isNotEmpty() || movieFeedRecommended.isNotEmpty() ||
-        movieFeedSeries.isNotEmpty()
-    if (continuing.isEmpty() && favs.isEmpty() && !hasFeed) {
-        movieStatus.text = if (feedPending) {
-            "Nayi movies load ho rahi hain…"
-        } else {
-            "Abhi koi Continue Watching ya Fav Movie nahi hai — neeche search karke movie dekhein."
-        }
-    } else {
-        movieStatus.text = "Continue Watching · Fav Movies" +
-            if (feedPending) " · Nayi movies load ho rahi hain…" else ""
-    }
-    if (continuing.isNotEmpty()) {
-        movieResults.addView(sectionLabel("▶ Continue Watching"))
-        for (entry in continuing) {
-            val row = continueRow(entry)
-            rows += row
-            movieResults.addView(row,
-                LinearLayout.LayoutParams(-1, -2).apply {
-                    topMargin = dp(4)
-                    bottomMargin = dp(4)
-                })
-        }
-    }
-    if (favs.isNotEmpty()) {
-        movieResults.addView(sectionLabel("♥ Fav Movies"))
-        for (movie in favs) {
-            val row = movieRow(movie)
-            rows += row
-            movieResults.addView(row,
-                LinearLayout.LayoutParams(-1, -2).apply {
-                    topMargin = dp(4)
-                    bottomMargin = dp(4)
-                })
-        }
-    }
-    // Feed sections (v2.0.27): same rows as search results, 8 per
-    // section so home stays a quick scroll.
-    for ((title, list) in listOf(
-        "🆕 New Movies" to movieFeedNew,
-        "⭐ Recommended" to movieFeedRecommended,
-        "📺 Series" to movieFeedSeries,
-    )) {
-        if (list.isEmpty()) continue
-        movieResults.addView(sectionLabel(title))
-        for (movie in list.take(8)) {
-            val row = movieRow(movie)
-            rows += row
-            movieResults.addView(row,
-                LinearLayout.LayoutParams(-1, -2).apply {
-                    topMargin = dp(4)
-                    bottomMargin = dp(4)
-                })
-        }
-    }
-    linkMovieRowActions(rows)
-    // UP from the first row reaches the quick chips.
-    rows.firstOrNull()?.nextFocusUpId = movieHomeChip.id
-    syncMovieChipFocusTargets()
-    movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
+    selectMoviesTab(MoviesTab.HOME)
 }
 
 
@@ -671,7 +614,7 @@ internal fun MainActivity.continueRow(entry: MovieStore.ContinueEntry): View {
     val removeButton = iconButton("✕") {
         movieStore.removeContinue(entry.subjectId)
         toast("Continue Watching se nikal di.")
-        showMoviesHome()
+        renderCurrentMoviesTab()
     }
     // D-pad: RIGHT from the row reaches the remove button (it sits
     // INSIDE the row, so geometry alone never finds it); UP/DOWN
@@ -818,7 +761,7 @@ internal fun MainActivity.movieRow(movie: MovieBox.Movie): View {
         btn.text = if (nowFav) "♥" else "♡"
         btn.setTextColor(if (nowFav) liveRed else muted)
         toast(if (nowFav) "Fav Movies mein add ho gayi." else "Fav Movies se nikal di.")
-        if (moviesOpen && !movieResultsAreSearch) showMoviesHome()
+        if (moviesOpen && !movieResultsAreSearch) renderCurrentMoviesTab()
     }
     heart.setTextColor(if (movieStore.isFavorite(movie)) liveRed else muted)
     // D-pad: RIGHT from the row reaches the heart (it sits INSIDE the

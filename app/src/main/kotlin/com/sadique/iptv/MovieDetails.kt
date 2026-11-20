@@ -173,6 +173,9 @@ internal fun MainActivity.saveMovieProgress(async: Boolean) {
 
 
 internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
+    // The details pane covers the home — stop the hero rotation so it
+    // stops firing details lookups for a hidden banner.
+    stopMoviesHero()
     val request = ++movieDetailsRequest
     currentMovieDetails = null
     currentMovieStreams = emptyList()
