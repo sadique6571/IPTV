@@ -99,6 +99,17 @@ class MainActivity : Activity() {
     internal lateinit var libraryPane: LinearLayout
     internal lateinit var rootView: LinearLayout
     internal lateinit var headerView: LinearLayout
+    // Network speed + today's usage label (v2.0.44, header right end):
+    // "500 Kbps/30 MB", refreshed once a second while visible.
+    internal lateinit var networkLabel: TextView
+    private val networkTickRunnable = object : Runnable {
+        override fun run() {
+            if (::networkLabel.isInitialized) {
+                networkLabel.text = NetworkUsage.tick(this@MainActivity)
+            }
+            mainHandler.postDelayed(this, 1000)
+        }
+    }
     private lateinit var playerPane: LinearLayout
     // The split container (browse pane + player pane). Kept as a field
     // so onConfigurationChanged can re-lay it out on rotation without
@@ -453,6 +464,12 @@ class MainActivity : Activity() {
                     })
             }
         }
+        // Network speed + today's usage (v2.0.44): right-aligned at
+        // the far end of the header panel — "500 Kbps/30 MB".
+        networkLabel = label("0 Kbps/0 B", 12, muted2).apply {
+            gravity = Gravity.END
+        }
+        headerView.addView(networkLabel, LinearLayout.LayoutParams(0, -2, 1f))
         rootView.addView(headerView, LinearLayout.LayoutParams(-1, -2).apply {
             bottomMargin = dp(8)
         })
@@ -1320,9 +1337,19 @@ class MainActivity : Activity() {
         // The hero rotation pauses while the app is backgrounded (see
         // rotateMoviesHero) — restart it when the Movies home is showing.
         if (moviesOpen && moviesTab == MoviesTab.HOME) scheduleMoviesHero()
+        startNetworkTicker()
+    }
+
+    // Network speed + daily usage label (v2.0.44): ticks once a
+    // second while the activity is visible; stopped in onStop.
+    private fun startNetworkTicker() {
+        mainHandler.removeCallbacks(networkTickRunnable)
+        mainHandler.post(networkTickRunnable)
     }
 
     override fun onStop() {
+        mainHandler.removeCallbacks(networkTickRunnable)
+        NetworkUsage.reset()
         // Capture the movie position BEFORE stopPlayback releases the player,
         // so coming back from background resumes the movie where it left off.
         if (playingMovie != null) savedMoviePosition = playerController?.position() ?: 0L
