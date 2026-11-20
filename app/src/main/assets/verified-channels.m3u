@@ -167,7 +167,7 @@ https://stream.ottlive.co.in/zingabad/index.m3u8
 https://plus.gigabitcdn.net/live-stream/apna-punjab-H3sE/playlist.m3u8
 #EXTINF:-1 group-title="General" tvg-country="CA" tvg-language="pan" tvg-logo="https://i.imgur.com/ArRZRM3.png",Gaunda Punjab TV
 http://cdn6.live247stream.com/gaundapunjab/tv/playlist.m3u8
-#EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd",ARUJ TV
+#EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd" tvg-logo="https://yt3.googleusercontent.com/inqG4jvFhbFI9jB8IBzmCmct8fcsfeKFwMGAqg-TIi7Ogid0DC-IgM4o6p9ZUW3zhd7AsQ6AomU=s176-c-k-c0x00ffffff-no-rj",ARUJ TV
 http://103.86.132.58:9981/stream/channelid/1391980280
 #EXTINF:-1 group-title="General" tvg-country="MY" tvg-language="pan" tvg-logo="https://i.imgur.com/V2jREQ5.png",Okey
 https://d25tgymtnqzu8s.cloudfront.net/smil:okey/playlist.m3u8?id=3
@@ -189,25 +189,25 @@ https://r2.amml.in/sony-ten-3-hd/live.m3u8
 https://real-vk.proxy.nellaiiptv.com/SDMEDIA/index.m3u8
 #EXTINF:-1 group-title="News" tvg-country="PK" tvg-language="urd" tvg-logo="https://i.ytimg.com/vi/KNvaWHgOBMw/hqdefault.jpg",Express News
 https://www.youtube.com/@ExpressNewspkofficial/live
-#EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd",ARY Zindagi
+#EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd" tvg-logo="https://yt3.googleusercontent.com/Q8R6iHca0aGyrT71lYW15XBEKo3xeOTmxnaXXHbAmBLg83PFLITs-5k_sT-Jb4uwguVZm3D7o4c=s176-c-k-c0x00ffffff-no-rj",ARY Zindagi
 http://103.86.132.58:9981/stream/channelid/2101709770
-#EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd",Geo Kahani
+#EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd" tvg-logo="https://yt3.googleusercontent.com/ytc/AIdro_lt2jwFpTYjusceAsLlIE0B312SEUb4A4Du-rbN8n_STCg=s176-c-k-c0x00ffffff-no-rj",Geo Kahani
 http://175.107.244.52:4456/play/a06i
-#EXTINF:-1 group-title="News" tvg-country="PK" tvg-language="urd",Hum News HD
+#EXTINF:-1 group-title="News" tvg-country="PK" tvg-language="urd" tvg-logo="https://i.imgur.com/9OroocT.png",Hum News HD
 https://live.msnetworks.net/hum-news/master.m3u8
-#EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd",ARY Musik
+#EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd" tvg-logo="https://upload.wikimedia.org/wikipedia/en/b/bb/ARY_Musik_logo.png",ARY Musik
 http://103.86.132.58:9981/stream/channelid/1567867194
-#EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="urd",A Sports HD
+#EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="urd" tvg-logo="https://yt3.googleusercontent.com/ytc/AIdro_ljxQ7hfzXg6V-r-CXDCQKc0cWL-aI5yQmtVRq5yEVtWw=s176-c-k-c0x00ffffff-no-rj",A Sports HD
 https://live.msnetworks.net/a-sports/master.m3u8
-#EXTINF:-1 group-title="Drama" tvg-country="PK" tvg-language="urd",Geo Entertainment
+#EXTINF:-1 group-title="Drama" tvg-country="PK" tvg-language="urd" tvg-logo="https://yt3.googleusercontent.com/gmRmvRYUHVbi2YnWiM_RbJtwPMkKK_WJfsWYINioLLVutKiQ5_Yf1xbGY57qGJydAY7zNuRp6Q=s176-c-k-c0x00ffffff-no-rj",Geo Entertainment
 http://175.107.244.52:4456/play/a06h
-#EXTINF:-1 group-title="Drama" tvg-country="PK" tvg-language="urd",Aaj Entertainment
+#EXTINF:-1 group-title="Drama" tvg-country="PK" tvg-language="urd" tvg-logo="https://i.imgur.com/WK5Cqap.png",Aaj Entertainment
 http://175.107.244.52:4456/play/a02z
-#EXTINF:-1 group-title="Music" tvg-country="PK" tvg-language="urd",Jalwa TV
+#EXTINF:-1 group-title="Music" tvg-country="PK" tvg-language="urd" tvg-logo="https://i.imgur.com/HWb5Iat.png",Jalwa TV
 http://175.107.244.52:4456/play/a03w
-#EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="urd",Geo Super
+#EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="urd" tvg-logo="https://yt3.googleusercontent.com/5E03PY5Ltzf4abr_x9izaRPtNJFhRlLkZadeFP7OzqrGLY8UTDjSkqGH14n52bQROQmidKBhpiE=s176-c-k-c0x00ffffff-no-rj",Geo Super
 http://175.107.244.52:4456/play/a06z
-#EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="eng",PTV Sports HD
+#EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="eng" tvg-logo="https://i.imgur.com/CPm6GHA.png",PTV Sports HD
 https://live.msnetworks.net/ptv-sports/master.m3u8
-#EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="eng",Ten Sports Pakistan
+#EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="eng" tvg-logo="https://i.imgur.com/7qS6TcE.png",Ten Sports Pakistan
 https://live.msnetworks.net/ten-sports/master.m3u8
