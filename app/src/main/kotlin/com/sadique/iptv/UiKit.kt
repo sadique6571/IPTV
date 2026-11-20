@@ -335,14 +335,19 @@ internal fun Context.glassShape(radiusDp: Int = 22, strokeColor: Int = glassStro
 
 
 /** Demo-matching app background (v2.0.38; glows strengthened
- * v2.0.41): the navy diagonal gradient plus soft radial glows —
- * cyan top-right, blue bottom-left, purple mid-left, indigo
- * bottom-right — like the mockup's bokeh backdrop. The v38/v39
- * glows were invisible on his phone (20-30% alpha, hiding behind
- * ~95% opaque panels, only showing in thin gaps), so v41 raises
- * the alphas to 30-50%, enlarges the radii, and spreads four
- * glows across the screen — some glow always lands in a visible
- * gap, and the translucent panels let it show through. Pure
+ * v2.0.41, made bright orbs v2.0.42): the navy diagonal gradient
+ * plus soft radial glows — cyan top-right, blue bottom-left,
+ * purple mid-left, indigo bottom-right — like the mockup's bokeh
+ * backdrop. The v38/v39 glows were invisible on his phone (20-30%
+ * alpha, hiding behind ~95% opaque panels, only showing in thin
+ * gaps), so v41 raised the alphas to 30-50% and spread four glows
+ * across the screen. But v41's wide radii spread the light into a
+ * faint blue wash — no distinct orb. v42 raises the alphas to
+ * 45-70% and tightens the radii, so each glow reads as a bright
+ * orb with a soft edge, like the mockups. v42 also adds the
+ * mockups' scattered bokeh dots — 12 small bright circles (same
+ * radial helper, tiny radii, high alpha) peeking between the
+ * panels. The translucent panels let the glow show through. Pure
  * background, no layout change. */
 internal fun Context.demoBackground(): LayerDrawable {
     val base = GradientDrawable(
@@ -361,10 +366,24 @@ internal fun Context.demoBackground(): LayerDrawable {
         }
     return LayerDrawable(arrayOf(
         base,
-        glow(0.88f, 0.18f, 0x8022d9ee.toInt(), 0.95f),
-        glow(0.08f, 0.85f, 0x663d7bff.toInt(), 0.9f),
-        glow(0.08f, 0.35f, 0x598b5cff.toInt(), 0.65f),
-        glow(0.9f, 0.72f, 0x4d5c6cff.toInt(), 0.8f),
+        glow(0.88f, 0.15f, 0xb322d9ee.toInt(), 0.55f),
+        glow(0.05f, 0.88f, 0x993d7bff.toInt(), 0.55f),
+        glow(0.05f, 0.38f, 0x808b5cff.toInt(), 0.45f),
+        glow(0.92f, 0.75f, 0x735c6cff.toInt(), 0.5f),
+        // Bokeh dots (v2.0.42): small bright circles scattered
+        // across the background, like the mockups.
+        glow(0.06f, 0.30f, 0xb322d9ee.toInt(), 0.02f),
+        glow(0.18f, 0.08f, 0xcc7fb8ff.toInt(), 0.015f),
+        glow(0.32f, 0.55f, 0x9922d9ee.toInt(), 0.03f),
+        glow(0.45f, 0.12f, 0x803d7bff.toInt(), 0.02f),
+        glow(0.58f, 0.42f, 0x998b5cff.toInt(), 0.025f),
+        glow(0.70f, 0.06f, 0xb322d9ee.toInt(), 0.012f),
+        glow(0.78f, 0.62f, 0xe6ffffff.toInt(), 0.015f),
+        glow(0.90f, 0.35f, 0x993d7bff.toInt(), 0.02f),
+        glow(0.12f, 0.72f, 0x808b5cff.toInt(), 0.03f),
+        glow(0.28f, 0.92f, 0x9922d9ee.toInt(), 0.02f),
+        glow(0.55f, 0.85f, 0xb33d7bff.toInt(), 0.015f),
+        glow(0.85f, 0.95f, 0x8022d9ee.toInt(), 0.025f),
     ))
 }
 
