@@ -136,6 +136,10 @@ class MainActivity : Activity() {
     // The guard stops its TextWatcher re-firing when populate() syncs
     // the field after an outside query change.
     internal lateinit var channelSearchInput: EditText
+    // ::channelSearchInput.isInitialized only compiles INSIDE this class —
+    // from an extension function in another file the backing field is not
+    // accessible (v37 run #91). Extension code asks through here.
+    internal fun isChannelSearchInputReady(): Boolean = ::channelSearchInput.isInitialized
     internal var suppressChannelSearchWatch = false
     internal var playerController: PlayerController? = null
     internal var web: WebView? = null

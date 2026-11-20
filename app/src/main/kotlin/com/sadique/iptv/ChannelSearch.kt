@@ -70,7 +70,7 @@ internal fun MainActivity.buildChannelSearchInput(): EditText {
  * switches). Called from populate() — every query change ends
  * there. The guard stops the TextWatcher from re-firing. */
 internal fun MainActivity.syncChannelSearchInput() {
-    if (!::channelSearchInput.isInitialized) return
+    if (!isChannelSearchInputReady()) return
     if (channelSearchInput.text.toString() != query) {
         suppressChannelSearchWatch = true
         channelSearchInput.setText(query)
