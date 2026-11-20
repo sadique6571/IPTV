@@ -323,11 +323,18 @@ internal fun Context.dp(value: Int) = (value * resources.displayMetrics.density 
  * read as a raised panel instead of a flat fill. v2.0.41: fills at
  * 80% alpha (same hues, inlined so the palette vals stay untouched)
  * so the glowing background shows through the rows/chips/search
- * fields too — frosted glass instead of flat cards. */
-internal fun Context.glassShape(radiusDp: Int = 22, strokeColor: Int = glassStroke, strokeDp: Int = 1) =
+ * fields too — frosted glass instead of flat cards. v2.0.43: the
+ * boxes (rows, buttons, chips, cards) still read as flat — 80% was
+ * too opaque and the 14% default stroke invisible — so the fill
+ * drops to ~60% with a lighter top sheen and every box gets a
+ * visible ~25% light edge, like the mockups' glass boxes. One
+ * function feeds every box (rowBackground, button, chip,
+ * glassStateList, navItemBackground), so all of them turn glassy
+ * together. */
+internal fun Context.glassShape(radiusDp: Int = 22, strokeColor: Int = 0x4096acff.toInt(), strokeDp: Int = 1) =
     GradientDrawable(
         GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(0xcc2a405a.toInt(), 0xcc22354e.toInt(), 0xcc172539.toInt()),
+        intArrayOf(0xa63a5a80.toInt(), 0x9922354e.toInt(), 0x99172539.toInt()),
     ).apply {
         setStroke(dp(strokeDp), strokeColor)
         cornerRadius = dp(radiusDp).toFloat()
