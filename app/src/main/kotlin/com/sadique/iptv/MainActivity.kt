@@ -429,6 +429,12 @@ class MainActivity : Activity() {
             letterSpacing = 0.03f
             setPadding(dp(12), 0, dp(16), 0)
         })
+        // Installed-build label (v2.0.40): small version tag next to
+        // the title, so it is always visible which build is running
+        // (settles "theme did not change" — it shows the old build).
+        headerView.addView(label("v${BuildConfig.VERSION_CODE}", 12, muted2).apply {
+            setPadding(0, dp(6), dp(12), 0)
+        })
         if (isTv) {
             // Wide pill action buttons (v2.0.37): icon + visible title —
             // Playlists, Import M3U, Xtream, Update. The big search pill
