@@ -228,10 +228,10 @@ internal class PlayerController(
             .setInitialBitrateEstimate(INITIAL_BITRATE_ESTIMATE).build()
         // Buffering (v2.0.34): the player used to start after ~2.5s of
         // buffer, so a slow free server stalled it at once. Now it
-        // waits for 10s before starting (and 10s after a stall before
+        // waits for 5s before starting (and 5s after a stall before
         // resuming) and keeps a 30-60s cushion while playing — short
         // network hiccups play through the buffer instead of freezing.
-        // Cost: a channel takes ~10s to start, and live runs ~10s
+        // Cost: a channel takes ~5s to start, and live runs ~5s
         // behind real time (live data only arrives in real time).
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -459,8 +459,8 @@ internal class PlayerController(
         private const val INITIAL_BITRATE_ESTIMATE = 4_000_000L
         private const val MIN_BUFFER_MS = 30_000
         private const val MAX_BUFFER_MS = 60_000
-        private const val BUFFER_FOR_PLAYBACK_MS = 10_000
-        private const val BUFFER_AFTER_REBUFFER_MS = 10_000
+        private const val BUFFER_FOR_PLAYBACK_MS = 5_000
+        private const val BUFFER_AFTER_REBUFFER_MS = 5_000
         // Fail-fast (v2.0.36): HTTP timeouts + backup failover delay.
         private const val CONNECT_TIMEOUT_MS = 5000
         private const val READ_TIMEOUT_MS = 8000

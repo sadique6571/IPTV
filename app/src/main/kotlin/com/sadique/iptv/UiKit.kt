@@ -126,20 +126,23 @@ internal fun Context.glassPanel(paddingDp: Int = 12) = LinearLayout(this).apply 
 }
 
 
-/** Bright glass fill (v2.0.39): the big panels (sidebars, top bar)
- * need to READ as panels against the dark background — v2.0.38's
- * glassShape fill is nearly the same darkness as the backdrop and
- * its 1dp stroke is only ~14% alpha, so the panels blended in and
- * the user saw no change at all. This fill is clearly lighter
- * (steel-blue top stop) with a 2dp cyan stroke at ~45% alpha,
- * like the mockups' glossy panels. Small controls keep the
- * subtler glassShape — only the big panels use this. */
+/** Bright glass fill (v2.0.39; made truly glassy v2.0.41): the
+ * big panels (sidebars, top bar) need to READ as panels against
+ * the dark background — v2.0.38's glassShape fill is nearly the
+ * same darkness as the backdrop and its 1dp stroke is only ~14%
+ * alpha, so the panels blended in and the user saw no change at
+ * all. v39 fixed the visibility but its ~95% opaque fill read as
+ * a flat dark card — no glassy feel. v41 drops the fill to
+ * 60-70% alpha so the glowing background shows THROUGH the panel
+ * (real frosted glass, like the mockups), with a lighter top
+ * sheen and a 2dp cyan stroke at ~55% alpha. Small controls keep
+ * the subtler glassShape — only the big panels use this. */
 internal fun Context.brightGlassShape(radiusDp: Int = 20) =
     GradientDrawable(
         GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(0xf23a5a80.toInt(), 0xf22c4a6e.toInt(), 0xf01e3350.toInt()),
+        intArrayOf(0xb3547faa.toInt(), 0x993a5a80.toInt(), 0x992c4a6e.toInt()),
     ).apply {
-        setStroke(dp(2), 0x7322d9ee.toInt())
+        setStroke(dp(2), 0x8c22d9ee.toInt())
         cornerRadius = dp(radiusDp).toFloat()
     }
 
@@ -317,21 +320,30 @@ internal fun Context.dp(value: Int) = (value * resources.displayMetrics.density 
 
 /** Glass fill: 3-stop vertical gradient (light top edge → GlassHi →
  * Glass) + 1dp stroke. The light top edge is what makes the glass
- * read as a raised panel instead of a flat fill. */
+ * read as a raised panel instead of a flat fill. v2.0.41: fills at
+ * 80% alpha (same hues, inlined so the palette vals stay untouched)
+ * so the glowing background shows through the rows/chips/search
+ * fields too — frosted glass instead of flat cards. */
 internal fun Context.glassShape(radiusDp: Int = 22, strokeColor: Int = glassStroke, strokeDp: Int = 1) =
     GradientDrawable(
         GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(0xf12a405a.toInt(), glassHi, glass),
+        intArrayOf(0xcc2a405a.toInt(), 0xcc22354e.toInt(), 0xcc172539.toInt()),
     ).apply {
         setStroke(dp(strokeDp), strokeColor)
         cornerRadius = dp(radiusDp).toFloat()
     }
 
 
-/** Demo-matching app background (v2.0.38): the navy diagonal
- * gradient plus soft radial glows — cyan top-right, blue
- * bottom-left, a hint of purple top-left — like the mockup's
- * bokeh backdrop. Pure background, no layout change. */
+/** Demo-matching app background (v2.0.38; glows strengthened
+ * v2.0.41): the navy diagonal gradient plus soft radial glows —
+ * cyan top-right, blue bottom-left, purple mid-left, indigo
+ * bottom-right — like the mockup's bokeh backdrop. The v38/v39
+ * glows were invisible on his phone (20-30% alpha, hiding behind
+ * ~95% opaque panels, only showing in thin gaps), so v41 raises
+ * the alphas to 30-50%, enlarges the radii, and spreads four
+ * glows across the screen — some glow always lands in a visible
+ * gap, and the translucent panels let it show through. Pure
+ * background, no layout change. */
 internal fun Context.demoBackground(): LayerDrawable {
     val base = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
@@ -349,9 +361,10 @@ internal fun Context.demoBackground(): LayerDrawable {
         }
     return LayerDrawable(arrayOf(
         base,
-        glow(0.85f, 0.12f, 0x4d22d9ee.toInt(), 0.75f),
-        glow(0.08f, 0.92f, 0x403d7bff.toInt(), 0.7f),
-        glow(0.15f, 0.15f, 0x338b5cff.toInt(), 0.5f),
+        glow(0.88f, 0.18f, 0x8022d9ee.toInt(), 0.95f),
+        glow(0.08f, 0.85f, 0x663d7bff.toInt(), 0.9f),
+        glow(0.08f, 0.35f, 0x598b5cff.toInt(), 0.65f),
+        glow(0.9f, 0.72f, 0x4d5c6cff.toInt(), 0.8f),
     ))
 }
 

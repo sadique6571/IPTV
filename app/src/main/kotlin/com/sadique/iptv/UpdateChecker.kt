@@ -123,6 +123,20 @@ internal object UpdateChecker {
         }
     }
 
+    // Full version label for the header (v2.0.41): "v2.0.40" — the
+    // versionName plus the versionCode, both read at runtime.
+    @Suppress("DEPRECATION")
+    internal fun installedVersionLabel(context: Context): String {
+        val pm = context.packageManager
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+        } else {
+            pm.getPackageInfo(context.packageName, 0)
+        }
+        val name = info.versionName ?: "2.0"
+        return "v$name.${installedVersionCode(context)}"
+    }
+
     /**
      * Downloads the release APK into cacheDir/updates/ (served to the
      * installer through FileProvider). Calls [onProgress] with 0..100 on the
