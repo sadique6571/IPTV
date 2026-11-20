@@ -154,11 +154,13 @@ internal class PlayerController(
         active.playWhenReady = true
     }
 
-    /** Returns true when playback is running after the toggle. */
+    /** Returns true when playback is set to play after the toggle
+     * (playWhenReady — immediate, unlike isPlaying, which lags on
+     * resume until the first frame renders). */
     fun togglePlayPause(): Boolean {
         val active = player ?: return false
         if (active.playWhenReady) active.pause() else active.play()
-        return active.isPlaying
+        return active.playWhenReady
     }
 
     fun setVolume(volume: Float) {

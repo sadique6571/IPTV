@@ -1455,6 +1455,26 @@ class MainActivity : Activity() {
                 return true
             }
         }
+        // Live TV pause (v2.0.41): OK pauses/resumes a fullscreen
+        // channel. The on-video controls are movies-only on TV, so a
+        // live channel had no pause at all — OK now toggles directly.
+        // Resume continues from the paused spot (ExoPlayer holds the
+        // position); only a very long pause falls out of the live
+        // window and jumps back to live. Skipped while a channel
+        // number is being typed (OK confirms the jump there) and for
+        // web channels (a WebView plays those, not ExoPlayer).
+        if (playingMovie == null && selected != null && selected?.web != true &&
+            fullScreen && event.action == KeyEvent.ACTION_DOWN &&
+            numberBuffer.isEmpty() &&
+            (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER ||
+                code == KeyEvent.KEYCODE_NUMPAD_ENTER)
+        ) {
+            if (event.repeatCount == 0) {
+                val nowPlaying = playerController?.togglePlayPause() ?: false
+                status.text = if (nowPlaying) "" else "Paused"
+            }
+            return true
+        }
         return super.dispatchKeyEvent(event)
     }
 
