@@ -67,8 +67,11 @@ import java.util.concurrent.Executors
 
 /** Switches the TV browse pane between its two levels: the
  * categories, or the channels of the picked category. Focus lands on
- * the active category (categories) or the first row (channels). */
-internal fun MainActivity.setBrowseLevel(level: BrowseLevel) {
+ * the active category (categories) or the first row (channels) —
+ * unless moveFocus is false: the inline search field switches levels
+ * on every keystroke, and a focus jump there would steal the
+ * keyboard mid-typing. */
+internal fun MainActivity.setBrowseLevel(level: BrowseLevel, moveFocus: Boolean = true) {
     if (!isTv) return
     browseLevel = level
     val showingCategories = level == BrowseLevel.CATEGORIES
@@ -77,6 +80,7 @@ internal fun MainActivity.setBrowseLevel(level: BrowseLevel) {
     searchClearRow.visibility =
         if (!showingCategories && query.isNotEmpty()) View.VISIBLE else View.GONE
     listScroll.visibility = if (showingCategories) View.GONE else View.VISIBLE
+    if (!moveFocus) return
     if (showingCategories) {
         filterChips[filter]?.requestFocus()
     } else {
@@ -149,9 +153,10 @@ internal fun MainActivity.populate(preserveScroll: Boolean = false) {
     } else {
         searchClearRow.visibility = View.GONE
     }
-    // The pane search bar shows the active query too.
-    paneSearchLabel.text =
-        if (query.isNotEmpty()) "Search: \"$query\"" else "Search channels…"
+    // The inline search field shows the query itself — keep its
+    // text in step when the query changed from elsewhere (clear,
+    // Back, playlist switches).
+    syncChannelSearchInput()
     val candidates = when {
         // Search is global: a query searches every bundled channel,
         // whatever category is showing — otherwise a search from the
@@ -275,6 +280,14 @@ internal fun MainActivity.channelRow(channel: Channel): View {
     }
     val tileSize = dp(if (isTv) 40 else 44)
     val tileView = FrameLayout(this)
+    // Round icon tile (v2.0.37): the logo (or its letter tile) shows
+    // as a round icon, like the approved TV mockup.
+    tileView.outlineProvider = object : ViewOutlineProvider() {
+        override fun getOutline(view: View, outline: Outline) {
+            outline.setOval(0, 0, view.width, view.height)
+        }
+    }
+    tileView.clipToOutline = true
     val initial = TextView(this).apply {
         text = channel.name.take(1).uppercase()
         textSize = if (isTv) 20f else 18f

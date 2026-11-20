@@ -19,7 +19,12 @@ internal fun MainActivity.loadMovieFeed() {
             if (isDestroyed || request != movieFeedRequest) return@runOnUiThread
             movieFeedLoading = false
             movieFeedLoaded = true
-            movieFeedNew = fresh
+            // New Release must genuinely differ from Trending
+            // (v2.0.37): drop any title already in the Trending rail,
+            // newest first by release year.
+            val trendingIds = picks.map { it.subjectId }.toSet()
+            movieFeedNew = fresh.filter { it.subjectId !in trendingIds }
+                .sortedByDescending { it.year.toIntOrNull() ?: 0 }
             movieFeedRecommended = picks
             movieFeedSeries = series
             if (moviesOpen && !movieResultsAreSearch) renderCurrentMoviesTab()

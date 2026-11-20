@@ -156,22 +156,23 @@ internal fun Context.button(
 }
 
 
-/** Small round TopBar action button (TV): a glass circle with a
- * vector icon, cyan ring on D-pad focus. */
-internal fun Context.topRoundButton(iconRes: Int, description: String, action: () -> Unit) =
-    ImageButton(this).apply {
-        setImageResource(iconRes)
-        scaleType = ImageView.ScaleType.FIT_CENTER
-        contentDescription = description
-        imageTintList = ColorStateList.valueOf(textColor)
+/** Wide pill TopBar action button (TV, v2.0.37): vector icon + a
+ * visible text title, glass pill with a cyan ring on D-pad focus.
+ * Replaces the round icon-only buttons — the big search pill is
+ * gone, so the titles fit up here now. */
+internal fun Context.topPillButton(iconRes: Int, title: String, action: () -> Unit) =
+    Button(this).apply {
+        text = title
+        isAllCaps = false
+        setTextColor(textColor)
+        textSize = 15f
         minimumWidth = 0
-        minimumHeight = 0
-        setPadding(dp(12), dp(12), dp(12), dp(12))
-        background = StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused), glassShape(24, cyan, 2))
-            addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 24))
-            addState(intArrayOf(), glassShape(24))
-        }
+        minimumHeight = dp(48)
+        setPadding(dp(18), dp(8), dp(18), dp(8))
+        setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
+        compoundDrawablePadding = dp(8)
+        compoundDrawableTintList = ColorStateList.valueOf(textColor)
+        background = glassStateList(24)
         setOnClickListener { action() }
     }
 
@@ -312,7 +313,7 @@ internal fun Context.navItemBackground() = StateListDrawable().apply {
 }
 
 
-internal fun Context.navItem(labelText: String, action: () -> Unit) = Button(this).apply {
+internal fun Context.navItem(labelText: String, iconRes: Int = 0, action: () -> Unit) = Button(this).apply {
     text = labelText
     isAllCaps = false
     setTextColor(muted)
@@ -321,6 +322,13 @@ internal fun Context.navItem(labelText: String, action: () -> Unit) = Button(thi
     minimumWidth = 0
     minimumHeight = dp(40)
     setPadding(dp(16), dp(8), dp(16), dp(8))
+    if (iconRes != 0) {
+        setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
+        compoundDrawablePadding = dp(8)
+        // Tinted to the rest color; refreshFilterText re-tints it white
+        // on focus/selection, like the chip icons.
+        compoundDrawableTintList = ColorStateList.valueOf(muted)
+    }
     background = navItemBackground()
     setOnFocusChangeListener { _, hasFocus ->
         refreshFilterText(this)

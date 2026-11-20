@@ -131,11 +131,12 @@ class MainActivity : Activity() {
     // query text + a button that clears it and restores the full list.
     internal lateinit var searchClearRow: LinearLayout
     internal lateinit var searchClearLabel: TextView
-    // Search bar at the top of the browse pane, as wide as the list —
-    // the channel search lives where the channels are (the TopBar pill
-    // stays as the second way in).
-    private lateinit var paneSearchBar: LinearLayout
-    internal lateinit var paneSearchLabel: TextView
+    // Inline channel search (v2.0.37): a real EditText above the
+    // channel list — typing filters the list live (ChannelSearch.kt).
+    // The guard stops its TextWatcher re-firing when populate() syncs
+    // the field after an outside query change.
+    internal lateinit var channelSearchInput: EditText
+    internal var suppressChannelSearchWatch = false
     internal var playerController: PlayerController? = null
     internal var web: WebView? = null
     // Transparent tap catcher above an iframe embed (below the app's own
@@ -221,14 +222,6 @@ class MainActivity : Activity() {
     internal lateinit var moviesListPane: LinearLayout
     internal lateinit var moviesDetailsPane: LinearLayout
     internal lateinit var movieSearchInput: EditText
-    // Home chip in the Movies quick row — the focus fallback when the
-    // section opens with no rows (the search box is NOT the landing:
-    // focusing it pops the keyboard and D-pad up/down can die on it).
-    internal lateinit var movieHomeChip: Button
-    // The Movies quick-chip row (Home + search shortcuts) — its chips'
-    // DOWN targets are re-pointed at the first movie row on every
-    // render (see syncMovieChipFocusTargets).
-    internal lateinit var movieQuickRow: LinearLayout
     internal lateinit var movieStatus: TextView
     // Now-playing bar at the top of the Movies section: shown when a movie
     // is already playing, with a shortcut back to the player.
@@ -302,6 +295,9 @@ class MainActivity : Activity() {
     internal var moviesGenreRequest = 0
     internal lateinit var movieGenreRow: LinearLayout
     internal lateinit var movieGenreResults: LinearLayout
+    // Genres tab quick-search chips (Marvel, DC, … — moved here from
+    // the Movies home in v2.0.37): rebuilt per render with the genre row.
+    internal lateinit var movieGenreQuickRow: LinearLayout
     // Hero rotation state (MoviesHero.kt): the featured movies, the
     // current index, a request counter that drops stale details loads,
     // and the views the rotation rebinds (null while no hero is shown).
@@ -405,8 +401,8 @@ class MainActivity : Activity() {
                 intArrayOf(bg0, bg1, bg2),
             )
         }
-        // TopBar (Qwen): logo mark + IPTV title + glass search pill + the
-        // round action buttons (TV). Hidden on phones in landscape
+        // TopBar (Qwen): logo mark + IPTV title + the wide pill action
+        // buttons (TV, v2.0.37). Hidden on phones in landscape
         // (vertical space is tight there; the footer buttons cover it) —
         // the playing card already shows what is on.
         headerView = LinearLayout(this).apply {
@@ -426,44 +422,20 @@ class MainActivity : Activity() {
             letterSpacing = 0.03f
             setPadding(dp(12), 0, dp(16), 0)
         })
-        val searchPill = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            isFocusable = true
-            isClickable = true
-            minimumHeight = dp(if (isTv) 56 else 48)
-            background = glassStateList(28)
-            setPadding(dp(20), 0, dp(20), 0)
-            setOnClickListener { openSearch() }
-        }
-        searchPill.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_search)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            imageTintList = ColorStateList.valueOf(muted)
-            setPadding(0, 0, dp(12), 0)
-        }, LinearLayout.LayoutParams(dp(if (isTv) 22 else 20), dp(if (isTv) 22 else 20)))
-        searchPill.addView(label("Search channels…", if (isTv) 16 else 14, muted2).apply {
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-        })
-        headerView.addView(searchPill, LinearLayout.LayoutParams(0, -2, 1f).apply {
-            marginEnd = dp(12)
-        })
         if (isTv) {
-            // Small round action buttons (TV): Playlists, Import M3U,
-            // Xtream, Update. They used to sit under the channel list
-            // and eat its height; the search pill already lives up here,
-            // so the actions join it and the space below stays free.
-            // (No Search button — the pill IS the search bar.)
+            // Wide pill action buttons (v2.0.37): icon + visible title —
+            // Playlists, Import M3U, Xtream, Update. The big search pill
+            // is gone, so the titles fit up here now; search lives in
+            // the inline field above the channel list instead.
             val topActions = listOf(
                 Triple(R.drawable.ic_list, "Playlists") { showPlaylists() },
                 Triple(R.drawable.ic_download, "Import M3U") { choosePlaylist() },
                 Triple(R.drawable.ic_tv, "Xtream") { askXtream() },
                 Triple(R.drawable.ic_upload, "Update") { checkForUpdateManually() },
             )
-            for ((iconRes, description, action) in topActions) {
-                headerView.addView(topRoundButton(iconRes, description, action),
-                    LinearLayout.LayoutParams(dp(48), dp(48)).apply {
+            for ((iconRes, title, action) in topActions) {
+                headerView.addView(topPillButton(iconRes, title, action),
+                    LinearLayout.LayoutParams(-2, -2).apply {
                         marginEnd = dp(8)
                     })
             }
@@ -476,32 +448,12 @@ class MainActivity : Activity() {
         val left = column().also { libraryPane = it }
         playerPane = column()
 
-        // Search bar at the top of the browse pane, as wide as the list —
-        // the channel search lives where the channels are. It sits above
-        // both browse levels (categories + channels) and shows the active
-        // query while one is running (see populate).
-        paneSearchBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            isFocusable = true
-            isClickable = true
-            minimumHeight = dp(if (isTv) 52 else 48)
-            background = glassStateList(24)
-            setPadding(dp(16), 0, dp(16), 0)
-            setOnClickListener { openSearch() }
-        }
-        paneSearchBar.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_search)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            imageTintList = ColorStateList.valueOf(muted)
-            setPadding(0, 0, dp(10), 0)
-        }, LinearLayout.LayoutParams(dp(if (isTv) 22 else 20), dp(if (isTv) 22 else 20)))
-        paneSearchLabel = label("Search channels…", if (isTv) 15 else 14, muted2).apply {
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-        }
-        paneSearchBar.addView(paneSearchLabel, LinearLayout.LayoutParams(0, -2, 1f))
-        left.addView(paneSearchBar, LinearLayout.LayoutParams(-1, -2).apply {
+        // Inline channel search (v2.0.37): a real EditText above the
+        // channel list — typing filters the list live, no search dialog
+        // opens. It sits above both browse levels (categories +
+        // channels), like the old tap-to-open bar did.
+        channelSearchInput = buildChannelSearchInput()
+        left.addView(channelSearchInput, LinearLayout.LayoutParams(-1, -2).apply {
             bottomMargin = dp(8)
         })
 
@@ -510,7 +462,20 @@ class MainActivity : Activity() {
         // sports, Islamic or kids lives under General (the catch-all),
         // so the categories list stays short.
         val filterNames = listOf("All", "Favs", "Recent", "News", "Sports", "Islamic", "Kids", "General", "M3U")
-        val filterLabels = mapOf("Favs" to "♥ Favorites", "Recent" to "◷ Recent")
+        val filterLabels = mapOf("Favs" to "Favorites")
+        // Category icons (v2.0.37): one vector icon per card — the old
+        // ♥/◷ glyphs are gone, the icons carry the meaning now.
+        val filterIcons = mapOf(
+            "All" to R.drawable.ic_list,
+            "Favs" to R.drawable.ic_favorite,
+            "Recent" to R.drawable.ic_history,
+            "News" to R.drawable.ic_news,
+            "Sports" to R.drawable.ic_sports,
+            "Islamic" to R.drawable.ic_crescent,
+            "Kids" to R.drawable.ic_kids,
+            "General" to R.drawable.ic_tv,
+            "M3U" to R.drawable.ic_playlist,
+        )
         val chipAction: (String) -> Unit = { name ->
             filter = name
             populate()
@@ -526,16 +491,23 @@ class MainActivity : Activity() {
             // Back returns to the categories.
             val categoryItems = column()
             for (name in filterNames) {
-                val item = navItem(filterLabels[name] ?: name) { chipAction(name) }
+                val item = navItem(filterLabels[name] ?: name, filterIcons[name] ?: 0) { chipAction(name) }
                 filterChips[name] = item
+                // 8dp side margins: full-width rows + the 1.03x focus
+                // scale clipped the cards at the pane edges (same fix
+                // as the channel rows).
                 categoryItems.addView(item, LinearLayout.LayoutParams(-1, -2).apply {
+                    marginStart = dp(8)
+                    marginEnd = dp(8)
                     bottomMargin = dp(4)
                 })
             }
             // Movies live outside the channel filters — a plain nav item
             // (not in filterChips, so it never becomes the active filter).
-            categoryItems.addView(navItem("🎬 Movies") { openMovies() },
+            categoryItems.addView(navItem("Movies", R.drawable.ic_movie) { openMovies() },
                 LinearLayout.LayoutParams(-1, -2).apply {
+                    marginStart = dp(8)
+                    marginEnd = dp(8)
                     topMargin = dp(4)
                 })
             categoryListScroll = ScrollView(this).apply {
@@ -630,14 +602,10 @@ class MainActivity : Activity() {
             left.addView(actions, LinearLayout.LayoutParams(-1, -2).apply {
                 topMargin = dp(8)
             })
-            actions.addView(button("Search") { openSearch() },
-                LinearLayout.LayoutParams(0, -2, 1f).apply {
-                    marginEnd = dp(4)
-                })
+            // Search lives in the inline field above the list now
+            // (v2.0.37) — no dialog button.
             actions.addView(button("Playlists") { showPlaylists() },
-                LinearLayout.LayoutParams(0, -2, 1f).apply {
-                    marginStart = dp(4)
-                })
+                LinearLayout.LayoutParams(0, -2, 1f))
             // Library footer: two tidy rows of equal buttons instead of stacked
             // full-width ones. The Import dialog still offers a direct stream
             // URL — only the label is shorter.
@@ -665,7 +633,7 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams(0, -2, 1f).apply {
                     marginEnd = dp(4)
                 })
-            updateRow.addView(button("🎬 Movies") { openMovies() },
+            updateRow.addView(button("Movies", R.drawable.ic_movie) { openMovies() },
                 LinearLayout.LayoutParams(0, -2, 1f).apply {
                     marginStart = dp(4)
                 })

@@ -113,7 +113,7 @@ internal fun MainActivity.renderMoviesSeeAll(seeAll: MoviesSeeAll) {
         })
     }
     linkMovieRowActions(rows)
-    rows.firstOrNull()?.nextFocusUpId = firstMoviesTabChipId()
+    setFirstContentBackLink(rows.firstOrNull())
     linkMoviesTabFocus()
     movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
 }

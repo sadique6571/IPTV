@@ -66,7 +66,9 @@ internal fun MovieBox.homeFeed(tabId: Int): List<HomeSection> {
 }
 
 /** New Movies: the filterable catalogue with the newest sort, falling
- * back to recent-year titles from the home feed. */
+ * back to recent-year titles from the home feed. Sorted client-side
+ * by release year, newest first — the server's "Newest" sort alone
+ * let this rail mirror Trending (v2.0.37). */
 internal fun MovieBox.newMovies(): List<MovieBox.Movie> {
     // 1. Catalogue list, newest first.
     try {
@@ -82,7 +84,7 @@ internal fun MovieBox.newMovies(): List<MovieBox.Movie> {
         }.toString()
         val data = request("POST", "$BASE/subject-api/list", body)
         val list = subjectsFrom(data).filter { !it.isSeries }
-        if (list.isNotEmpty()) return list.take(20)
+        if (list.isNotEmpty()) return list.sortedByYearDesc().take(20)
     } catch (_: IOException) {
         // Fall through to the home-feed fallback.
     }
@@ -90,11 +92,15 @@ internal fun MovieBox.newMovies(): List<MovieBox.Movie> {
     val feed = (homeFeed(0) + homeFeed(2)).flatMap { it.movies }
     val recent = feed.filter { !it.isSeries && (it.year == "2026" || it.year == "2025") }
         .distinctBy { it.subjectId }
-        .sortedByDescending { it.year }
+        .sortedByYearDesc()
     if (recent.isNotEmpty()) return recent.take(20)
     // 3. Whatever the home feed has — better than an empty section.
-    return feed.filter { !it.isSeries }.distinctBy { it.subjectId }.take(20)
+    return feed.filter { !it.isSeries }.distinctBy { it.subjectId }.sortedByYearDesc().take(20)
 }
+
+/** Newest first by release year (unknown year sorts last). */
+private fun List<MovieBox.Movie>.sortedByYearDesc(): List<MovieBox.Movie> =
+    sortedByDescending { it.year.toIntOrNull() ?: 0 }
 
 /** Genre browse (v2.0.35): the filterable catalogue filtered by one
  * genre, newest first. Best-effort — an unknown genre value returns an

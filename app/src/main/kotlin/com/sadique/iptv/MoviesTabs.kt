@@ -8,12 +8,14 @@ import android.widget.LinearLayout
 import java.io.IOException
 
 /**
- * Movies tabs (v2.0.35): the Netflix-style top navigation — Home /
+ * Movies tabs (v2.0.35): the Netflix-style navigation — Home /
  * Movies / TV Shows / Genres / My List (+ Downloads on mobile only).
- * The tabs bar is built once in buildMoviesView; selectMoviesTab
- * switches the content, renderCurrentMoviesTab re-renders whatever is
- * showing (used after feed arrival, favorite toggles and Back from
- * details, without changing the tab).
+ * Mobile shows them as a top chip row, TV as the sidebar column
+ * (v2.0.37, MoviesSidebar.kt) — both are the same moviesTabRow, built
+ * once in buildMoviesView; selectMoviesTab switches the content,
+ * renderCurrentMoviesTab re-renders whatever is showing (used after
+ * feed arrival, favorite toggles and Back from details, without
+ * changing the tab).
  */
 internal enum class MoviesTab(val label: String) {
     HOME("Home"),
@@ -31,23 +33,32 @@ internal val MOVIE_GENRES = listOf(
     "Sci-Fi", "Thriller", "War",
 )
 
-/** Builds the tab chip row (once, in buildMoviesView). Downloads is
- * mobile-only — the user did not approve TV downloads. */
+/** Builds the tab chip row (mobile only, once, in buildMoviesView).
+ * TV uses the sidebar column instead (MoviesSidebar.kt) — both are
+ * the same moviesTabRow, so tab switching works identically. */
 internal fun MainActivity.buildMoviesTabsRow(): LinearLayout {
     val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-    val tabs = MoviesTab.values().filter { it != MoviesTab.DOWNLOADS || !isTv }
-    for (tab in tabs) {
+    for (tab in MoviesTab.values()) {
         val chipView = chip(tab.label) { selectMoviesTab(tab) }
         chipView.tag = tab
         chipView.id = View.generateViewId()
         chipView.isSelected = tab == moviesTab
         refreshFilterText(chipView)
-        chipView.nextFocusUpId = movieHomeChip.id
+        chipView.nextFocusUpId = movieSearchInput.id
         row.addView(chipView, LinearLayout.LayoutParams(-2, -2).apply {
             marginEnd = dp(8)
         })
     }
     return row
+}
+
+/** Points a first content view back at the navigation: UP to the
+ * tabs on mobile (tabs sit above the content), LEFT to the sidebar
+ * on TV (the sidebar sits left of the content). */
+internal fun MainActivity.setFirstContentBackLink(view: View?) {
+    if (view == null) return
+    val target = firstMoviesTabChipId()
+    if (isTv) view.nextFocusLeftId = target else view.nextFocusUpId = target
 }
 
 /** Switches the Movies tab and renders its content. Clears any search
@@ -119,7 +130,7 @@ internal fun MainActivity.renderMoviesFeedTab(
         })
     }
     linkMovieRowActions(rows)
-    rows.firstOrNull()?.nextFocusUpId = firstMoviesTabChipId()
+    setFirstContentBackLink(rows.firstOrNull())
     linkMoviesTabFocus()
     movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
 }
@@ -142,7 +153,8 @@ internal fun MainActivity.renderMoviesGenres() {
         chipView.id = View.generateViewId()
         chipView.isSelected = genre == moviesGenre
         refreshFilterText(chipView)
-        chipView.nextFocusUpId = firstMoviesTabChipId()
+        if (isTv) chipView.nextFocusLeftId = firstMoviesTabChipId()
+        else chipView.nextFocusUpId = firstMoviesTabChipId()
         movieGenreRow.addView(chipView, LinearLayout.LayoutParams(-2, -2).apply {
             marginEnd = dp(8)
         })
@@ -153,6 +165,24 @@ internal fun MainActivity.renderMoviesGenres() {
         addView(movieGenreRow)
     }
     movieResults.addView(genreScroll, LinearLayout.LayoutParams(-1, -2).apply {
+        bottomMargin = dp(8)
+    })
+    // Quick searches (moved here from the Movies home in v2.0.37 —
+    // the home's duplicate Home chip + shortcut row are gone): one
+    // tap runs a real MovieBox search for a popular term.
+    movieGenreQuickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+    for (term in listOf("Marvel", "DC", "Bollywood", "Punjabi", "Action", "Comedy")) {
+        val quickChip = chip(term) { quickSearchMovie(term) }
+        movieGenreQuickRow.addView(quickChip, LinearLayout.LayoutParams(-2, -2).apply {
+            marginEnd = dp(8)
+        })
+    }
+    val quickScroll = HorizontalScrollView(this).apply {
+        isHorizontalScrollBarEnabled = false
+        overScrollMode = View.OVER_SCROLL_NEVER
+        addView(movieGenreQuickRow)
+    }
+    movieResults.addView(quickScroll, LinearLayout.LayoutParams(-1, -2).apply {
         bottomMargin = dp(8)
     })
     movieGenreResults = column()
@@ -189,16 +219,24 @@ internal fun MainActivity.loadMoviesGenre(genre: String) {
                     })
                 }
                 linkMovieRowActions(rows)
-                // UP/DOWN across the genre-chips scroller is wired
-                // explicitly — geometry alone is unreliable there.
+                // UP/DOWN across the genre + quick chips is wired
+                // explicitly — geometry alone is unreliable across
+                // the scrollers. Chain: genre chips -> quick chips
+                // -> first result row.
+                val firstQuickId = movieGenreQuickRow.getChildAt(0)?.id ?: View.NO_ID
                 val firstRowId = rows.firstOrNull()?.id ?: View.NO_ID
                 for (i in 0 until movieGenreRow.childCount) {
-                    movieGenreRow.getChildAt(i)?.nextFocusDownId = firstRowId
+                    movieGenreRow.getChildAt(i)?.nextFocusDownId = firstQuickId
                 }
                 val selectedChip = (0 until movieGenreRow.childCount)
                     .mapNotNull { movieGenreRow.getChildAt(it) as? Button }
                     .firstOrNull { it.isSelected }
-                rows.firstOrNull()?.nextFocusUpId = selectedChip?.id ?: View.NO_ID
+                for (i in 0 until movieGenreQuickRow.childCount) {
+                    val quickChip = movieGenreQuickRow.getChildAt(i)
+                    quickChip?.nextFocusUpId = selectedChip?.id ?: View.NO_ID
+                    quickChip?.nextFocusDownId = firstRowId
+                }
+                rows.firstOrNull()?.nextFocusUpId = firstQuickId
             }
         } catch (error: IOException) {
             runOnUiThread {
@@ -211,22 +249,29 @@ internal fun MainActivity.loadMoviesGenre(genre: String) {
     }
 }
 
-/** Id of the first tab chip — the UP target of the first content row
- * and the DOWN target of the quick chips. */
+/** Id of the first tab button (Home) — the back-link target of the
+ * first content view (UP on mobile, LEFT on TV) and the DOWN target
+ * of the search field. */
 internal fun MainActivity.firstMoviesTabChipId(): Int =
     moviesTabRow.getChildAt(0)?.id ?: View.NO_ID
 
-/** Links the tab chips DOWN to the first focusable content view and
- * that view UP to the first tab chip, so D-pad navigation never gets
- * stuck between the tabs and the content. Re-run on every render,
- * since the first content view changes. */
+/** Links the tab buttons to the first focusable content view and
+ * that view back to the first tab button, so D-pad navigation never
+ * gets stuck between the navigation and the content. Re-run on every
+ * render, since the first content view changes. TV: the sidebar sits
+ * LEFT of the content, so the link is RIGHT/LEFT; mobile: the tabs
+ * sit ABOVE the content, so it is DOWN/UP. */
 internal fun MainActivity.linkMoviesTabFocus() {
     val first = firstFocusableDeep(movieResults)
     val firstId = first?.id ?: View.NO_ID
     for (i in 0 until moviesTabRow.childCount) {
-        moviesTabRow.getChildAt(i)?.nextFocusDownId = firstId
+        val child = moviesTabRow.getChildAt(i) ?: continue
+        if (isTv) child.nextFocusRightId = firstId else child.nextFocusDownId = firstId
     }
-    if (first != null) first.nextFocusUpId = firstMoviesTabChipId()
+    if (first != null) {
+        if (isTv) first.nextFocusLeftId = firstMoviesTabChipId()
+        else first.nextFocusUpId = firstMoviesTabChipId()
+    }
 }
 
 /** Depth-first search for the first focusable view inside a group

@@ -100,21 +100,6 @@ internal fun MainActivity.askAddress(title: String, hint: String, action: (Strin
 }
 
 
-/** Search dialog, opened from the TopBar search pill and the footer
- * Search button (the pill is hidden on phones in landscape). The
- * current query is pre-filled, so the user can refine it instead of
- * retyping; clearing it restores the full list. */
-internal fun MainActivity.openSearch() {
-    askText("Search channels", "Channel name", query) { value ->
-        query = value
-        populate()
-        // Results are channels — the TV pane switches to that level.
-        setBrowseLevel(BrowseLevel.CHANNELS)
-        list.getChildAt(0)?.requestFocus()
-    }
-}
-
-
 internal fun MainActivity.askText(title: String, hint: String, initial: String = "", action: (String) -> Unit) {
     val input = EditText(this).apply {
         isSingleLine = true

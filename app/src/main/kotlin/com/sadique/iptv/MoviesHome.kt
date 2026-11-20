@@ -5,7 +5,7 @@ import android.widget.LinearLayout
 
 /**
  * Movies Home tab (v2.0.35): hero banner + Continue Watching +
- * Trending / Popular rails. The feed loads once per app run
+ * Trending / New Release rails. The feed loads once per app run
  * (MovieFeed.kt) and re-renders this tab when it arrives.
  */
 internal fun MainActivity.renderMoviesHome() {
@@ -15,9 +15,9 @@ internal fun MainActivity.renderMoviesHome() {
     if (feedPending) loadMovieFeed()
     val hasFeed = movieFeedNew.isNotEmpty() || movieFeedRecommended.isNotEmpty()
     movieStatus.text = when {
-        continuing.isNotEmpty() && hasFeed -> "Continue Watching · Trending · Popular"
+        continuing.isNotEmpty() && hasFeed -> "Continue Watching · Trending · New Release"
         continuing.isNotEmpty() -> "Continue Watching"
-        hasFeed -> "Trending · Popular"
+        hasFeed -> "Trending · New Release"
         feedPending -> "Nayi movies load ho rahi hain…"
         else -> "Abhi koi movie nahi mili — search karke movie dekhein."
     }
@@ -52,7 +52,7 @@ internal fun MainActivity.renderMoviesHome() {
     }
     if (movieFeedNew.isNotEmpty()) {
         movieResults.addView(
-            buildMoviesRail("🆕 Popular", movieFeedNew),
+            buildMoviesRail("New Release", movieFeedNew),
             LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) },
         )
     }

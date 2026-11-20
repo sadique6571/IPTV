@@ -69,9 +69,10 @@ import java.util.concurrent.Executors
 // ---- MovieBox movies (v1) ----
 //
 // A full-screen Movies SECTION (same Qwen navy-glass look) beside Live
-// TV: header with a "Live TV" way back, a now-playing bar, quick-search
-// chips, then search → results (poster + name + year + HINDI badge) →
-// details → audio (dub) + quality pickers → Play in the main player.
+// TV: TV has a sidebar (search + nav + Live TV) with posters on the
+// right; mobile keeps a top header + scrolling search and tabs. Then
+// search → results (poster + name + year + HINDI badge) → details →
+// audio (dub) + quality pickers → Play in the main player.
 // Technically it is an overlay view over the Live TV layout, so opening
 // it never detaches the player view underneath.
 // All MovieBox calls run on the `imports` executor; stale results are
@@ -94,19 +95,24 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         isClickable = true
         visibility = View.GONE
     }
-    val header = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
+    // Header (mobile only): the "Live TV" way back + title. On TV
+    // the sidebar holds the Live TV button, so no header row is needed.
+    var backButton: Button? = null
+    if (!isTv) {
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        backButton = button("Live TV", R.drawable.ic_arrow_back) { closeMovies() }
+        backButton.id = View.generateViewId()
+        header.addView(backButton,
+            LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(12) })
+        header.addView(label("🎬 Movies", 22, textColor).apply {
+            setTypeface(null, Typeface.BOLD)
+            letterSpacing = 0.02f
+        })
+        view.addView(header)
     }
-    val backButton = button("Live TV", R.drawable.ic_arrow_back) { closeMovies() }
-    backButton.id = View.generateViewId()
-    header.addView(backButton,
-        LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(12) })
-    header.addView(label("🎬 Movies", if (isTv) 26 else 22, textColor).apply {
-        setTypeface(null, Typeface.BOLD)
-        letterSpacing = 0.02f
-    })
-    view.addView(header)
     // Now-playing bar: when a movie is already playing, the section
     // says so and offers a shortcut back to the player.
     movieNowPlayingBar = LinearLayout(this).apply {
@@ -131,115 +137,74 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
 
     // ---- Search + results pane ----
     moviesListPane = column()
-    val searchRow = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-    }
-    movieSearchInput = EditText(this).apply {
-        id = View.generateViewId()
-        isSingleLine = true
-        inputType = InputType.TYPE_CLASS_TEXT
-        imeOptions = EditorInfo.IME_ACTION_SEARCH
-        hint = "Movie ka naam…"
-        setHintTextColor(muted2)
-        setTextColor(textColor)
-        textSize = if (isTv) 17f else 15f
-        minimumHeight = dp(if (isTv) 56 else 52)
-        setPadding(dp(18), dp(8), dp(18), dp(8))
-        background = glassStateList(28)
-        setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                searchMovies()
-                true
-            } else {
-                false
-            }
-        }
-        // A focused EditText can swallow D-pad up/down on some TVs
-        // (the Leanback keyboard session eats them) — forward them
-        // to focus search so navigation never dies on the search box.
-        setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN &&
-                (keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_UP)) {
-                val direction = if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) View.FOCUS_DOWN
-                    else View.FOCUS_UP
-                focusSearch(direction)?.requestFocus()
-                true
-            } else {
-                false
-            }
-        }
-    }
-    // No Search button next to the bar — the keyboard's search key
-    // runs the search (the button was a redundant tap target).
-    searchRow.addView(movieSearchInput, LinearLayout.LayoutParams(0, -2, 1f))
-    moviesListPane.addView(searchRow, LinearLayout.LayoutParams(-1, -2).apply {
-        topMargin = dp(12)
-        bottomMargin = dp(8)
-    })
-    // Quick searches: one tap runs a real MovieBox search for a popular
-    // term (no fake listings — these are just search shortcuts). The
-    // Home chip goes back to Continue Watching + Fav Movies.
-    val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-    movieQuickRow = quickRow
-    val homeChip = chip("Home", R.drawable.ic_home) { showMoviesHome() }
-    homeChip.id = View.generateViewId()
-    movieHomeChip = homeChip
-    quickRow.addView(homeChip, LinearLayout.LayoutParams(-2, -2).apply {
-        marginEnd = dp(8)
-    })
-    for (term in listOf("Marvel", "DC", "Bollywood", "Punjabi", "Action", "Comedy")) {
-        val quickChip = chip(term) { quickSearchMovie(term) }
-        quickRow.addView(quickChip, LinearLayout.LayoutParams(-2, -2).apply {
-            marginEnd = dp(8)
-        })
-    }
-    // Explicit vertical links for the search box — geometry alone is
-    // unreliable here (the chips sit inside a horizontal scroller).
-    backButton.nextFocusDownId = movieSearchInput.id
-    movieSearchInput.nextFocusDownId = homeChip.id
-    movieSearchInput.nextFocusUpId = backButton.id
-    homeChip.nextFocusUpId = movieSearchInput.id
-    // End stops: LEFT past Home / RIGHT past the last chip must not
-    // wander off the row (FocusFinder could otherwise pick a view
-    // behind the overlay, and the selection would vanish).
-    homeChip.nextFocusLeftId = View.NO_ID
-    quickRow.getChildAt(quickRow.childCount - 1)?.nextFocusRightId = View.NO_ID
-    val quickScroll = HorizontalScrollView(this).apply {
-        isHorizontalScrollBarEnabled = false
-        overScrollMode = View.OVER_SCROLL_NEVER
-        addView(quickRow)
-    }
-    moviesListPane.addView(quickScroll, LinearLayout.LayoutParams(-1, -2).apply {
-        bottomMargin = dp(8)
-    })
-    // Tabs (v2.0.35): Home / Movies / TV Shows / Genres / My List
-    // (+ Downloads on mobile) — the Netflix-style home navigation.
-    moviesTabRow = buildMoviesTabsRow()
-    val tabScroll = HorizontalScrollView(this).apply {
-        isHorizontalScrollBarEnabled = false
-        overScrollMode = View.OVER_SCROLL_NEVER
-        addView(moviesTabRow)
-    }
-    moviesListPane.addView(tabScroll, LinearLayout.LayoutParams(-1, -2).apply {
-        bottomMargin = dp(8)
-    })
     movieStatus = label(
         "Movie ka naam likh kar search karein — Hindi dubbed bhi milti hai.",
         if (isTv) 15 else 13, muted,
     )
-    moviesListPane.addView(movieStatus)
     movieProgress = ProgressBar(this).apply {
         visibility = View.GONE
         indeterminateTintList = ColorStateList.valueOf(cyan)
     }
-    moviesListPane.addView(movieProgress, LinearLayout.LayoutParams(-2, -2).apply {
-        topMargin = dp(8)
-        bottomMargin = dp(8)
-    })
     movieResults = column()
-    movieResultsScroll = ScrollView(this).apply { addView(movieResults) }
-    moviesListPane.addView(movieResultsScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+    if (isTv) {
+        // Two-pane (v2.0.37): the sidebar (search + nav + Live TV)
+        // on the left, the posters on the right. The sidebar is part
+        // of moviesListPane so the details pane hides it too.
+        moviesListPane.orientation = LinearLayout.HORIZONTAL
+        moviesListPane.addView(buildMoviesSidebar(),
+            LinearLayout.LayoutParams(dp(280), -1))
+        val content = column()
+        content.addView(movieStatus)
+        content.addView(movieProgress, LinearLayout.LayoutParams(-2, -2).apply {
+            topMargin = dp(8)
+            bottomMargin = dp(8)
+        })
+        movieResultsScroll = ScrollView(this).apply { addView(movieResults) }
+        content.addView(movieResultsScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        moviesListPane.addView(content, LinearLayout.LayoutParams(0, -1, 1f).apply {
+            marginStart = dp(16)
+        })
+    } else {
+        // Mobile: the search bar + tabs scroll WITH the content
+        // (v2.0.37) — they used to stay pinned above the list.
+        // (No Search button next to the bar — the keyboard's search
+        // key runs the search; the button was a redundant tap target.)
+        movieSearchInput = buildMovieSearchInput()
+        val searchRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        searchRow.addView(movieSearchInput, LinearLayout.LayoutParams(0, -2, 1f))
+        // Tabs: Home / Movies / TV Shows / Genres / My List /
+        // Downloads — the Netflix-style home navigation.
+        moviesTabRow = buildMoviesTabsRow()
+        val tabScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(moviesTabRow)
+        }
+        val scrollContent = column()
+        scrollContent.addView(searchRow, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(12)
+            bottomMargin = dp(8)
+        })
+        scrollContent.addView(tabScroll, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(8)
+        })
+        scrollContent.addView(movieStatus)
+        scrollContent.addView(movieProgress, LinearLayout.LayoutParams(-2, -2).apply {
+            topMargin = dp(8)
+            bottomMargin = dp(8)
+        })
+        scrollContent.addView(movieResults)
+        movieResultsScroll = ScrollView(this).apply { addView(scrollContent) }
+        moviesListPane.addView(movieResultsScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        // Explicit vertical links — geometry alone is unreliable
+        // across the scroller boundary.
+        backButton?.nextFocusDownId = movieSearchInput.id
+        movieSearchInput.nextFocusDownId = firstMoviesTabChipId()
+        movieSearchInput.nextFocusUpId = backButton?.id ?: View.NO_ID
+    }
     view.addView(moviesListPane, LinearLayout.LayoutParams(-1, 0, 1f))
 
     // ---- Details pane ----
@@ -428,14 +393,16 @@ internal fun MainActivity.showMoviesList() {
     // Focus landing: Back from a movie's details returns to the row
     // it came from; otherwise the first row (not the search box —
     // focusing it pops the keyboard and D-pad up/down can die on it).
-    // With no rows at all, the Home chip is the landing.
+    // With no rows at all, the first tab button (Home) is the landing.
     val returnRow = moviesReturnRow
     moviesReturnRow = -1
     val target = if (returnRow in 0 until movieResults.childCount) {
         movieResults.getChildAt(returnRow)?.takeIf { it.isFocusable }
     } else {
         null
-    } ?: firstFocusableDeep(movieResults) ?: movieHomeChip
+    } ?: firstFocusableDeep(movieResults)
+        ?: moviesTabRow.getChildAt(0)
+        ?: movieSearchInput
     target.post { if (moviesOpen && target.isShown) target.requestFocus() }
 }
 
@@ -509,28 +476,13 @@ internal fun MainActivity.showMovieResults(movies: List<MovieBox.Movie>) {
         })
     }
     linkMovieRowActions(rows)
-    // UP from the first row reaches the tabs (geometry alone is
-    // unreliable across the scroller boundary).
-    rows.firstOrNull()?.nextFocusUpId = firstMoviesTabChipId()
-    syncMovieChipFocusTargets()
+    // Back from the first row reaches the navigation (geometry alone
+    // is unreliable across the scroller boundary).
+    setFirstContentBackLink(rows.firstOrNull())
     linkMoviesTabFocus()
     movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
     movieResults.getChildAt(0)?.requestFocus()
 }
-
-/** Points every quick chip's DOWN at the first tab chip — geometry
- * alone is unreliable across the scroller boundary, and without it
- * DOWN from a chip could land outside the Movies section and the
- * selection would vanish. */
-internal fun MainActivity.syncMovieChipFocusTargets() {
-    // DOWN from a quick chip reaches the tabs (the tabs' own DOWN
-    // targets point at the content — see linkMoviesTabFocus).
-    val targetId = firstMoviesTabChipId()
-    for (i in 0 until movieQuickRow.childCount) {
-        movieQuickRow.getChildAt(i)?.nextFocusDownId = targetId
-    }
-}
-
 
 /** Links each movie row's action button (♥ fav / ✕ remove) up and down
  * to the neighbouring ROWS — without this, D-pad focus falls down the
@@ -544,13 +496,6 @@ internal fun MainActivity.linkMovieRowActions(rows: List<View>) {
         if (i > 0) action.nextFocusUpId = rows[i - 1].id
         if (i < rows.size - 1) action.nextFocusDownId = rows[i + 1].id
     }
-}
-
-
-/** Movies home tab: the Home chip lands here — hero + Continue
- * Watching + Trending / Popular rails (see renderMoviesHome). */
-internal fun MainActivity.showMoviesHome() {
-    selectMoviesTab(MoviesTab.HOME)
 }
 
 
