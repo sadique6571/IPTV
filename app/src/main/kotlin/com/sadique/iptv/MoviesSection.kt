@@ -181,12 +181,21 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
             overScrollMode = View.OVER_SCROLL_NEVER
             addView(moviesTabRow)
         }
-        val scrollContent = column()
-        scrollContent.addView(searchRow, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(12)
+        // Bright glass header panel (v2.0.39): on phones the
+        // search bar + tabs are the Movies navigation, so they sit
+        // inside the visible panel the TV sidebar has — v2.0.38
+        // left mobile with no panel and the theme change was
+        // invisible. The panel scrolls with the content, as the
+        // search + tabs did before. Focus links below are ID-based,
+        // so reparenting changes nothing about D-pad navigation.
+        val headerPanel = brightGlassPanel(12)
+        headerPanel.addView(searchRow, LinearLayout.LayoutParams(-1, -2).apply {
             bottomMargin = dp(8)
         })
-        scrollContent.addView(tabScroll, LinearLayout.LayoutParams(-1, -2).apply {
+        headerPanel.addView(tabScroll, LinearLayout.LayoutParams(-1, -2))
+        val scrollContent = column()
+        scrollContent.addView(headerPanel, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(12)
             bottomMargin = dp(8)
         })
         scrollContent.addView(movieStatus)

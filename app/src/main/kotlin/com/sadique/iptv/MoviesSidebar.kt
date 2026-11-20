@@ -63,11 +63,13 @@ internal fun MainActivity.buildMovieSearchInput(): EditText {
 
 /** Builds the TV Movies sidebar: search on top, the tab column,
  * Live TV at the bottom. Assigns movieSearchInput + moviesTabRow.
- * The sidebar is a glass panel (v2.0.38) — rounded corners, 12dp
- * internal padding — so its items sit inset and nothing touches
- * the panel edge or looks cut off (v2.0.37's bare column did). */
+ * The sidebar is a bright glass panel (v2.0.39) — rounded
+ * corners, 12dp internal padding — so its items sit inset and
+ * nothing touches the panel edge or looks cut off (v2.0.37's
+ * bare column did). v2.0.38's panel used the dark glassShape
+ * fill and blended into the background — invisible. */
 internal fun MainActivity.buildMoviesSidebar(): LinearLayout {
-    val sidebar = glassPanel(12)
+    val sidebar = brightGlassPanel(12)
     movieSearchInput = buildMovieSearchInput()
     sidebar.addView(movieSearchInput, LinearLayout.LayoutParams(-1, -2).apply {
         marginStart = dp(8)

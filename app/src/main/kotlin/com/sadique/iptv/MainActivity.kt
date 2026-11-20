@@ -409,9 +409,11 @@ class MainActivity : Activity() {
         headerView = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            // Glass top-bar panel (v2.0.38, mockup): the logo, title
-            // and pill buttons sit inside one rounded panel.
-            background = glassShape(20)
+            // Bright glass top-bar panel (v2.0.39, mockup): the
+            // logo, title and pill buttons sit inside one rounded
+            // panel. v2.0.38 used the dark glassShape fill here and
+            // the panel was invisible against the background.
+            background = brightGlassShape(20)
             setPadding(dp(16), dp(8), dp(16), dp(8))
             if (!isTv && isLandscape) visibility = View.GONE
         }
@@ -496,9 +498,11 @@ class MainActivity : Activity() {
             // Categories level: the real channel categories + Movies.
             // Picking a category swaps the same pane to its channels;
             // Back returns to the categories.
-            // Glass panel (v2.0.38, mockup): the category boxes sit
-            // inset inside a rounded panel, like the Movies sidebar.
-            val categoryItems = glassPanel(12)
+            // Bright glass panel (v2.0.39, mockup): the category
+            // boxes sit inset inside a rounded panel, like the
+            // Movies sidebar. v2.0.38's dark glassShape fill made
+            // the panel blend into the background.
+            val categoryItems = brightGlassPanel(12)
             for (name in filterNames) {
                 val item = navItem(filterLabels[name] ?: name, filterIcons[name] ?: 0) { chipAction(name) }
                 filterChips[name] = item
@@ -558,7 +562,13 @@ class MainActivity : Activity() {
                 overScrollMode = View.OVER_SCROLL_NEVER
                 addView(chipRow)
             }
-            left.addView(strip, LinearLayout.LayoutParams(-1, -2).apply {
+            // Bright glass panel (v2.0.39): on phones the chip strip
+            // is the categories UI, so it gets the visible panel
+            // the TV categories pane has — v2.0.38 left mobile with
+            // no panel at all and the theme change was invisible.
+            val stripPanel = brightGlassPanel(8)
+            stripPanel.addView(strip, LinearLayout.LayoutParams(-1, -2))
+            left.addView(stripPanel, LinearLayout.LayoutParams(-1, -2).apply {
                 topMargin = dp(4)
                 bottomMargin = dp(4)
             })

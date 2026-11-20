@@ -144,6 +144,7 @@ internal class ChannelStore(context: Context) {
             "http://103.86.132.58:9981/stream/channelid/1808607399" to "Hum News HD",
             "http://103.86.132.58:9981/stream/channelid/1933780354" to "A Sports HD",
             "https://live.msnetworks.net/geo-ent/master.m3u8" to "Geo Entertainment",
+            "http://175.107.244.52:4456/play/a06h" to "Geo Entertainment",
             "http://175.107.244.52:4456/play/a042" to "PTV Sports HD",
             "http://175.107.244.52:4456/play/a05v" to "Ten Sports Pakistan",
             "yt-live:@GeoNews/live" to "Geo News",

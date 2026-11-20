@@ -126,6 +126,35 @@ internal fun Context.glassPanel(paddingDp: Int = 12) = LinearLayout(this).apply 
 }
 
 
+/** Bright glass fill (v2.0.39): the big panels (sidebars, top bar)
+ * need to READ as panels against the dark background — v2.0.38's
+ * glassShape fill is nearly the same darkness as the backdrop and
+ * its 1dp stroke is only ~14% alpha, so the panels blended in and
+ * the user saw no change at all. This fill is clearly lighter
+ * (steel-blue top stop) with a 2dp cyan stroke at ~45% alpha,
+ * like the mockups' glossy panels. Small controls keep the
+ * subtler glassShape — only the big panels use this. */
+internal fun Context.brightGlassShape(radiusDp: Int = 20) =
+    GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        intArrayOf(0xf23a5a80.toInt(), 0xf22c4a6e.toInt(), 0xf01e3350.toInt()),
+    ).apply {
+        setStroke(dp(2), 0x7322d9ee.toInt())
+        cornerRadius = dp(radiusDp).toFloat()
+    }
+
+
+/** Bright glass side panel (v2.0.39): same shape as glassPanel —
+ * rounded container with internal padding — but with the bright
+ * fill + strong cyan stroke, so the panel stands out from the
+ * background instead of melting into it. */
+internal fun Context.brightGlassPanel(paddingDp: Int = 12) = LinearLayout(this).apply {
+    orientation = LinearLayout.VERTICAL
+    background = brightGlassShape(20)
+    setPadding(dp(paddingDp), dp(paddingDp), dp(paddingDp), dp(paddingDp))
+}
+
+
 internal fun Context.label(value: String, size: Int, color: Int) = TextView(this).apply {
     text = value
     textSize = size.toFloat()
@@ -320,9 +349,9 @@ internal fun Context.demoBackground(): LayerDrawable {
         }
     return LayerDrawable(arrayOf(
         base,
-        glow(0.85f, 0.12f, 0x2e22d9ee.toInt(), 0.75f),
-        glow(0.08f, 0.92f, 0x263d7bff.toInt(), 0.7f),
-        glow(0.15f, 0.15f, 0x1a8b5cff.toInt(), 0.5f),
+        glow(0.85f, 0.12f, 0x4d22d9ee.toInt(), 0.75f),
+        glow(0.08f, 0.92f, 0x403d7bff.toInt(), 0.7f),
+        glow(0.15f, 0.15f, 0x338b5cff.toInt(), 0.5f),
     ))
 }
 
