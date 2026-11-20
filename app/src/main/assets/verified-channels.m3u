@@ -200,7 +200,7 @@ http://103.86.132.58:9981/stream/channelid/1567867194
 #EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="urd" tvg-logo="https://yt3.googleusercontent.com/ytc/AIdro_ljxQ7hfzXg6V-r-CXDCQKc0cWL-aI5yQmtVRq5yEVtWw=s176-c-k-c0x00ffffff-no-rj",A Sports HD
 https://live.msnetworks.net/a-sports/master.m3u8
 #EXTINF:-1 group-title="Drama" tvg-country="PK" tvg-language="urd" tvg-logo="https://yt3.googleusercontent.com/gmRmvRYUHVbi2YnWiM_RbJtwPMkKK_WJfsWYINioLLVutKiQ5_Yf1xbGY57qGJydAY7zNuRp6Q=s176-c-k-c0x00ffffff-no-rj",Geo Entertainment
-http://175.107.244.52:4456/play/a06h
+https://live.msnetworks.net/geo-ent/master.m3u8
 #EXTINF:-1 group-title="Drama" tvg-country="PK" tvg-language="urd" tvg-logo="https://i.imgur.com/WK5Cqap.png",Aaj Entertainment
 http://175.107.244.52:4456/play/a02z
 #EXTINF:-1 group-title="Music" tvg-country="PK" tvg-language="urd" tvg-logo="https://i.imgur.com/HWb5Iat.png",Jalwa TV
