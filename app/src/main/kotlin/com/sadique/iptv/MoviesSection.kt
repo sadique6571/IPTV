@@ -501,7 +501,7 @@ internal fun MainActivity.showMovieResults(movies: List<MovieBox.Movie>) {
     movieResults.removeAllViews()
     val rows = mutableListOf<View>()
     for ((index, movie) in movies.withIndex()) {
-        val row = movieRow(movie, background = index >= 6)
+        val row = movieRow(movie, backgroundLoad = index >= 6)
         rows += row
         movieResults.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(4)
@@ -636,7 +636,7 @@ internal fun MainActivity.continueRow(entry: MovieStore.ContinueEntry): View {
 /** 2:3 poster tile with a letter tile behind it while the image loads.
  * background: off-screen tiles (rows/rails below the fold) load on the
  * prefetch pool so they never queue behind the visible posters. */
-internal fun MainActivity.posterTile(posterUrl: String, title: String, background: Boolean = false): View {
+internal fun MainActivity.posterTile(posterUrl: String, title: String, backgroundLoad: Boolean = false): View {
     val tileView = FrameLayout(this)
     val initial = TextView(this).apply {
         text = title.take(1).uppercase()
@@ -652,7 +652,7 @@ internal fun MainActivity.posterTile(posterUrl: String, title: String, backgroun
             scaleType = ImageView.ScaleType.CENTER_CROP
         }
         tileView.addView(posterView, FrameLayout.LayoutParams(-1, -1))
-        LogoLoader.load(this, posterUrl, posterView, background = background)
+        LogoLoader.load(this, posterUrl, posterView, background = backgroundLoad)
     }
     return tileView
 }
@@ -696,7 +696,7 @@ internal fun MainActivity.updateMovieFavButton() {
 
 /** Glass movie card: 2:3 poster (letter tile behind it while it loads),
  * bold title + year, and a cyan HINDI badge for Hindi-dubbed titles. */
-internal fun MainActivity.movieRow(movie: MovieBox.Movie, background: Boolean = false): View {
+internal fun MainActivity.movieRow(movie: MovieBox.Movie, backgroundLoad: Boolean = false): View {
     val row = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -717,7 +717,7 @@ internal fun MainActivity.movieRow(movie: MovieBox.Movie, background: Boolean = 
     val posterWidth = dp(if (isTv) 60 else 56)
     val posterHeight = dp(if (isTv) 90 else 84)
     row.addView(
-        posterTile(movie.posterUrl, movie.title, background),
+        posterTile(movie.posterUrl, movie.title, backgroundLoad),
         LinearLayout.LayoutParams(posterWidth, posterHeight),
     )
     val texts = column()
