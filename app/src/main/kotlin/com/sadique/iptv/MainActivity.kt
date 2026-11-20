@@ -400,10 +400,7 @@ class MainActivity : Activity() {
         paneGapPx = dp(paneGapDp)
         rootView = column().apply {
             setPadding(rootPadding, dp(if (isTv) 10 else 8), rootPadding, dp(if (isTv) 12 else 8))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(bg0, bg1, bg2),
-            )
+            background = demoBackground()
         }
         // TopBar (Qwen): logo mark + IPTV title + the wide pill action
         // buttons (TV, v2.0.37). Hidden on phones in landscape
@@ -412,6 +409,10 @@ class MainActivity : Activity() {
         headerView = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            // Glass top-bar panel (v2.0.38, mockup): the logo, title
+            // and pill buttons sit inside one rounded panel.
+            background = glassShape(20)
+            setPadding(dp(16), dp(8), dp(16), dp(8))
             if (!isTv && isLandscape) visibility = View.GONE
         }
         // The app's real launcher icon (manifest: android:icon) at the
@@ -444,7 +445,9 @@ class MainActivity : Activity() {
                     })
             }
         }
-        rootView.addView(headerView)
+        rootView.addView(headerView, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(8)
+        })
         splitPane = LinearLayout(this).apply {
             orientation = if (sideBySide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         }
@@ -493,7 +496,9 @@ class MainActivity : Activity() {
             // Categories level: the real channel categories + Movies.
             // Picking a category swaps the same pane to its channels;
             // Back returns to the categories.
-            val categoryItems = column()
+            // Glass panel (v2.0.38, mockup): the category boxes sit
+            // inset inside a rounded panel, like the Movies sidebar.
+            val categoryItems = glassPanel(12)
             for (name in filterNames) {
                 val item = navItem(filterLabels[name] ?: name, filterIcons[name] ?: 0) { chipAction(name) }
                 filterChips[name] = item

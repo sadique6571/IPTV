@@ -264,9 +264,10 @@ internal fun MainActivity.channelRow(channel: Channel): View {
         gravity = Gravity.CENTER_VERTICAL
         isFocusable = true
         isClickable = true
-        // 48dp+ touch target on phones; compact on TV so more rows fit.
-        minimumHeight = dp(if (isTv) 48 else 52)
-        setPadding(dp(14), dp(if (isTv) 6 else 10), dp(14), dp(if (isTv) 6 else 10))
+        // 48dp+ touch target on phones; padded rounded cards on TV
+        // (v2.0.38, mockup) — roomier rows, plenty still fit.
+        minimumHeight = dp(if (isTv) 56 else 52)
+        setPadding(dp(16), dp(if (isTv) 10 else 12), dp(16), dp(if (isTv) 10 else 12))
         tag = channel.key
         background = rowBackground(isPlaying)
         elevation = dp(3).toFloat()
@@ -333,7 +334,10 @@ internal fun MainActivity.channelRow(channel: Channel): View {
     val eq = TextView(this).apply {
         text = "♫"
         textSize = 18f
-        setTextColor(cyan)
+        // White, not cyan: the playing row is the bright gradient
+        // now (v2.0.38), so a cyan mark would vanish on it. This
+        // view is only ever visible on the playing row.
+        setTextColor(Color.WHITE)
         tag = "eq"
         visibility = if (isPlaying) View.VISIBLE else View.GONE
         setPadding(dp(4), 0, dp(8), 0)

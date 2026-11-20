@@ -20,6 +20,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.StateListDrawable
 import android.os.Bundle
 import android.os.Handler
@@ -113,6 +114,18 @@ internal fun Context.toast(message: String) = Toast.makeText(this, message, Toas
 internal fun Context.column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
 
+/** Glass side panel (v2.0.38): a rounded glass container with
+ * internal padding, so its items sit inset from the panel edge
+ * like the approved mockups — nothing touches the edge, nothing
+ * looks cut off. Used by the Movies sidebar and the Live TV
+ * categories pane. */
+internal fun Context.glassPanel(paddingDp: Int = 12) = LinearLayout(this).apply {
+    orientation = LinearLayout.VERTICAL
+    background = glassShape(20)
+    setPadding(dp(paddingDp), dp(paddingDp), dp(paddingDp), dp(paddingDp))
+}
+
+
 internal fun Context.label(value: String, size: Int, color: Int) = TextView(this).apply {
     text = value
     textSize = size.toFloat()
@@ -177,26 +190,26 @@ internal fun Context.topPillButton(iconRes: Int, title: String, action: () -> Un
     }
 
 
-/** Pill-shaped filter chip with a visible selected state (cyan→blue
- * gradient pill, Qwen tabs). */
+/** Rounded-rectangle filter chip (v2.0.38, mockup boxes) with a
+ * visible selected state (bright cyan→blue gradient). */
 internal fun Context.chip(value: String, iconRes: Int = 0, action: () -> Unit) = Button(this).apply {
     text = value
     isAllCaps = false
     setTextColor(muted)
     textSize = if (isTvDevice()) 15f else 14f
     minimumWidth = 0
-    minimumHeight = dp(if (isTvDevice()) 44 else 48)
-    setPadding(dp(16), dp(8), dp(16), dp(8))
+    minimumHeight = dp(if (isTvDevice()) 52 else 48)
+    setPadding(dp(16), dp(12), dp(16), dp(12))
     if (iconRes != 0) {
         setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
         compoundDrawablePadding = dp(8)
         compoundDrawableTintList = ColorStateList.valueOf(muted)
     }
     background = StateListDrawable().apply {
-        addState(intArrayOf(android.R.attr.state_focused), glassShape(24, cyan, 2))
-        addState(intArrayOf(android.R.attr.state_selected), gradientPill(24))
-        addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 24))
-        addState(intArrayOf(), glassShape(24))
+        addState(intArrayOf(android.R.attr.state_focused), glassShape(16, cyan, 2))
+        addState(intArrayOf(android.R.attr.state_selected), gradientPill(16))
+        addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 16))
+        addState(intArrayOf(), glassShape(16))
     }
     setOnFocusChangeListener { _, hasFocus ->
         refreshFilterText(this)
@@ -234,11 +247,12 @@ internal fun Context.seekThumb() = GradientDrawable().apply {
 }
 
 
-/** Channel-card background: glass, cyan border while this row is playing. */
+/** Channel-card background: glass at rest, the bright cyan→blue
+ * gradient while this row is playing (v2.0.38, mockup). */
 internal fun Context.rowBackground(playing: Boolean) = StateListDrawable().apply {
     addState(intArrayOf(android.R.attr.state_focused), glassShape(16, cyan, 2))
     addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 16))
-    addState(intArrayOf(), if (playing) shape(0xff163842.toInt(), 0xff30747c.toInt(), 16, 1) else glassShape(16))
+    addState(intArrayOf(), if (playing) gradientPill(16) else glassShape(16))
 }
 
 
@@ -285,11 +299,41 @@ internal fun Context.glassShape(radiusDp: Int = 22, strokeColor: Int = glassStro
     }
 
 
-/** Cyan → blue horizontal gradient pill (active nav item / chip). */
+/** Demo-matching app background (v2.0.38): the navy diagonal
+ * gradient plus soft radial glows — cyan top-right, blue
+ * bottom-left, a hint of purple top-left — like the mockup's
+ * bokeh backdrop. Pure background, no layout change. */
+internal fun Context.demoBackground(): LayerDrawable {
+    val base = GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        intArrayOf(bg0, bg1, bg2),
+    )
+    val w = resources.displayMetrics.widthPixels.toFloat()
+    val h = resources.displayMetrics.heightPixels.toFloat()
+    fun glow(cx: Float, cy: Float, color: Int, radiusFrac: Float) =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            gradientType = GradientDrawable.RADIAL_GRADIENT
+            setGradientCenter(cx, cy)
+            gradientRadius = minOf(w, h) * radiusFrac
+            colors = intArrayOf(color, Color.TRANSPARENT)
+        }
+    return LayerDrawable(arrayOf(
+        base,
+        glow(0.85f, 0.12f, 0x2e22d9ee.toInt(), 0.75f),
+        glow(0.08f, 0.92f, 0x263d7bff.toInt(), 0.7f),
+        glow(0.15f, 0.15f, 0x1a8b5cff.toInt(), 0.5f),
+    ))
+}
+
+
+/** Bright cyan → blue horizontal gradient (v2.0.38 — the mockup's
+ * bright selected item, not the old dark teal). Active nav item /
+ * chip / primary button. */
 internal fun Context.gradientPill(radiusDp: Int = 25) =
     GradientDrawable(
         GradientDrawable.Orientation.LEFT_RIGHT,
-        intArrayOf(0xff156776.toInt(), 0xff294f87.toInt()),
+        intArrayOf(cyan, blue),
     ).apply {
         cornerRadius = dp(radiusDp).toFloat()
     }
@@ -303,13 +347,14 @@ internal fun Context.glassStateList(radiusDp: Int) = StateListDrawable().apply {
 }
 
 
-/** TV category item: transparent at rest, gradient pill when selected
- * (active filter), cyan ring when D-pad focused. */
+/** TV category item: glass box at rest (v2.0.38, mockup — every
+ * item is a visible box, not transparent), bright gradient when
+ * selected (active filter), cyan ring when D-pad focused. */
 internal fun Context.navItemBackground() = StateListDrawable().apply {
-    addState(intArrayOf(android.R.attr.state_focused), glassShape(25, cyan, 2))
-    addState(intArrayOf(android.R.attr.state_selected), gradientPill())
-    addState(intArrayOf(android.R.attr.state_pressed), glassShape(25, strokeHi, 1))
-    addState(intArrayOf(), shape(Color.TRANSPARENT, Color.TRANSPARENT, 25, 0))
+    addState(intArrayOf(android.R.attr.state_focused), glassShape(16, cyan, 2))
+    addState(intArrayOf(android.R.attr.state_selected), gradientPill(16))
+    addState(intArrayOf(android.R.attr.state_pressed), glassShape(16, strokeHi, 1))
+    addState(intArrayOf(), glassShape(16))
 }
 
 
@@ -320,8 +365,8 @@ internal fun Context.navItem(labelText: String, iconRes: Int = 0, action: () -> 
     textSize = 16f
     gravity = Gravity.START or Gravity.CENTER_VERTICAL
     minimumWidth = 0
-    minimumHeight = dp(40)
-    setPadding(dp(16), dp(8), dp(16), dp(8))
+    minimumHeight = dp(if (isTvDevice()) 52 else 48)
+    setPadding(dp(16), dp(12), dp(16), dp(12))
     if (iconRes != 0) {
         setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
         compoundDrawablePadding = dp(8)

@@ -1,5 +1,6 @@
 package com.sadique.iptv
 
+import android.content.res.ColorStateList
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
@@ -34,6 +35,9 @@ internal fun MainActivity.buildMovieSearchInput(): EditText {
         textSize = if (isTv) 17f else 15f
         minimumHeight = dp(if (isTv) 56 else 52)
         setPadding(dp(18), dp(8), dp(18), dp(8))
+        setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_search, 0, 0, 0)
+        compoundDrawablePadding = dp(10)
+        compoundDrawableTintList = ColorStateList.valueOf(muted)
         background = glassStateList(28)
         setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
@@ -58,11 +62,16 @@ internal fun MainActivity.buildMovieSearchInput(): EditText {
 }
 
 /** Builds the TV Movies sidebar: search on top, the tab column,
- * Live TV at the bottom. Assigns movieSearchInput + moviesTabRow. */
+ * Live TV at the bottom. Assigns movieSearchInput + moviesTabRow.
+ * The sidebar is a glass panel (v2.0.38) — rounded corners, 12dp
+ * internal padding — so its items sit inset and nothing touches
+ * the panel edge or looks cut off (v2.0.37's bare column did). */
 internal fun MainActivity.buildMoviesSidebar(): LinearLayout {
-    val sidebar = column()
+    val sidebar = glassPanel(12)
     movieSearchInput = buildMovieSearchInput()
     sidebar.addView(movieSearchInput, LinearLayout.LayoutParams(-1, -2).apply {
+        marginStart = dp(8)
+        marginEnd = dp(8)
         bottomMargin = dp(12)
     })
     // The tab column (vertical): Home / Movies / TV Shows / Genres /
@@ -86,6 +95,8 @@ internal fun MainActivity.buildMoviesSidebar(): LinearLayout {
         // render (linkMoviesTabFocus); until then it goes nowhere.
         buttonView.nextFocusRightId = View.NO_ID
         moviesTabRow.addView(buttonView, LinearLayout.LayoutParams(-1, -2).apply {
+            marginStart = dp(8)
+            marginEnd = dp(8)
             bottomMargin = dp(8)
         })
     }
@@ -95,7 +106,10 @@ internal fun MainActivity.buildMoviesSidebar(): LinearLayout {
     sidebar.addView(spacer, LinearLayout.LayoutParams(-1, 0, 1f))
     val liveTvButton = button("Live TV", R.drawable.ic_arrow_back) { closeMovies() }
     liveTvButton.id = View.generateViewId()
-    sidebar.addView(liveTvButton, LinearLayout.LayoutParams(-1, -2))
+    sidebar.addView(liveTvButton, LinearLayout.LayoutParams(-1, -2).apply {
+        marginStart = dp(8)
+        marginEnd = dp(8)
+    })
     // Explicit vertical links — geometry alone is unreliable across
     // the pane boundary.
     val firstTab = moviesTabRow.getChildAt(0)

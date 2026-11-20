@@ -84,10 +84,7 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         // main layout's root padding).
         setPadding(dp(if (isTv) 32 else 16), dp(if (isTv) 20 else 12),
             dp(if (isTv) 32 else 16), dp(if (isTv) 20 else 12))
-        background = GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(bg0, bg1, bg2),
-        )
+        background = demoBackground()
         // Clickable so touches don't fall through to the Live TV UI
         // underneath — but NOT focusable: a focusable full-screen root
         // traps D-pad focus (every child sits inside its rect, so no
@@ -147,12 +144,13 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     }
     movieResults = column()
     if (isTv) {
-        // Two-pane (v2.0.37): the sidebar (search + nav + Live TV)
-        // on the left, the posters on the right. The sidebar is part
-        // of moviesListPane so the details pane hides it too.
+        // Two-pane (v2.0.37, glass panel + 300dp in v2.0.38): the
+        // sidebar (search + nav + Live TV) on the left, the posters
+        // on the right. The sidebar is part of moviesListPane so
+        // the details pane hides it too.
         moviesListPane.orientation = LinearLayout.HORIZONTAL
         moviesListPane.addView(buildMoviesSidebar(),
-            LinearLayout.LayoutParams(dp(280), -1))
+            LinearLayout.LayoutParams(dp(300), -1))
         val content = column()
         content.addView(movieStatus)
         content.addView(movieProgress, LinearLayout.LayoutParams(-2, -2).apply {
