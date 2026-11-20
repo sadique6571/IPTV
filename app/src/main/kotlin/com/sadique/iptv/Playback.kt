@@ -90,7 +90,7 @@ internal fun MainActivity.play(channel: Channel) {
     store.addRecent(channel)
     store.lastChannel = channel
     setChannelMeta(channel)
-    playPauseButton.text = "❚❚"
+    playPauseButton.setImageResource(R.drawable.ic_pause)
     // A fresh player starts at the stored volume, so a muted session
     // does not survive a channel change — reset the mute state here.
     videoOptions = emptyList()

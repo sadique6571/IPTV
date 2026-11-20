@@ -98,7 +98,7 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
     }
-    val backButton = button("‹ Live TV") { closeMovies() }
+    val backButton = button("Live TV", R.drawable.ic_arrow_back) { closeMovies() }
     backButton.id = View.generateViewId()
     header.addView(backButton,
         LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(12) })
@@ -123,7 +123,7 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         ellipsize = TextUtils.TruncateAt.END
     }
     movieNowPlayingBar.addView(movieNowPlayingLabel, LinearLayout.LayoutParams(0, -2, 1f))
-    movieNowPlayingBar.addView(button("▶ Player") { closeMovies() },
+    movieNowPlayingBar.addView(button("Player", R.drawable.ic_play) { closeMovies() },
         LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
     view.addView(movieNowPlayingBar, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(10)
@@ -182,7 +182,7 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     // Home chip goes back to Continue Watching + Fav Movies.
     val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
     movieQuickRow = quickRow
-    val homeChip = chip("⌂ Home") { showMoviesHome() }
+    val homeChip = chip("Home", R.drawable.ic_home) { showMoviesHome() }
     homeChip.id = View.generateViewId()
     movieHomeChip = homeChip
     quickRow.addView(homeChip, LinearLayout.LayoutParams(-2, -2).apply {
@@ -317,7 +317,10 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     movieDetailsStatus = label("", if (isTv) 15 else 13, muted)
     detailsInner.addView(movieDetailsStatus)
     moviePlayButton = Button(this).apply {
-        text = "▶ Play"
+        text = "Play"
+        setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_play, 0, 0, 0)
+        compoundDrawablePadding = dp(8)
+        compoundDrawableTintList = ColorStateList.valueOf(Color.WHITE)
         isAllCaps = false
         setTextColor(Color.WHITE)
         setTypeface(null, Typeface.BOLD)
@@ -335,18 +338,18 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     detailsInner.addView(moviePlayButton, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(12)
     })
-    movieFavButton = button("♡ Favorite") { toggleFavoriteMovie() }
+    movieFavButton = button("Favorite", R.drawable.ic_favorite_outline) { toggleFavoriteMovie() }
     detailsInner.addView(movieFavButton, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(8)
     })
     // Download (v2.0.35, mobile only — the user did not approve TV
     // downloads): saves the movie file so it plays without internet.
-    movieDownloadButton = button("⬇ Download") { startMovieDownload() }
+    movieDownloadButton = button("Download", R.drawable.ic_download) { startMovieDownload() }
     movieDownloadButton.visibility = if (isTv) View.GONE else View.VISIBLE
     detailsInner.addView(movieDownloadButton, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(8)
     })
-    detailsInner.addView(button("‹ Back to results") { showMoviesList() },
+    detailsInner.addView(button("Back to results", R.drawable.ic_arrow_back) { showMoviesList() },
         LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
     moviesDetailsPane.addView(detailsScroll, LinearLayout.LayoutParams(-1, -1))
     view.addView(moviesDetailsPane, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -361,7 +364,7 @@ internal fun MainActivity.stopPlayingChannel() {
     if (selected == null) return
     stopPlayback()
     selected = null
-    playPauseButton.text = "▶"
+    playPauseButton.setImageResource(R.drawable.ic_play)
     setChannelMeta(null)
     status.text = ""
     applyControlVisibility()
@@ -497,8 +500,8 @@ internal fun MainActivity.searchMovies() {
 internal fun MainActivity.showMovieResults(movies: List<MovieBox.Movie>) {
     movieResults.removeAllViews()
     val rows = mutableListOf<View>()
-    for (movie in movies) {
-        val row = movieRow(movie)
+    for ((index, movie) in movies.withIndex()) {
+        val row = movieRow(movie, background = index >= 6)
         rows += row
         movieResults.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(4)
@@ -611,7 +614,7 @@ internal fun MainActivity.continueRow(entry: MovieStore.ContinueEntry): View {
     row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f).apply {
         marginStart = dp(12)
     })
-    val removeButton = iconButton("✕") {
+    val removeButton = iconButton(R.drawable.ic_close) {
         movieStore.removeContinue(entry.subjectId)
         toast("Continue Watching se nikal di.")
         renderCurrentMoviesTab()
@@ -630,8 +633,10 @@ internal fun MainActivity.continueRow(entry: MovieStore.ContinueEntry): View {
 }
 
 
-/** 2:3 poster tile with a letter tile behind it while the image loads. */
-internal fun MainActivity.posterTile(posterUrl: String, title: String): View {
+/** 2:3 poster tile with a letter tile behind it while the image loads.
+ * background: off-screen tiles (rows/rails below the fold) load on the
+ * prefetch pool so they never queue behind the visible posters. */
+internal fun MainActivity.posterTile(posterUrl: String, title: String, background: Boolean = false): View {
     val tileView = FrameLayout(this)
     val initial = TextView(this).apply {
         text = title.take(1).uppercase()
@@ -647,24 +652,24 @@ internal fun MainActivity.posterTile(posterUrl: String, title: String): View {
             scaleType = ImageView.ScaleType.CENTER_CROP
         }
         tileView.addView(posterView, FrameLayout.LayoutParams(-1, -1))
-        LogoLoader.load(this, posterUrl, posterView)
+        LogoLoader.load(this, posterUrl, posterView, background = background)
     }
     return tileView
 }
 
 
-/** Small square icon button (♥ favorite, ✕ remove) for movie rows. */
-internal fun MainActivity.iconButton(value: String, action: (Button) -> Unit) = Button(this).apply {
-    text = value
-    isAllCaps = false
-    setTextColor(muted)
-    textSize = if (isTv) 17f else 16f
-    minimumWidth = 0
-    minimumHeight = dp(44)
-    setPadding(dp(12), dp(6), dp(12), dp(6))
-    background = glassStateList(12)
-    setOnClickListener { action(this) }
-}
+/** Small square icon button (favorite heart, remove X) for movie rows. */
+internal fun MainActivity.iconButton(iconRes: Int, tint: Int = muted, action: (ImageButton) -> Unit) =
+    ImageButton(this).apply {
+        setImageResource(iconRes)
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        imageTintList = ColorStateList.valueOf(tint)
+        minimumWidth = dp(44)
+        minimumHeight = dp(44)
+        setPadding(dp(10), dp(10), dp(10), dp(10))
+        background = glassStateList(12)
+        setOnClickListener { action(this) }
+    }
 
 
 /** Favorite toggle from the details pane (the movie itself, not the
@@ -680,13 +685,18 @@ internal fun MainActivity.toggleFavoriteMovie() {
 internal fun MainActivity.updateMovieFavButton() {
     val movie = currentMovieDetails?.movie
     val fav = movie != null && movieStore.isFavorite(movie)
-    movieFavButton.text = if (fav) "♥ Favorite" else "♡ Favorite"
+    movieFavButton.text = "Favorite"
+    movieFavButton.setCompoundDrawablesWithIntrinsicBounds(
+        if (fav) R.drawable.ic_favorite else R.drawable.ic_favorite_outline, 0, 0, 0,
+    )
+    movieFavButton.compoundDrawableTintList =
+        ColorStateList.valueOf(if (fav) liveRed else textColor)
 }
 
 
 /** Glass movie card: 2:3 poster (letter tile behind it while it loads),
  * bold title + year, and a cyan HINDI badge for Hindi-dubbed titles. */
-internal fun MainActivity.movieRow(movie: MovieBox.Movie): View {
+internal fun MainActivity.movieRow(movie: MovieBox.Movie, background: Boolean = false): View {
     val row = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -707,7 +717,7 @@ internal fun MainActivity.movieRow(movie: MovieBox.Movie): View {
     val posterWidth = dp(if (isTv) 60 else 56)
     val posterHeight = dp(if (isTv) 90 else 84)
     row.addView(
-        posterTile(movie.posterUrl, movie.title),
+        posterTile(movie.posterUrl, movie.title, background),
         LinearLayout.LayoutParams(posterWidth, posterHeight),
     )
     val texts = column()
@@ -756,14 +766,16 @@ internal fun MainActivity.movieRow(movie: MovieBox.Movie): View {
     // Favorite heart: red when this movie is in Fav Movies. Tapping
     // it only toggles the favorite — the row itself still opens the
     // details pane.
-    val heart = iconButton(if (movieStore.isFavorite(movie)) "♥" else "♡") { btn ->
+    val heart = iconButton(
+        if (movieStore.isFavorite(movie)) R.drawable.ic_favorite else R.drawable.ic_favorite_outline,
+        if (movieStore.isFavorite(movie)) liveRed else muted,
+    ) { btn ->
         val nowFav = movieStore.toggleFavorite(movie)
-        btn.text = if (nowFav) "♥" else "♡"
-        btn.setTextColor(if (nowFav) liveRed else muted)
+        btn.setImageResource(if (nowFav) R.drawable.ic_favorite else R.drawable.ic_favorite_outline)
+        btn.imageTintList = ColorStateList.valueOf(if (nowFav) liveRed else muted)
         toast(if (nowFav) "Fav Movies mein add ho gayi." else "Fav Movies se nikal di.")
         if (moviesOpen && !movieResultsAreSearch) renderCurrentMoviesTab()
     }
-    heart.setTextColor(if (movieStore.isFavorite(movie)) liveRed else muted)
     // D-pad: RIGHT from the row reaches the heart (it sits INSIDE the
     // row, so geometry alone never finds it); UP/DOWN from the heart
     // go to the neighbouring rows (linkMovieRowActions).

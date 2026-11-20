@@ -121,7 +121,15 @@ internal fun Context.label(value: String, size: Int, color: Int) = TextView(this
 }
 
 
-internal fun Context.button(value: String, action: () -> Unit) = Button(this).apply {
+// iconRes: optional vector icon (R.drawable.ic_*) shown beside the
+// label as a compound drawable — start by default, end when iconEnd
+// is true (e.g. the "See All ›" chevron). 0 means text only.
+internal fun Context.button(
+    value: String,
+    iconRes: Int = 0,
+    iconEnd: Boolean = false,
+    action: () -> Unit,
+) = Button(this).apply {
     text = value
     isAllCaps = false
     setTextColor(textColor)
@@ -131,6 +139,12 @@ internal fun Context.button(value: String, action: () -> Unit) = Button(this).ap
     minimumHeight = dp(if (isTvDevice()) 46 else 48)
     val sidePadding = dp(if (isTvDevice()) 14 else 10)
     setPadding(sidePadding, dp(8), sidePadding, dp(8))
+    if (iconRes != 0) {
+        if (iconEnd) setCompoundDrawablesWithIntrinsicBounds(0, 0, iconRes, 0)
+        else setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
+        compoundDrawablePadding = dp(8)
+        compoundDrawableTintList = ColorStateList.valueOf(textColor)
+    }
     background = StateListDrawable().apply {
         addState(intArrayOf(android.R.attr.state_focused),
             glassShape(10, cyan, if (isTvDevice()) 3 else 2))
@@ -143,18 +157,16 @@ internal fun Context.button(value: String, action: () -> Unit) = Button(this).ap
 
 
 /** Small round TopBar action button (TV): a glass circle with a
- * glyph, cyan ring on D-pad focus. */
-internal fun Context.topRoundButton(glyph: String, description: String, action: () -> Unit) =
-    Button(this).apply {
-        text = glyph
-        isAllCaps = false
+ * vector icon, cyan ring on D-pad focus. */
+internal fun Context.topRoundButton(iconRes: Int, description: String, action: () -> Unit) =
+    ImageButton(this).apply {
+        setImageResource(iconRes)
+        scaleType = ImageView.ScaleType.FIT_CENTER
         contentDescription = description
-        setTextColor(textColor)
-        textSize = 18f
-        gravity = Gravity.CENTER
+        imageTintList = ColorStateList.valueOf(textColor)
         minimumWidth = 0
         minimumHeight = 0
-        setPadding(0, 0, 0, 0)
+        setPadding(dp(12), dp(12), dp(12), dp(12))
         background = StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_focused), glassShape(24, cyan, 2))
             addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 24))
@@ -166,7 +178,7 @@ internal fun Context.topRoundButton(glyph: String, description: String, action: 
 
 /** Pill-shaped filter chip with a visible selected state (cyan→blue
  * gradient pill, Qwen tabs). */
-internal fun Context.chip(value: String, action: () -> Unit) = Button(this).apply {
+internal fun Context.chip(value: String, iconRes: Int = 0, action: () -> Unit) = Button(this).apply {
     text = value
     isAllCaps = false
     setTextColor(muted)
@@ -174,6 +186,11 @@ internal fun Context.chip(value: String, action: () -> Unit) = Button(this).appl
     minimumWidth = 0
     minimumHeight = dp(if (isTvDevice()) 44 else 48)
     setPadding(dp(16), dp(8), dp(16), dp(8))
+    if (iconRes != 0) {
+        setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
+        compoundDrawablePadding = dp(8)
+        compoundDrawableTintList = ColorStateList.valueOf(muted)
+    }
     background = StateListDrawable().apply {
         addState(intArrayOf(android.R.attr.state_focused), glassShape(24, cyan, 2))
         addState(intArrayOf(android.R.attr.state_selected), gradientPill(24))
@@ -188,9 +205,13 @@ internal fun Context.chip(value: String, action: () -> Unit) = Button(this).appl
 }
 
 
-/** White text on the active (gradient) or focused filter, muted otherwise. */
+/** White text on the active (gradient) or focused filter, muted otherwise.
+ * A chip with a vector icon keeps the icon the same color as the text;
+ * harmless on buttons without a compound drawable. */
 internal fun refreshFilterText(view: Button) {
-    view.setTextColor(if (view.isSelected || view.isFocused) Color.WHITE else muted)
+    val color = if (view.isSelected || view.isFocused) Color.WHITE else muted
+    view.setTextColor(color)
+    view.compoundDrawableTintList = ColorStateList.valueOf(color)
 }
 
 
@@ -317,15 +338,13 @@ internal fun Context.overlayButtonBackground() = StateListDrawable().apply {
 }
 
 
-internal fun Context.overlayButton(glyph: String, action: () -> Unit) = Button(this).apply {
-    text = glyph
-    isAllCaps = false
-    setTextColor(Color.WHITE)
-    textSize = if (isTvDevice()) 20f else 18f
-    gravity = Gravity.CENTER
+internal fun Context.overlayButton(iconRes: Int, action: () -> Unit) = ImageButton(this).apply {
+    setImageResource(iconRes)
+    scaleType = ImageView.ScaleType.FIT_CENTER
+    imageTintList = ColorStateList.valueOf(Color.WHITE)
     minimumWidth = 0
     minimumHeight = 0
-    setPadding(0, 0, 0, 0)
+    setPadding(dp(10), dp(10), dp(10), dp(10))
     background = overlayButtonBackground()
     setOnClickListener { action() }
 }

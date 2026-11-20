@@ -123,7 +123,7 @@ class MainActivity : Activity() {
     internal var controlsVisible = true
     internal val hideControlsRunnable = Runnable { hidePlayerControls() }
     internal val seekIndicatorHideRunnable = Runnable { seekIndicator.visibility = View.GONE }
-    internal lateinit var playPauseButton: Button
+    internal lateinit var playPauseButton: ImageButton
     internal lateinit var fullscreenButton: ImageButton
     private lateinit var fullscreenIcon: FullscreenIconDrawable
     internal lateinit var catalogTitle: TextView
@@ -436,9 +436,12 @@ class MainActivity : Activity() {
             setPadding(dp(20), 0, dp(20), 0)
             setOnClickListener { openSearch() }
         }
-        searchPill.addView(label("🔍", if (isTv) 18 else 16, muted).apply {
+        searchPill.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_search)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            imageTintList = ColorStateList.valueOf(muted)
             setPadding(0, 0, dp(12), 0)
-        })
+        }, LinearLayout.LayoutParams(dp(if (isTv) 22 else 20), dp(if (isTv) 22 else 20)))
         searchPill.addView(label("Search channels…", if (isTv) 16 else 14, muted2).apply {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
@@ -453,13 +456,13 @@ class MainActivity : Activity() {
             // so the actions join it and the space below stays free.
             // (No Search button — the pill IS the search bar.)
             val topActions = listOf(
-                Triple("📋", "Playlists") { showPlaylists() },
-                Triple("⬇", "Import M3U") { choosePlaylist() },
-                Triple("📡", "Xtream") { askXtream() },
-                Triple("⬆", "Update") { checkForUpdateManually() },
+                Triple(R.drawable.ic_list, "Playlists") { showPlaylists() },
+                Triple(R.drawable.ic_download, "Import M3U") { choosePlaylist() },
+                Triple(R.drawable.ic_tv, "Xtream") { askXtream() },
+                Triple(R.drawable.ic_upload, "Update") { checkForUpdateManually() },
             )
-            for ((glyph, description, action) in topActions) {
-                headerView.addView(topRoundButton(glyph, description, action),
+            for ((iconRes, description, action) in topActions) {
+                headerView.addView(topRoundButton(iconRes, description, action),
                     LinearLayout.LayoutParams(dp(48), dp(48)).apply {
                         marginEnd = dp(8)
                     })
@@ -487,9 +490,12 @@ class MainActivity : Activity() {
             setPadding(dp(16), 0, dp(16), 0)
             setOnClickListener { openSearch() }
         }
-        paneSearchBar.addView(label("🔍", if (isTv) 17 else 15, muted).apply {
+        paneSearchBar.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_search)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            imageTintList = ColorStateList.valueOf(muted)
             setPadding(0, 0, dp(10), 0)
-        })
+        }, LinearLayout.LayoutParams(dp(if (isTv) 22 else 20), dp(if (isTv) 22 else 20)))
         paneSearchLabel = label("Search channels…", if (isTv) 15 else 14, muted2).apply {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
@@ -599,7 +605,7 @@ class MainActivity : Activity() {
             ellipsize = TextUtils.TruncateAt.END
         }
         searchClearRow.addView(searchClearLabel, LinearLayout.LayoutParams(0, -2, 1f))
-        searchClearRow.addView(button("✕ Saaf karein") { clearSearch() },
+        searchClearRow.addView(button("Saaf karein", R.drawable.ic_close) { clearSearch() },
             LinearLayout.LayoutParams(-2, -2).apply {
                 marginStart = dp(8)
             })
@@ -639,11 +645,11 @@ class MainActivity : Activity() {
             left.addView(libraryActions, LinearLayout.LayoutParams(-1, -2).apply {
                 topMargin = dp(6)
             })
-            libraryActions.addView(button("Import M3U", ::choosePlaylist),
+            libraryActions.addView(button("Import M3U") { choosePlaylist() },
                 LinearLayout.LayoutParams(0, -2, 1f).apply {
                     marginEnd = dp(4)
                 })
-            libraryActions.addView(button("Xtream", ::askXtream),
+            libraryActions.addView(button("Xtream") { askXtream() },
                 LinearLayout.LayoutParams(0, -2, 1f).apply {
                     marginStart = dp(4)
                 })
@@ -655,7 +661,7 @@ class MainActivity : Activity() {
             left.addView(updateRow, LinearLayout.LayoutParams(-1, -2).apply {
                 topMargin = dp(6)
             })
-            updateRow.addView(button("⬆ Update", ::checkForUpdateManually),
+            updateRow.addView(button("Update", R.drawable.ic_upload) { checkForUpdateManually() },
                 LinearLayout.LayoutParams(0, -2, 1f).apply {
                     marginEnd = dp(4)
                 })
@@ -762,7 +768,7 @@ class MainActivity : Activity() {
             setPadding(dp(8), dp(6), dp(8), dp(6))
             elevation = dp(6).toFloat()
         }
-        playPauseButton = overlayButton("▶") {
+        playPauseButton = overlayButton(R.drawable.ic_play) {
             playerController?.togglePlayPause()
             showPlayerControls()
         }
@@ -1016,7 +1022,7 @@ class MainActivity : Activity() {
                 }
                 override fun onPlayingChanged(isPlaying: Boolean) {
                     if (!isDestroyed) {
-                        playPauseButton.text = if (isPlaying) "❚❚" else "▶"
+                        playPauseButton.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
                         if (isPlaying) status.text = ""
                     }
                 }
@@ -1382,7 +1388,7 @@ class MainActivity : Activity() {
             playingMovieUrl = null
             playingMovieHeaders = emptyMap()
             movieEnded = false
-            playPauseButton.text = "▶"
+            playPauseButton.setImageResource(R.drawable.ic_play)
             setChannelMeta(null)
             status.text = ""
             applyControlVisibility()

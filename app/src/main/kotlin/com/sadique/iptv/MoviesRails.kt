@@ -27,12 +27,16 @@ internal fun MainActivity.buildMoviesRail(title: String, movies: List<MovieBox.M
         gravity = Gravity.CENTER_VERTICAL
     }
     header.addView(sectionLabel(title), LinearLayout.LayoutParams(0, -2, 1f))
-    val seeAll = button("See All ›") { showMoviesSeeAll(title, movies) }
+    val seeAll = button("See All", R.drawable.ic_chevron_right, iconEnd = true) { showMoviesSeeAll(title, movies) }
     header.addView(seeAll)
     rail.addView(header)
     val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-    for (movie in movies) {
-        row.addView(posterCard(movie), LinearLayout.LayoutParams(-2, -2).apply {
+    // Only the cards visible at first load eagerly — the rest of the
+    // rail loads on the prefetch pool, so the visible posters never
+    // queue behind off-screen ones.
+    val eagerCount = if (isTv) 8 else 4
+    for ((index, movie) in movies.withIndex()) {
+        row.addView(posterCard(movie, background = index >= eagerCount), LinearLayout.LayoutParams(-2, -2).apply {
             marginEnd = dp(12)
         })
     }
@@ -53,7 +57,7 @@ internal fun MainActivity.buildMoviesRail(title: String, movies: List<MovieBox.M
 
 /** Poster card: 2:3 poster + title + year (and a HINDI note for
  * Hindi-dubbed titles). Tapping opens the details pane. */
-internal fun MainActivity.posterCard(movie: MovieBox.Movie): View {
+internal fun MainActivity.posterCard(movie: MovieBox.Movie, background: Boolean = false): View {
     val cardWidth = dp(if (isTv) 150 else 120)
     val posterHeight = cardWidth * 3 / 2
     val card = column().apply {
@@ -66,7 +70,7 @@ internal fun MainActivity.posterCard(movie: MovieBox.Movie): View {
         setOnClickListener { openMovieDetails(movie) }
     }
     card.addView(
-        posterTile(movie.posterUrl, movie.title),
+        posterTile(movie.posterUrl, movie.title, background),
         LinearLayout.LayoutParams(cardWidth, posterHeight),
     )
     card.addView(TextView(this).apply {
@@ -100,8 +104,8 @@ internal fun MainActivity.renderMoviesSeeAll(seeAll: MoviesSeeAll) {
     movieResults.removeAllViews()
     movieStatus.text = "${seeAll.title} — ${seeAll.movies.size} movies"
     val rows = mutableListOf<View>()
-    for (movie in seeAll.movies) {
-        val row = movieRow(movie)
+    for ((index, movie) in seeAll.movies.withIndex()) {
+        val row = movieRow(movie, background = index >= 6)
         rows += row
         movieResults.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(4)

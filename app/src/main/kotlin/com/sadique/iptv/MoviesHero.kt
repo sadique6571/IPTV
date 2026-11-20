@@ -1,5 +1,6 @@
 package com.sadique.iptv
 
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.Typeface
@@ -81,11 +82,11 @@ internal fun MainActivity.buildMoviesHero(movies: List<MovieBox.Movie>): View {
         bottomMargin = dp(12)
     })
     val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-    val watchView = heroActionButton("▶ Watch Now", true) {
+    val watchView = heroActionButton("Watch Now", true, R.drawable.ic_play) {
         heroMovies.getOrNull(heroIndex)?.let { openMovieDetails(it) }
     }
     heroWatchView = watchView
-    val listView = heroActionButton("＋ My List", false) {
+    val listView = heroActionButton("My List", false, R.drawable.ic_add) {
         val movie = heroMovies.getOrNull(heroIndex) ?: return@heroActionButton
         val nowFav = movieStore.toggleFavorite(movie)
         updateHeroListButton()
@@ -130,6 +131,12 @@ internal fun MainActivity.bindMoviesHero() {
         posterView.setImageBitmap(null)
         LogoLoader.load(this, movie.posterUrl, posterView, 512)
     }
+    // Prefetch the next hero poster so the 8s rotation never shows a
+    // blank banner while it downloads.
+    val next = heroMovies.getOrNull((heroIndex + 1) % heroMovies.size)
+    if (next != null && next.posterUrl.isNotEmpty()) {
+        LogoLoader.prefetch(this, listOf(next.posterUrl), 512)
+    }
     updateHeroListButton()
     rebuildHeroDots()
     val request = ++heroRequest
@@ -157,7 +164,10 @@ internal fun MainActivity.bindMoviesHero() {
 internal fun MainActivity.updateHeroListButton() {
     val movie = heroMovies.getOrNull(heroIndex) ?: return
     val fav = movieStore.isFavorite(movie)
-    heroListView?.text = if (fav) "✓ My List" else "＋ My List"
+    heroListView?.text = "My List"
+    heroListView?.setCompoundDrawablesWithIntrinsicBounds(
+        if (fav) R.drawable.ic_check else R.drawable.ic_add, 0, 0, 0,
+    )
 }
 
 private fun MainActivity.rebuildHeroDots() {
@@ -213,8 +223,12 @@ internal fun MainActivity.stopMoviesHero() {
 
 /** Hero action button: gradient pill for the primary action, glass
  * for the secondary — same focus ring as the Play button. */
-private fun MainActivity.heroActionButton(label: String, primary: Boolean, action: () -> Unit) =
-    Button(this).apply {
+private fun MainActivity.heroActionButton(
+    label: String,
+    primary: Boolean,
+    iconRes: Int = 0,
+    action: () -> Unit,
+) = Button(this).apply {
         id = View.generateViewId()
         text = label
         isAllCaps = false
@@ -223,6 +237,11 @@ private fun MainActivity.heroActionButton(label: String, primary: Boolean, actio
         textSize = if (isTv) 16f else 15f
         minimumHeight = dp(if (isTv) 52 else 48)
         setPadding(dp(20), dp(8), dp(20), dp(8))
+        if (iconRes != 0) {
+            setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
+            compoundDrawablePadding = dp(8)
+            compoundDrawableTintList = ColorStateList.valueOf(Color.WHITE)
+        }
         background = StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_focused), glassShape(24, cyan, 3))
             addState(intArrayOf(android.R.attr.state_pressed), glassShape(24, cyan, 2))

@@ -110,8 +110,8 @@ internal fun MainActivity.renderMoviesFeedTab(
         return
     }
     val rows = mutableListOf<View>()
-    for (movie in movies) {
-        val row = movieRow(movie)
+    for ((index, movie) in movies.withIndex()) {
+        val row = movieRow(movie, background = index >= 6)
         rows += row
         movieResults.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(4)
@@ -180,8 +180,8 @@ internal fun MainActivity.loadMoviesGenre(genre: String) {
                 }
                 movieStatus.text = "$genre — ${movies.size} movies"
                 val rows = mutableListOf<View>()
-                for (movie in movies) {
-                    val row = movieRow(movie)
+                for ((index, movie) in movies.withIndex()) {
+                    val row = movieRow(movie, background = index >= 6)
                     rows += row
                     movieGenreResults.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
                         topMargin = dp(4)

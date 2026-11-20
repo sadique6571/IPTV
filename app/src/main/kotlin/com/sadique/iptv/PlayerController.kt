@@ -15,6 +15,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -80,7 +81,12 @@ internal class PlayerController(
                     events.onBuffering(true)
                     if (backupUrl != null) {
                         bufferEvents++
-                        retryHandler.postDelayed(bufferTimeout, if (bufferEvents >= 4) 0L else 20_000L)
+                        // Fail over after 15s of buffering (was 20s).
+                        // 10s would race the v34 10s buffer-for-playback
+                        // and switch healthy slow-starting channels to
+                        // backup; 15s is safely past a healthy start.
+                        // Immediate after 4 buffer events, as before.
+                        retryHandler.postDelayed(bufferTimeout, if (bufferEvents >= 4) 0L else BUFFER_FAILOVER_MS)
                     }
                 }
                 Player.STATE_READY -> {
@@ -233,9 +239,20 @@ internal class PlayerController(
                 BUFFER_FOR_PLAYBACK_MS, BUFFER_AFTER_REBUFFER_MS,
             )
             .build()
-        val httpFactory = DefaultHttpDataSource.Factory().apply {
-            if (currentHeaders.isNotEmpty()) setDefaultRequestProperties(currentHeaders)
-        }
+        // Timeouts (v2.0.36): ExoPlayer's defaults are 8s/8s — a dead
+        // server held the player for 8s before anything failed. A 5s
+        // connect timeout fails fast on a dead host; the 8s read
+        // timeout is kept explicit (a slow free server may legitimately
+        // pause between chunk reads). Cross-protocol redirects are
+        // allowed: many free IPTV links redirect http -> https (or
+        // across hosts), and ExoPlayer refuses those by default.
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setConnectTimeoutMs(CONNECT_TIMEOUT_MS)
+            .setReadTimeoutMs(READ_TIMEOUT_MS)
+            .setAllowCrossProtocolRedirects(true)
+            .apply {
+                if (currentHeaders.isNotEmpty()) setDefaultRequestProperties(currentHeaders)
+            }
         // DefaultDataSource routes http(s) through the header-carrying
         // HTTP factory and file:// through a FileDataSource, so
         // downloaded movies (MoviesDownloads.kt) play in this same
@@ -357,6 +374,17 @@ internal class PlayerController(
             active.playWhenReady = true
             return
         }
+        // Permanent HTTP errors (404/403 — the stream is gone from
+        // this server) never heal on retry, so do not burn all 5
+        // attempts on them: a live channel still tries its backup
+        // feed once (a different URL), everything else fails at once
+        // with the friendly message. Timeouts and network errors
+        // keep the full retry loop below.
+        if (isPermanentHttpError(error)) {
+            if (liveChannel && useBackup()) return
+            events.onError(friendlyMessage(error) + " Select the stream again to reconnect.")
+            return
+        }
         if (liveChannel) {
             if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && retryCount == 0) {
                 reconnectLive()
@@ -382,6 +410,24 @@ internal class PlayerController(
             return
         }
         events.onError(friendlyMessage(error) + " Select the stream again to reconnect.")
+    }
+
+    /** True for HTTP 4xx responses (except 408/429) — the stream is
+     * permanently gone from this server, so retrying is pointless.
+     * Walks the cause chain: ExoPlayer wraps the data-source error.
+     * 5xx stays retryable (a server hiccup can heal), 408/429 are
+     * transient by definition. */
+    private fun isPermanentHttpError(error: PlaybackException): Boolean {
+        var cause: Throwable? = error.cause
+        while (cause != null) {
+            val httpError = cause as? HttpDataSource.InvalidResponseCodeException
+            if (httpError != null) {
+                val code = httpError.responseCode
+                return code in 400..499 && code != 408 && code != 429
+            }
+            cause = cause.cause
+        }
+        return false
     }
 
     private fun friendlyMessage(error: PlaybackException): String = when (error.errorCode) {
@@ -415,5 +461,9 @@ internal class PlayerController(
         private const val MAX_BUFFER_MS = 60_000
         private const val BUFFER_FOR_PLAYBACK_MS = 10_000
         private const val BUFFER_AFTER_REBUFFER_MS = 10_000
+        // Fail-fast (v2.0.36): HTTP timeouts + backup failover delay.
+        private const val CONNECT_TIMEOUT_MS = 5000
+        private const val READ_TIMEOUT_MS = 8000
+        private const val BUFFER_FAILOVER_MS = 15_000L
     }
 }

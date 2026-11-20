@@ -585,7 +585,7 @@ internal fun MainActivity.playMovieStream(
     playingMovieHeaders = headers
     movieEnded = false
     setMovieMeta(movie, episodeSeason, episodeNumber)
-    playPauseButton.text = "❚❚"
+    playPauseButton.setImageResource(R.drawable.ic_pause)
     videoOptions = emptyList()
     selectedVideoIndex = -1
     seekable = false

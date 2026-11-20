@@ -211,7 +211,7 @@ internal fun MainActivity.renderDownloads() {
     val saved = downloadedMovies()
     movieStatus.text = when {
         saved.isEmpty() && !downloadActive ->
-            "Abhi koi download nahi hai — movie khol kar ⬇ Download dabayein."
+            "Abhi koi download nahi hai — movie khol kar Download dabayein."
         downloadActive -> "Download chal rahi hai…"
         else -> "Downloads — ${saved.size} movie(s)"
     }
