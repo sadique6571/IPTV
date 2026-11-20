@@ -121,8 +121,8 @@ internal fun MainActivity.focusBrowse(preferChannel: Channel? = selected) {
 
 /** The browse pane (categories/channels) hides while a movie plays
  * on a side-by-side screen, so the video gets the space; channels
- * and dramas keep it (you surf during those). Fullscreen owns
- * visibility while it lasts, so this is a no-op there. */
+ * keep it (you surf during those). Fullscreen owns visibility while
+ * it lasts, so this is a no-op there. */
 internal fun MainActivity.updateBrowseVisibility() {
     if (fullScreen) return
     val visible = playingMovie == null || movieEnded || !(isTv || isLandscape)
@@ -358,9 +358,15 @@ internal fun MainActivity.appendChannelRows(limit: Int) {
     for (index in list.childCount until minOf(limit, currentMatches.size)) {
         val channel = currentMatches[index]
         val row = channelRow(channel)
+        // Side margins: a focused row scales to 1.03x
+        // (animateFocusScale), and a full-width row's edges clipped at
+        // the pane sides. 8dp each side gives the scale room, so the
+        // card never looks cut off.
         list.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(if (isTv) 3 else 5)
             bottomMargin = topMargin
+            marginStart = dp(8)
+            marginEnd = dp(8)
         })
         if (channel.key == selected?.key) highlightedRow = row
     }
@@ -406,7 +412,7 @@ internal fun MainActivity.toggleFavoriteFor(channel: Channel) {
 
 
 /** Re-points every visible channel row's RIGHT target at the overlay
- * after the visible controls changed (channel switch, drama, movie). */
+ * after the visible controls changed (channel switch, movie). */
 internal fun MainActivity.syncRowFocusTargets() {
     val target = firstOverlayControlId()
     for (i in 0 until list.childCount) {

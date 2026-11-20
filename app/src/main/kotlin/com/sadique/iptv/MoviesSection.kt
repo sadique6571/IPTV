@@ -338,12 +338,11 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
 
 /** Stops the currently playing channel (if any) — the Movies browser
  * opens over a silent screen instead of a channel that keeps playing
- * behind a movie search. Movies and dramas keep playing underneath. */
+ * behind a movie search. Movies keep playing underneath. */
 internal fun MainActivity.stopPlayingChannel() {
     if (selected == null) return
     stopPlayback()
     selected = null
-    infoBar.visibility = View.GONE
     playPauseButton.text = "▶"
     setChannelMeta(null)
     status.text = ""
@@ -390,9 +389,8 @@ internal fun MainActivity.openMovies() {
 internal fun MainActivity.closeMovies() {
     moviesOpen = false
     moviesView.visibility = View.GONE
-    // Release the focus trap (unless the Dramas overlay is open —
-    // it sets its own) before focus goes back to the Live TV layout.
-    if (!dramasOpen) rootView.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+    // Release the focus trap before focus goes back to the Live TV layout.
+    rootView.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
     // A movie keeps playing underneath when the browser is closed.
     focusBrowse()
 }

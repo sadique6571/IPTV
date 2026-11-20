@@ -87,10 +87,9 @@ class MainActivity : Activity() {
     internal lateinit var metaChip: LinearLayout
     internal lateinit var metaName: TextView
     internal lateinit var metaCategory: TextView
-    // The LIVE badges (meta chip + info bar) are hidden while a movie plays
-    // — a movie is not live — and shown again for channels.
+    // The LIVE badge (meta chip) is hidden while a movie plays — a
+    // movie is not live — and shown again for channels.
     internal lateinit var metaLiveBadge: TextView
-    internal lateinit var infoLiveBadge: TextView
     internal lateinit var overlayBar: LinearLayout
     internal lateinit var status: TextView
     internal lateinit var buffering: ProgressBar
@@ -106,8 +105,6 @@ class MainActivity : Activity() {
     private lateinit var splitPane: LinearLayout
     private var rootPaddingPx = 0
     private var paneGapPx = 0
-    internal lateinit var infoBar: LinearLayout
-    internal lateinit var infoName: TextView
     // On-video corner buttons (the tiles under the player are gone — the
     // user asked for the buttons ON the screen itself): Favorite
     // top-right and Quality bottom-right. Speed lives in
@@ -214,12 +211,11 @@ class MainActivity : Activity() {
     // app would auto-play an expired link on the next launch.
     internal lateinit var movieBox: MovieBox
     internal lateinit var movieStore: MovieStore
-    // The Movies/Dramas overlays build on first open, not at startup —
+    // The Movies overlay builds on first open, not at startup —
     // they are big view trees and the app opened on a black screen while
     // they inflated. Nothing touches them before the first open.
     internal lateinit var contentFrame: FrameLayout
     internal var moviesViewBuilt = false
-    internal var dramasViewBuilt = false
     internal lateinit var moviesView: LinearLayout
     internal lateinit var moviesListPane: LinearLayout
     internal lateinit var moviesDetailsPane: LinearLayout
@@ -295,39 +291,6 @@ class MainActivity : Activity() {
     internal var movieFeedLoaded = false
     internal var movieFeedLoading = false
     internal var movieFeedRequest = 0
-
-    // Geo Dramas (v17): Har Pal Geo dramas from YouTube (GeoDramas client).
-    // Same full-screen overlay pattern as Movies: drama list → episode
-    // list → Play in the main player (WebView embed, loop off). Episodes
-    // never touch the channel store — no recent entry, no last-channel.
-    internal lateinit var geoDramas: GeoDramas
-    internal lateinit var dramasView: LinearLayout
-    internal lateinit var dramasListPane: LinearLayout
-    internal lateinit var dramasEpisodesPane: LinearLayout
-    internal lateinit var dramaAvatar: ImageView
-    internal lateinit var dramaStatus: TextView
-    internal lateinit var dramaProgress: ProgressBar
-    internal lateinit var dramaResults: LinearLayout
-    internal lateinit var dramaResultsScroll: ScrollView
-    internal lateinit var dramaNowPlayingBar: LinearLayout
-    internal lateinit var dramaNowPlayingLabel: TextView
-    internal lateinit var dramaEpisodesTitle: TextView
-    internal lateinit var dramaEpisodesMeta: TextView
-    internal lateinit var dramaEpisodesStatus: TextView
-    internal lateinit var dramaEpisodesList: LinearLayout
-    internal lateinit var dramaEpisodesScroll: ScrollView
-    internal var dramasOpen = false
-    internal var playingDrama: GeoDramas.Episode? = null
-    internal var playingDramaTitle = ""
-    internal var dramaListRequest = 0
-    internal var dramaEpisodesRequest = 0
-    internal var dramaDatesRequest = 0
-    internal var currentDramas: List<GeoDramas.Drama> = emptyList()
-    internal var dramasLoadedAt = 0L
-    // The latest-episode date refresh runs here — NOT on `imports` — so a
-    // long background re-sort never queues behind (or blocks) a user's
-    // episode tap or movie search.
-    internal val dramaDates = Executors.newSingleThreadExecutor()
 
     // Adaptive UI: TV (D-pad, 10-foot) vs touch devices, and orientation.
     // isLandscape is refreshed in onConfigurationChanged; rotation no
@@ -517,9 +480,9 @@ class MainActivity : Activity() {
         if (isTv) {
             // TV: categories and channels share ONE browse pane (the old
             // 210dp sidebar is gone, so the player gets its width).
-            // Categories level: the real channel categories + Movies +
-            // Geo Dramas. Picking a category swaps the same pane to its
-            // channels; Back returns to the categories.
+            // Categories level: the real channel categories + Movies.
+            // Picking a category swaps the same pane to its channels;
+            // Back returns to the categories.
             val categoryItems = column()
             for (name in filterNames) {
                 val item = navItem(filterLabels[name] ?: name) { chipAction(name) }
@@ -531,11 +494,6 @@ class MainActivity : Activity() {
             // Movies live outside the channel filters — a plain nav item
             // (not in filterChips, so it never becomes the active filter).
             categoryItems.addView(navItem("🎬 Movies") { openMovies() },
-                LinearLayout.LayoutParams(-1, -2).apply {
-                    topMargin = dp(4)
-                })
-            // Geo Dramas live outside the channel filters too.
-            categoryItems.addView(navItem("📺 Geo Dramas") { openDramas() },
                 LinearLayout.LayoutParams(-1, -2).apply {
                     topMargin = dp(4)
                 })
@@ -671,23 +629,12 @@ class MainActivity : Activity() {
                     marginStart = dp(4)
                 })
         }
-        if (!isTv) {
-            // Touch devices have no categories pane, so Geo Dramas gets its own
-            // footer row under Update/Movies (on TV it is a category item).
-            val dramasRow = LinearLayout(this)
-            left.addView(dramasRow, LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(6)
-            })
-            dramasRow.addView(button("📺 Geo Dramas") { openDramas() },
-                LinearLayout.LayoutParams(-1, -2))
-        }
-
         // Player card (Qwen PlayerCard): 16:9, 24dp rounded corners, 1dp
-        // stroke. The meta chip (LIVE + channel name) sits ON the video
-        // bottom-left on TV; on touch screens it sits top-left so it never
-        // collides with the bottom-right overlay controls on narrow phones.
-        // The YouTube-style overlay controls (play/pause, next, volume
-        // slider, mute, fullscreen toggle) sit bottom-right ON the video.
+        // stroke (square corners in fullscreen — see updateFullscreenUi).
+        // The meta chip (LIVE + channel name) sits ON the video top-left
+        // on every device. The YouTube-style overlay controls (play/pause,
+        // next, volume slider, mute, fullscreen toggle) sit bottom-right
+        // ON the video.
         screen = FrameLayout(this).apply {
             setBackgroundColor(0xff060b28.toInt())
             outlineProvider = object : ViewOutlineProvider() {
@@ -717,14 +664,14 @@ class MainActivity : Activity() {
             }
         }
         screen.addView(screenBorder, FrameLayout.LayoutParams(-1, -1))
+        // The channel/movie name chip (LIVE + name + category), top-left
+        // ON the video on every device — it replaced the info bar under
+        // the player (v2.0.34). Hidden until something plays, and hidden
+        // in fullscreen; applyControlVisibility owns the visibility.
         metaChip = column().apply {
             background = shape(overlayDark, 0x1affffff.toInt(), 18, 1)
             setPadding(dp(16), dp(12), dp(16), dp(12))
-            // TV: no channel name on the video at all — the bottom-left
-            // chip ran into the overlay pill and the seek bar. The name
-            // already shows in the info bar under the player. Phones keep
-            // the chip at the top, where nothing overlaps it.
-            if (isTv) visibility = View.GONE
+            visibility = View.GONE
         }
         val metaRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -754,11 +701,10 @@ class MainActivity : Activity() {
         }
         metaChip.addView(metaCategory)
         screen.addView(metaChip, FrameLayout.LayoutParams(
-            -2, -2, (if (isTv) Gravity.BOTTOM else Gravity.TOP) or Gravity.START,
+            -2, -2, Gravity.TOP or Gravity.START,
         ).apply {
             marginStart = dp(if (isTv) 20 else 12)
             topMargin = dp(12)
-            bottomMargin = dp(if (isTv) 20 else 12)
         })
         numberOverlay = TextView(this).apply {
             textSize = if (isTv) 22f else 18f
@@ -965,36 +911,6 @@ class MainActivity : Activity() {
                 })
             screen.setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
         }
-        // Glass info bar under the video (Qwen's 62dp bar): real channel
-        // name + LIVE badge. No fake "Now/Next" program names — there is no
-        // EPG data, so only the real channel name is shown. The seek slider
-        // used to live here; it moved ONTO the video (YouTube-style).
-        infoBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = glassShape(18)
-            setPadding(dp(22), 0, dp(22), 0)
-            minimumHeight = dp(62)
-            elevation = dp(2).toFloat()
-            visibility = View.GONE
-        }
-        infoName = TextView(this).apply {
-            text = "Select a channel"
-            // Mobile par chhota naam (13sp), TV par 16sp waisa hi.
-            textSize = if (isTv) 16f else 13f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(textColor)
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setPadding(dp(18), 0, 0, 0)
-        }
-        infoBar.addView(infoName, LinearLayout.LayoutParams(0, -2, 1f))
-        infoBar.addView(View(this).apply { setBackgroundColor(strokeHi) },
-            LinearLayout.LayoutParams(dp(1), dp(26)).apply {
-                marginStart = dp(18)
-                marginEnd = dp(18)
-            })
-        infoBar.addView(liveBadge().also { infoLiveBadge = it })
         // Status line (buffering/errors): an overlay ON the video, never
         // a row under it. It used to sit in playerPane below the player,
         // and its TextWatcher flipped it VISIBLE on every "Connecting…"
@@ -1029,10 +945,6 @@ class MainActivity : Activity() {
             val playerHeight = (playerWidthPx * 9 / 16).coerceAtMost(dp(320))
             playerPane.addView(screen, LinearLayout.LayoutParams(-1, playerHeight))
         }
-        playerPane.addView(infoBar, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(12)
-        })
-
         playerController = PlayerController(this, screen, 1f,
             object : PlayerController.Listener {
                 override fun onBuffering(isBuffering: Boolean) {
@@ -1101,13 +1013,11 @@ class MainActivity : Activity() {
                 }
             })
         // The Movies overlay sits on top of the Live TV layout in a frame,
-        // so opening it never detaches the player view underneath. Both
-        // overlays build on first open (ensureMoviesView/ensureDramasView),
-        // not here — building them at startup kept the app on a black
-        // screen while they inflated.
+        // so opening it never detaches the player view underneath. It
+        // builds on first open (ensureMoviesView), not here — building it
+        // at startup kept the app on a black screen while it inflated.
         movieBox = MovieBox(applicationContext)
         movieStore = MovieStore(applicationContext)
-        geoDramas = GeoDramas(applicationContext)
         contentFrame = FrameLayout(this)
         contentFrame.addView(rootView, FrameLayout.LayoutParams(-1, -1))
         setContentView(contentFrame)
@@ -1115,22 +1025,8 @@ class MainActivity : Activity() {
         list.getChildAt(0)?.requestFocus()
         // A movie playing across a rotation (or a process death) restores
         // from its saved signed URL instead of auto-playing the last channel.
-        // A drama episode restores the same way — without this, going
-        // fullscreen during an episode (rotation) played the last channel.
         val savedMovieUrl = savedInstanceState?.getString(STATE_MOVIE_URL)
-        val savedDramaVideo = savedInstanceState?.getString(STATE_DRAMA_VIDEO)
-        if (savedDramaVideo != null) {
-            // Episodes restart from the beginning — WebView playback has
-            // no position to restore (same as the background-return path).
-            startDramaPlayback(
-                GeoDramas.Episode(
-                    videoId = savedDramaVideo,
-                    title = savedInstanceState.getString(STATE_DRAMA_EPISODE).orEmpty(),
-                    episodeNumber = savedInstanceState.getInt(STATE_DRAMA_EP_NUM, 0),
-                ),
-                savedInstanceState.getString(STATE_DRAMA_TITLE).orEmpty(),
-            )
-        } else if (savedMovieUrl != null) {
+        if (savedMovieUrl != null) {
             restoreMoviePlayback(savedInstanceState)
         } else {
             store.lastChannel?.let { last ->
@@ -1173,15 +1069,6 @@ class MainActivity : Activity() {
                 STATE_MOVIE_HEADERS,
                 ArrayList(playingMovieHeaders.map { (k, v) -> "$k\u0001$v" }),
             )
-        }
-        // Save a playing drama episode the same way, so a process
-        // death resumes the episode instead of the last channel.
-        val drama = playingDrama
-        if (drama != null) {
-            outState.putString(STATE_DRAMA_VIDEO, drama.videoId)
-            outState.putString(STATE_DRAMA_TITLE, playingDramaTitle)
-            outState.putString(STATE_DRAMA_EPISODE, drama.title)
-            outState.putInt(STATE_DRAMA_EP_NUM, drama.episodeNumber)
         }
     }
 
@@ -1261,7 +1148,7 @@ class MainActivity : Activity() {
      * The on-video overlay — including the fullscreen toggle — stays visible
      * so the user can exit from the video itself; Back also exits.
      * On TV there is no rotation or system UI to hide, but fullscreen is
-     * still real fullscreen: the browse pane, header and info bar all
+     * still real fullscreen: the browse pane, header and name chip all
      * hide and the paddings go to zero, so the player pane (weight 1)
      * fills the whole 1920x1080 screen. Only the video + on-video controls
      * stay; Back also exits.
@@ -1270,19 +1157,27 @@ class MainActivity : Activity() {
         fullscreenIcon.expanded = fullScreen
         fullscreenIcon.invalidateSelf()
         fullscreenButton.contentDescription = if (fullScreen) "Exit fullscreen" else "Fullscreen"
+        // Fullscreen: square corners edge to edge — the 24dp rounding is
+        // a windowed card look, and rounded corners on a fullscreen video
+        // just waste the screen corners. The border ring squares too.
+        // (Setting a new outline provider re-clips the video at once.)
+        val cornerRadius = if (fullScreen) 0f else dp(24).toFloat()
+        screen.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, cornerRadius)
+            }
+        }
+        (screenBorder.background as? GradientDrawable)?.cornerRadius = cornerRadius
         if (isTv) {
             if (fullScreen) {
                 headerView.visibility = View.GONE
                 libraryPane.visibility = View.GONE
-                infoBar.visibility = View.GONE
                 rootView.setPadding(0, 0, 0, 0)
                 playerPane.setPadding(0, 0, 0, 0)
             } else {
                 headerView.visibility = View.VISIBLE
                 // The browse pane stays hidden while a movie plays.
                 updateBrowseVisibility()
-                val showBars = selected != null || playingMovie != null || playingDrama != null
-                infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
                 rootView.setPadding(rootPaddingPx, dp(10), rootPaddingPx, dp(12))
                 playerPane.setPadding(paneGapPx, 0, 0, 0)
             }
@@ -1292,7 +1187,6 @@ class MainActivity : Activity() {
             hideSystemUi()
             headerView.visibility = View.GONE
             libraryPane.visibility = View.GONE
-            infoBar.visibility = View.GONE
             rootView.setPadding(0, 0, 0, 0)
             playerPane.setPadding(0, 0, 0, 0)
         } else {
@@ -1300,8 +1194,6 @@ class MainActivity : Activity() {
             headerView.visibility = if (!isTv && isLandscape) View.GONE else View.VISIBLE
             // The browse pane stays hidden while a movie plays.
             updateBrowseVisibility()
-            val showBars = selected != null || playingMovie != null || playingDrama != null
-            infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
             rootView.setPadding(rootPaddingPx, dp(if (isTv) 10 else 8), rootPaddingPx, dp(if (isTv) 12 else 8))
             playerPane.setPadding(if (isTv || isLandscape) paneGapPx else 0, 0, 0, 0)
         }
@@ -1326,10 +1218,10 @@ class MainActivity : Activity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        // While the Movies browser or the Geo Dramas browser is open,
-        // channel number jumps and up/down channel switching stay off —
-        // D-pad navigation belongs to the open section.
-        if (moviesOpen || dramasOpen) return super.onKeyDown(keyCode, event)
+        // While the Movies browser is open, channel number jumps and
+        // up/down channel switching stay off — D-pad navigation belongs
+        // to the open section.
+        if (moviesOpen) return super.onKeyDown(keyCode, event)
         if (currentFocus is EditText) return super.onKeyDown(keyCode, event)
         val digit = when (keyCode) {
             KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_NUMPAD_0 -> 0
@@ -1379,14 +1271,9 @@ class MainActivity : Activity() {
         super.onStart()
         if (stoppedForBackground) {
             stoppedForBackground = false
-            val drama = playingDrama
             val movie = playingMovie
             val url = playingMovieUrl
-            if (drama != null) {
-                // A drama episode restarts from the beginning — WebView
-                // playback has no position to restore.
-                startDramaPlayback(drama, playingDramaTitle)
-            } else if (movie != null && url != null) {
+            if (movie != null && url != null) {
                 playMovieStream(
                     movie, url, playingMovieHeaders, savedMoviePosition,
                     episodeSeason = playingEpisodeSeason,
@@ -1413,7 +1300,6 @@ class MainActivity : Activity() {
         updateDownloadDialog?.dismiss()
         updateDownloadDialog = null
         imports.shutdownNow()
-        dramaDates.shutdownNow()
         // LogoLoader's pool is shared across activity instances: killing it
         // on a rotation would crash the recreated activity the first time it
         // loads a channel logo — and fullscreen rotates on every toggle.
@@ -1424,13 +1310,7 @@ class MainActivity : Activity() {
 
     @Deprecated("Use the system back gesture callback on newer Android versions")
     override fun onBackPressed() {
-        if (dramasOpen) {
-            if (dramasEpisodesPane.visibility == View.VISIBLE) {
-                showDramasList()
-            } else {
-                closeDramas()
-            }
-        } else if (moviesOpen) {
+        if (moviesOpen) {
             if (moviesDetailsPane.visibility == View.VISIBLE) {
                 showMoviesList()
             } else {
@@ -1446,7 +1326,7 @@ class MainActivity : Activity() {
             // Back from the channels list returns to the categories —
             // playback keeps going; another Back stops it.
             setBrowseLevel(BrowseLevel.CATEGORIES)
-        } else if (selected == null && playingMovie == null && playingDrama == null) {
+        } else if (selected == null && playingMovie == null) {
             super.onBackPressed()
         } else {
             // Back while something plays stops it — save the movie's place
@@ -1458,10 +1338,7 @@ class MainActivity : Activity() {
             playingMovie = null
             playingMovieUrl = null
             playingMovieHeaders = emptyMap()
-            playingDrama = null
-            playingDramaTitle = ""
             movieEnded = false
-            infoBar.visibility = View.GONE
             playPauseButton.text = "▶"
             setChannelMeta(null)
             status.text = ""
@@ -1493,7 +1370,7 @@ class MainActivity : Activity() {
         if (event.action == KeyEvent.ACTION_DOWN &&
             (event.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
                 event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) &&
-            !moviesOpen && !dramasOpen && !fullScreen &&
+            !moviesOpen && !fullScreen &&
             currentFocus == null && selected != null
         ) {
             if (event.repeatCount == 0) focusBrowse()
@@ -1502,7 +1379,7 @@ class MainActivity : Activity() {
         if (event.action == KeyEvent.ACTION_DOWN &&
             (event.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
                 event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) &&
-            !moviesOpen && !dramasOpen && currentFocus !is EditText &&
+            !moviesOpen && currentFocus !is EditText &&
             channelSwitchKeysActive()
         ) {
             // Held keys stay consumed (no focus jump) but zap once.
@@ -1516,7 +1393,7 @@ class MainActivity : Activity() {
             if (event.action == KeyEvent.ACTION_UP) wakeKey = KeyEvent.KEYCODE_UNKNOWN
             return true
         }
-        if (playingMovie != null && !movieEnded && !moviesOpen && !dramasOpen &&
+        if (playingMovie != null && !movieEnded && !moviesOpen &&
             event.action == KeyEvent.ACTION_DOWN &&
             (code in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_CENTER ||
                 code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER)
@@ -1606,10 +1483,6 @@ class MainActivity : Activity() {
 
     companion object {
         private const val STATE_FULLSCREEN = "fullscreen"
-        private const val STATE_DRAMA_VIDEO = "drama_video"
-        private const val STATE_DRAMA_TITLE = "drama_title"
-        private const val STATE_DRAMA_EPISODE = "drama_episode"
-        private const val STATE_DRAMA_EP_NUM = "drama_ep_num"
         // YouTube live re-resolve poll: while a yt-live channel plays,
         // re-check /live this often and rejoin when the video ID changes
         // (the broadcaster restarted the stream).
@@ -1621,14 +1494,13 @@ class MainActivity : Activity() {
 }
 
 // Top-level (package) scope: the split extension files (Playback,
-// ChannelBrowser, MovieDetails, DramasSection, PlaylistDialogs) use these
+// ChannelBrowser, MovieDetails, PlaylistDialogs) use these
 // bare. Companion-object members are NOT visible bare from extension
 // functions in other files — that is why CI failed with 26 unresolved
 // references. The private consts stay in the companion object.
 internal enum class BrowseLevel { CATEGORIES, CHANNELS }
 
 internal const val AUTO_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000L
-internal const val DRAMA_REFRESH_AFTER_MS = 6 * 60 * 60 * 1000L
 internal const val CONTROLS_HIDE_DELAY_MS = 3000L
 internal const val STATE_MOVIE_URL = "movie_url"
 internal const val STATE_MOVIE_TITLE = "movie_title"

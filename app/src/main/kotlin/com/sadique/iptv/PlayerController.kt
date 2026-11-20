@@ -12,7 +12,9 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.datasource.DefaultBandwidthMeter
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -206,13 +208,39 @@ internal class PlayerController(
         if (player != null) return
         val selector = DefaultTrackSelector(context)
         trackSelector = selector
+        // The user has a steady 4 Mbps connection: never let adaptive
+        // selection pick a rendition above it (a 1080p track stalls
+        // instead of playing), and start the bandwidth estimate at
+        // 4 Mbps so the first track choice is right instead of ramping
+        // up from the 1 Mbps default. A manual quality pick (track
+        // override) still wins over this cap.
+        selector.setParameters(
+            selector.buildUponParameters().setMaxVideoBitrate(MAX_VIDEO_BITRATE).build(),
+        )
+        val bandwidthMeter = DefaultBandwidthMeter.Builder(context)
+            .setInitialBitrateEstimate(INITIAL_BITRATE_ESTIMATE).build()
+        // Buffering (v2.0.34): the player used to start after ~2.5s of
+        // buffer, so a slow free server stalled it at once. Now it
+        // waits for 10s before starting (and 10s after a stall before
+        // resuming) and keeps a 30-60s cushion while playing — short
+        // network hiccups play through the buffer instead of freezing.
+        // Cost: a channel takes ~10s to start, and live runs ~10s
+        // behind real time (live data only arrives in real time).
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                MIN_BUFFER_MS, MAX_BUFFER_MS,
+                BUFFER_FOR_PLAYBACK_MS, BUFFER_AFTER_REBUFFER_MS,
+            )
+            .build()
         val httpFactory = DefaultHttpDataSource.Factory().apply {
             if (currentHeaders.isNotEmpty()) setDefaultRequestProperties(currentHeaders)
         }
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(httpFactory)
         val active = ExoPlayer.Builder(context).setTrackSelector(selector)
-            .setMediaSourceFactory(mediaSourceFactory).build()
+            .setMediaSourceFactory(mediaSourceFactory)
+            .setBandwidthMeter(bandwidthMeter)
+            .setLoadControl(loadControl).build()
         player = active
         active.volume = initialVolume.coerceIn(0f, 1f)
         active.addListener(playerListener)
@@ -375,5 +403,12 @@ internal class PlayerController(
         // more chances before the user ever sees the manual Retry button.
         private const val MAX_RETRIES = 5
         private const val RETRY_BASE_MS = 2000L
+        // Streaming tuning for a steady 4 Mbps connection (v2.0.34).
+        private const val MAX_VIDEO_BITRATE = 3_500_000
+        private const val INITIAL_BITRATE_ESTIMATE = 4_000_000L
+        private const val MIN_BUFFER_MS = 30_000
+        private const val MAX_BUFFER_MS = 60_000
+        private const val BUFFER_FOR_PLAYBACK_MS = 10_000
+        private const val BUFFER_AFTER_REBUFFER_MS = 10_000
     }
 }

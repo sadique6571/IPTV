@@ -81,7 +81,6 @@ internal fun MainActivity.play(channel: Channel) {
     playingMovie = null
     playingMovieUrl = null
     playingMovieHeaders = emptyMap()
-    playingDrama = null
     // The list is one list now — the playing channel's row is always
     // on screen, so focus just goes to it.
     val matchIndex = currentMatches.indexOfFirst { it.key == channel.key }
@@ -91,11 +90,6 @@ internal fun MainActivity.play(channel: Channel) {
     store.addRecent(channel)
     store.lastChannel = channel
     setChannelMeta(channel)
-    // In fullscreen the bars stay hidden (Back exits first) — on TV
-    // too: a channel change must not pop the name bar back over
-    // the video.
-    val showBars = !fullScreen
-    infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
     playPauseButton.text = "❚❚"
     // A fresh player starts at the stored volume, so a muted session
     // does not survive a channel change — reset the mute state here.
@@ -128,8 +122,8 @@ internal fun MainActivity.play(channel: Channel) {
 
 
 /** First on-video control that is currently visible — the D-pad
- * target for RIGHT from the channel list. Movies/dramas show the
- * overlay pill, so the first visible pill button is the landing.
+ * target for RIGHT from the channel list. Movies show the overlay
+ * pill, so the first visible pill button is the landing.
  * Channels play on a clean screen (no pill) — RIGHT goes to the
  * on-video corner buttons: Quality first when it is showing
  * (multi-track stream), otherwise Favorite. */
@@ -151,17 +145,19 @@ internal fun MainActivity.firstOverlayControlId(): Int {
 
 
 internal fun MainActivity.applyControlVisibility() {
-    // A drama episode plays in the same WebView as a web channel, so
-    // the ExoPlayer controls (play/pause, volume, speed, seek) stay
-    // hidden for it too — the WebView consumes its own touches.
-    val webChannel = selected?.web == true || playingDrama != null
-    // A channel plays on a clean screen: no overlay pill, no meta
-    // chip — the video is just the video. Movies keep their controls
-    // (play/pause, seek); dramas keep the fullscreen button.
-    val channelPlaying = selected != null && playingMovie == null && playingDrama == null
-    val hideForInactivity = !controlsVisible && playingDrama == null && (playingMovie != null || !isTv)
+    // A web channel plays in a WebView, so the ExoPlayer controls
+    // (play/pause, volume, speed, seek) stay hidden for it — the
+    // WebView consumes its own touches.
+    val webChannel = selected?.web == true
+    // A channel plays on a clean screen: no overlay pill — the video
+    // is just the video. Movies keep their controls (play/pause,
+    // seek). The name chip (top-left) shows whenever anything plays
+    // windowed, and never in fullscreen.
+    val channelPlaying = selected != null && playingMovie == null
+    val hideForInactivity = !controlsVisible && (playingMovie != null || !isTv)
     overlayBar.visibility = if (channelPlaying || hideForInactivity) View.GONE else View.VISIBLE
-    metaChip.visibility = if (channelPlaying || isTv) View.GONE else View.VISIBLE
+    val somethingPlaying = selected != null || playingMovie != null
+    metaChip.visibility = if (fullScreen || !somethingPlaying) View.GONE else View.VISIBLE
     playPauseButton.visibility = if (webChannel) View.GONE else View.VISIBLE
     val showQuality = channelPlaying && !fullScreen && !webChannel && videoOptions.size >= 2
     qualityButton.visibility = if (showQuality) View.VISIBLE else View.GONE
@@ -198,14 +194,14 @@ internal fun MainActivity.showPlayerControls() {
  * is scrubbing, and never hides for web channels — a WebView consumes
  * its own touches, so a tap could not bring the controls back. */
 internal fun MainActivity.hidePlayerControls() {
-    if ((isTv && playingMovie == null) || scrubbing || selected?.web == true || playingDrama != null) return
+    if ((isTv && playingMovie == null) || scrubbing || selected?.web == true) return
     controlsVisible = false
     overlayBar.visibility = View.GONE
 }
 
 
 internal fun MainActivity.scheduleHideControls() {
-    if ((isTv && playingMovie == null) || selected?.web == true || playingDrama != null) return
+    if ((isTv && playingMovie == null) || selected?.web == true) return
     mainHandler.removeCallbacks(hideControlsRunnable)
     mainHandler.postDelayed(hideControlsRunnable, CONTROLS_HIDE_DELAY_MS)
 }
@@ -305,12 +301,12 @@ internal fun MainActivity.jumpToNumber() {
  * 2026-11-19): in the list, up/down just moves the selection and OK
  * plays — a channel must never start without OK. Before this, the
  * list zapped on every press (the v22 remote channel +/-), which is
- * what the user asked to stop. Movies and dramas never zap — their
- * up/down belongs to the player controls. Consulted from
+ * what the user asked to stop. Movies never zap — their up/down
+ * belongs to the player controls. Consulted from
  * dispatchKeyEvent (see there for why onKeyDown can never see
  * these keys in fullscreen). */
 internal fun MainActivity.channelSwitchKeysActive(): Boolean {
-    if (playingMovie != null || playingDrama != null || selected == null) return false
+    if (playingMovie != null || selected == null) return false
     return fullScreen
 }
 
@@ -371,11 +367,9 @@ internal fun MainActivity.playEmbed(videoId: String, loop: Boolean = true) {
     // fullscreen toggle) are the only UI the user ever sees, so the
     // channel looks like any other channel, not a YouTube embed.
     // Plain video IDs (recorded videos) loop so the
-    // channel never goes silent when the video ends. Drama episodes
-    // pass loop=false (see playDramaEpisode) so an episode ends
-    // instead of replaying itself; live streams also play with
-    // loop=false (see the yt-live branch above) so a restart is
-    // detected instead of replaying the finished stream.
+    // channel never goes silent when the video ends. Live streams
+    // play with loop=false (see the yt-live branch above) so a
+    // restart is detected instead of replaying the finished stream.
     val isDirectWeb = videoId.startsWith("web:")
     val isPlainVideo = videoId.matches(Regex("[A-Za-z0-9_-]{11}"))
     // The embed token currently showing (plain video ID or yt-channel
@@ -486,7 +480,7 @@ internal fun MainActivity.playEmbed(videoId: String, loop: Boolean = true) {
 
 /** JS bridge for YouTube embeds: the IFrame API calls this when the
  * video ends. Only yt-live channels act on it (re-resolve); a looped
- * video or a drama episode ending needs no action. */
+ * video ending needs no action. */
 private class YtEndedBridge(private val activity: MainActivity) {
     @JavascriptInterface
     fun onYouTubeEnded() {
@@ -563,16 +557,14 @@ internal fun MainActivity.stopWeb() {
 
 // ---- Qwen HarmonyOS look helpers ----
 
-/** Shows the playing channel in the on-video meta chip and the info bar. */
+/** Shows the playing channel in the on-video meta chip (top-left). */
 internal fun MainActivity.setChannelMeta(channel: Channel?) {
     val name = channel?.name ?: "Select a channel"
     metaName.text = name
-    infoName.text = name
     val category = channel?.group.orEmpty()
     metaCategory.text = category
     metaCategory.visibility = if (category.isEmpty()) View.GONE else View.VISIBLE
     metaLiveBadge.visibility = View.VISIBLE
-    infoLiveBadge.visibility = View.VISIBLE
 }
 
 

@@ -580,11 +580,8 @@ internal fun MainActivity.playMovieStream(
     playingEpisodeEpisode = episodeNumber
     playingMovieUrl = url
     playingMovieHeaders = headers
-    playingDrama = null
     movieEnded = false
     setMovieMeta(movie, episodeSeason, episodeNumber)
-    val showBars = !fullScreen
-    infoBar.visibility = if (showBars) View.VISIBLE else View.GONE
     playPauseButton.text = "❚❚"
     videoOptions = emptyList()
     selectedVideoIndex = -1
@@ -608,11 +605,9 @@ internal fun MainActivity.playMovieStream(
 internal fun MainActivity.setMovieMeta(movie: MovieBox.Movie, season: Int = 0, episode: Int = 0) {
     val label = if (movie.isSeries && season > 0 && episode > 0) " S$season E$episode" else ""
     metaName.text = movie.title + label
-    infoName.text = movie.title + label
     metaCategory.text = if (movie.isSeries) "Series" else "Movie"
     metaCategory.visibility = View.VISIBLE
     metaLiveBadge.visibility = View.GONE
-    infoLiveBadge.visibility = View.GONE
 }
 
 
