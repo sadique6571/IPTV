@@ -52,6 +52,6 @@ Hum News HD	https://live.msnetworks.net/hum-news/master.m3u8	http://103.86.132.5
 A Sports HD	https://live.msnetworks.net/a-sports/master.m3u8	http://103.86.132.58:9981/stream/channelid/1933780354
 PTV Sports HD	https://live.msnetworks.net/ptv-sports/master.m3u8	http://175.107.244.52:4456/play/a042
 Ten Sports Pakistan	https://live.msnetworks.net/ten-sports/master.m3u8	http://175.107.244.52:4456/play/a05v
-Geo Entertainment	https://live.msnetworks.net/geo-ent/master.m3u8	http://175.107.244.52:4456/play/a06h
+Geo Entertainment	http://175.107.244.52:4456/play/a06h/index.m3u8	https://live.msnetworks.net/geo-ent/master.m3u8
 Jalwa TV	http://116.90.120.149:8000/play/a0tv/index.m3u8	http://175.107.244.52:4456/play/a03w
 Willow TV	https://d36r8jifhgsk5j.cloudfront.net/Willow_TV.m3u8	https://amg01269-amg01269c1-distrotv-us-5379.playouts.now.amagi.tv/playlist/amg01269-willowtvfast-willowplus-distrotvus/playlist.m3u8
