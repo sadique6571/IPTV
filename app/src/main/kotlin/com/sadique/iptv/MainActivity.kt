@@ -432,7 +432,7 @@ class MainActivity : Activity() {
         // Installed-build label (v2.0.40): small version tag next to
         // the title, so it is always visible which build is running
         // (settles "theme did not change" — it shows the old build).
-        headerView.addView(label("v${BuildConfig.VERSION_CODE}", 12, muted2).apply {
+        headerView.addView(label("v${UpdateChecker.installedVersionCode(this)}", 12, muted2).apply {
             setPadding(0, dp(6), dp(12), 0)
         })
         if (isTv) {

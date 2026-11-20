@@ -108,7 +108,7 @@ internal object UpdateChecker {
     }
 
     @Suppress("DEPRECATION")
-    private fun installedVersionCode(context: Context): Long {
+    internal fun installedVersionCode(context: Context): Long {
         val pm = context.packageManager
         val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             pm.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
