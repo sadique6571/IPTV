@@ -3,31 +3,12 @@ package com.sadique.iptv
 import android.content.Context
 import android.net.TrafficStats
 import android.os.SystemClock
-import java.text.SimpleDateFormat
-import java.util.Date
+import android.os.Process
 import java.util.Locale
 
-/**
- * Network speed + today's data usage for the header status label
- * (v2.0.44): "500 Kbps/30 MB" — live device speed, then the total
- * internet used today. The daily counter resets itself at midnight
- * (the stored date is checked on every tick) and survives app
- * restarts and reboots: the accumulated total is kept in
- * SharedPreferences, and a counter reset (reboot) only re-baselines
- * without wiping the day's total.
- *
- * Both numbers use the device-wide TrafficStats counters (all apps),
- * like a status-bar speed meter — on the TV that is mostly this app.
- * Speed is measured from the byte delta between consecutive ticks
- * (call tick() once a second); call reset() when the ticker stops so
- * the first tick after a long pause does not average over the gap.
- */
+/** Header speed and daily usage for this app's Linux UID. */
 internal object NetworkUsage {
-
-    private const val PREFS = "network_usage"
-    private const val KEY_DATE = "date"
-    private const val KEY_DAILY = "daily_bytes"
-    private const val KEY_LAST = "last_total_bytes"
+    private var tracker: DailyNetworkUsage? = null
 
     private var lastTotal = -1L
     private var lastTickMs = -1L
@@ -40,32 +21,17 @@ internal object NetworkUsage {
 
     /** One tick: returns "500 Kbps/30 MB". Call once per second. */
     internal fun tick(context: Context): String {
-        val total = TrafficStats.getTotalRxBytes().coerceAtLeast(0) +
-            TrafficStats.getTotalTxBytes().coerceAtLeast(0)
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        val storedDate = prefs.getString(KEY_DATE, null)
-        var daily = prefs.getLong(KEY_DAILY, 0L)
-        val last = prefs.getLong(KEY_LAST, -1L)
-        if (storedDate != today) {
-            // New day: reset the counter and re-baseline.
-            daily = 0L
-            prefs.edit()
-                .putString(KEY_DATE, today)
-                .putLong(KEY_DAILY, 0L)
-                .putLong(KEY_LAST, total)
-                .apply()
-        } else if (last >= 0L && total >= last) {
-            daily += total - last
-            prefs.edit()
-                .putLong(KEY_DAILY, daily)
-                .putLong(KEY_LAST, total)
-                .apply()
-        } else {
-            // First run, or the counters reset (reboot): re-baseline
-            // without wiping the accumulated daily total.
-            prefs.edit().putLong(KEY_LAST, total).apply()
+        val uid = Process.myUid()
+        val rx = TrafficStats.getUidRxBytes(uid)
+        val tx = TrafficStats.getUidTxBytes(uid)
+        val usage = tracker ?: DailyNetworkUsage(context.applicationContext,
+            context.getSharedPreferences("iptv_uid_usage", Context.MODE_PRIVATE)).also { tracker = it }
+        if (rx < 0 || tx < 0) {
+            reset()
+            return "—/${formatData(usage.sample(-1L))}"
         }
+        val total = rx + tx
+        val daily = usage.sample(total)
         val now = SystemClock.elapsedRealtime()
         var speedBps = 0L
         if (lastTotal >= 0L && lastTickMs > 0L && total >= lastTotal) {
