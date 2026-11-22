@@ -61,6 +61,7 @@ internal fun MainActivity.posterCard(movie: MovieBox.Movie, backgroundLoad: Bool
     val cardWidth = dp(if (isTv) 150 else 120)
     val posterHeight = cardWidth * 3 / 2
     val card = column().apply {
+        contentDescription = listOf(movie.title, movie.year).filter { it.isNotBlank() }.joinToString(", ")
         id = View.generateViewId()
         isFocusable = true
         isClickable = true

@@ -8,6 +8,7 @@ on:
       - 'settings.gradle.kts'
       - 'gradle.properties'
       - 'gradle/**'
+      - 'scripts/compact_apk.py'
       - 'gradlew'
       - 'gradlew.bat'
       - 'build-apk.sh'
@@ -39,15 +40,27 @@ jobs:
             sdkmanager --sdk_root="$sdk_root" 'platforms;android-35' 'build-tools;35.0.0'
           fi
       - name: Run unit tests and Android lint
-        run: bash gradlew :app:testDebugUnitTest :app:lintDebug --stacktrace
+        run: |
+          if ! bash gradlew :app:testDebugUnitTest :app:lintDebug; then
+            if [ -f app/build/reports/lint-results-debug.xml ]; then
+              python3 - <<'PYLINT'
+          import xml.etree.ElementTree as xml
+          for issue in xml.parse("app/build/reports/lint-results-debug.xml").findall("issue"):
+              if issue.get("severity") in ("Error", "Fatal"):
+                  node = issue.find("location")
+                  print(issue.get("id"), node.get("file"), node.get("line"), issue.get("message")[:180])
+          PYLINT
+            fi
+            exit 1
+          fi
       - name: Build debug APK with Gradle
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew :app:compactDebugApk --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: IPTV-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/compact/IPTV-debug.apk
           if-no-files-found: error
   publish:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -68,7 +81,7 @@ jobs:
           version_name=$(grep -m1 'versionName' app/build.gradle.kts | sed -E 's/.*versionName = "([^"]+)".*/\1/')
           version_code=$(grep -m1 'versionCode' app/build.gradle.kts | grep -oE '[0-9]+')
           tag="v${version_name}.${version_code}"
-          cp release/app-debug.apk IPTV-debug.apk
+          cp release/IPTV-debug.apk IPTV-debug.apk
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" IPTV-debug.apk --clobber
           else
