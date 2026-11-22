@@ -95,7 +95,14 @@ internal fun MainActivity.downloadFile(entry: DownloadedMovie, stream: MovieBox.
         } else if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
             throw IOException("Server ne jawab nahi diya (HTTP $code).")
         }
-        val total = if (stream.sizeBytes > 0) {
+        val range = connection.getHeaderField("Content-Range")
+        val completeSize = if (code == HttpURLConnection.HTTP_PARTIAL) {
+            val match = Regex("""bytes (\d+)-(\d+)/(\d+)""").matchEntire(range.orEmpty())
+                ?: throw IOException("Invalid download range.")
+            if (match.groupValues[1].toLongOrNull() != downloaded) throw IOException("Wrong resume offset.")
+            match.groupValues[3].toLongOrNull() ?: throw IOException("Invalid download length.")
+        } else connection.getHeaderField("Content-Length")?.toLongOrNull()
+        val total = if (completeSize != null) completeSize else if (stream.sizeBytes > 0) {
             stream.sizeBytes
         } else {
             connection.getHeaderField("Content-Length")?.toLongOrNull()?.let { it + downloaded } ?: 0L
@@ -128,6 +135,7 @@ internal fun MainActivity.downloadFile(entry: DownloadedMovie, stream: MovieBox.
                 }
             }
         }
+        if (total > 0 && downloaded != total) throw IOException("Incomplete download. Resume to continue.")
         // Done: move the .part file to its final name and mark complete.
         val moved = partFile.renameTo(finalFile) || runCatching {
             partFile.copyTo(finalFile, overwrite = true)

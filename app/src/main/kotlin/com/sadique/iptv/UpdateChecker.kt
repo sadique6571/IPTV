@@ -37,7 +37,7 @@ internal object UpdateChecker {
     private const val KEY_LAST_CHECK = "last_check_ms"
     private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
 
-    data class Update(val tag: String, val versionCode: Long, val downloadUrl: String)
+    data class Update(val tag: String, val versionCode: Long, val downloadUrl: String, val digest: String)
 
     /** True when a check is due: never checked, or 24h since the last one. */
     fun isCheckDue(context: Context): Boolean {
@@ -80,20 +80,22 @@ internal object UpdateChecker {
             if (remoteCode <= installedVersionCode(context)) return null
             val assets = json.optJSONArray("assets") ?: return null
             var downloadUrl: String? = null
-            var firstApk: String? = null
+            var digest = ""
             for (i in 0 until assets.length()) {
                 val asset = assets.optJSONObject(i) ?: continue
                 val name = asset.optString("name", "")
                 val url = asset.optString("browser_download_url", "")
                 if (url.isEmpty()) continue
-                if (firstApk == null && name.endsWith(".apk", ignoreCase = true)) firstApk = url
+                if (!url.startsWith("https://github.com/sadique6571/IPTV/releases/download/")) continue
                 if (name == APK_ASSET_NAME) {
+                    digest = asset.optString("digest").removePrefix("sha256:")
+                    if (!digest.matches(Regex("[0-9a-fA-F]{64}"))) throw IOException("Missing APK checksum.")
                     downloadUrl = url
                     break
                 }
             }
-            val finalUrl = downloadUrl ?: firstApk ?: return null
-            return Update(tag, remoteCode, finalUrl)
+            val finalUrl = downloadUrl ?: return null
+            return Update(tag, remoteCode, finalUrl, digest)
         } finally {
             connection.disconnect()
         }
@@ -147,6 +149,8 @@ internal object UpdateChecker {
     fun downloadApk(context: Context, update: Update, onProgress: (Int) -> Unit): File {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
         val out = File(dir, APK_ASSET_NAME)
+        val part = File.createTempFile("update-", ".part", dir)
+        val hash = java.security.MessageDigest.getInstance("SHA-256")
         val connection = URL(update.downloadUrl).openConnection() as HttpURLConnection
         try {
             // browser_download_url redirects to the release asset host.
@@ -156,15 +160,16 @@ internal object UpdateChecker {
             connection.readTimeout = 30_000
             val code = connection.responseCode
             if (code != HttpURLConnection.HTTP_OK) throw IOException("Download: HTTP $code")
-            val total = connection.contentLengthLong
+            val total = connection.getHeaderField("Content-Length")?.toLongOrNull() ?: -1L
             var lastPercent = -1
             connection.inputStream.use { input ->
-                FileOutputStream(out).use { output ->
+                FileOutputStream(part).use { output ->
                     val buffer = ByteArray(8192)
                     var downloaded = 0L
                     while (true) {
                         val read = input.read(buffer)
                         if (read < 0) break
+                        hash.update(buffer, 0, read)
                         output.write(buffer, 0, read)
                         downloaded += read
                         if (total > 0) {
@@ -177,8 +182,14 @@ internal object UpdateChecker {
                     }
                 }
             }
+            val actual = hash.digest().joinToString("") { "%02x".format(it) }
+            if ((total >= 0 && part.length() != total) || !actual.equals(update.digest, true)) {
+                throw IOException("APK verification failed.")
+            }
+            if (!part.renameTo(out)) throw IOException("Could not save verified APK.")
             return out
         } finally {
+            part.delete()
             connection.disconnect()
         }
     }

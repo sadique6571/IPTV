@@ -170,14 +170,21 @@ internal object Playlist {
         }
     }
 
-    fun fetch(address: String, defaultCountry: String = ""): List<Channel> {
+    fun fetch(address: String, defaultCountry: String = ""): List<Channel> =
+        fetch(address, defaultCountry) { it.toURL().openConnection() as HttpURLConnection }
+
+    internal fun fetch(
+        address: String,
+        defaultCountry: String,
+        openConnection: (URI) -> HttpURLConnection,
+    ): List<Channel> {
         var uri = runCatching { URI.create(address) }.getOrNull()
             ?: throw IOException("Enter a valid HTTPS playlist URL.")
         repeat(5) {
             if (!uri.scheme.equals("https", true) || !validStream(uri)) {
                 throw IOException("An HTTPS playlist URL is required.")
             }
-            val connection = uri.toURL().openConnection() as HttpURLConnection
+            val connection = openConnection(uri)
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 8000
             connection.readTimeout = 10000

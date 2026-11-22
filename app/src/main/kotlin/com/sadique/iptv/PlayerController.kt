@@ -32,6 +32,7 @@ import androidx.media3.ui.PlayerView
  * YouTube/Dailymotion web links are NOT played here — MainActivity keeps its
  * WebView fallback for those.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal class PlayerController(
     private val context: Context,
     private val screen: FrameLayout,

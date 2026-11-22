@@ -15,6 +15,7 @@ internal object NetworkUsage {
 
     /** Clears the in-memory speed state (call when the ticker stops). */
     internal fun reset() {
+        if (lastTotal >= 0L) tracker?.sample(lastTotal, force = true)
         lastTotal = -1L
         lastTickMs = -1L
     }

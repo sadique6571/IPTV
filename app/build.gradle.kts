@@ -24,7 +24,7 @@ android {
         applicationId = "com.sadique.iptv"
         minSdk = 23
         targetSdk = 34
-        versionCode = 45
+        versionCode = 46
         versionName = "2.0"
     }
     compileOptions {
@@ -40,6 +40,8 @@ kotlin {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     // Media3 1.9.2 is the newest stable that still builds against compileSdk 35:
     // 1.11.x requires minCompileSdk 36 (checked in the published AAR metadata).
     val media3Version = "1.9.2"
@@ -60,4 +62,20 @@ dependencies {
     // makes the already-present library visible at compile time. Without it,
     // `import androidx.core.content.FileProvider` fails to compile.
     implementation("androidx.core:core:1.13.1")
+}
+
+val apkSigning = android.signingConfigs.getByName("debug")
+tasks.register<Exec>("compactDebugApk") {
+    dependsOn("assembleDebug")
+    val sdk = file(requireNotNull(System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")))
+    val tools = sdk.resolve("build-tools/35.0.0")
+    val debugApk = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk")
+    val published = layout.buildDirectory.file("outputs/compact/IPTV-debug.apk")
+    doFirst {
+        environment("APK_STORE_PASS", requireNotNull(apkSigning.storePassword))
+        environment("APK_KEY_PASS", requireNotNull(apkSigning.keyPassword))
+        environment("APK_ALIAS", requireNotNull(apkSigning.keyAlias))
+    }
+    commandLine("python3", rootProject.file("scripts/compact_apk.py"), debugApk.get().asFile,
+        published.get().asFile, tools, requireNotNull(apkSigning.storeFile))
 }

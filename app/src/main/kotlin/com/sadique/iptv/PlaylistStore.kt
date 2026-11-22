@@ -17,20 +17,21 @@ internal data class SavedPlaylist(
     enum class Kind { URL, FILE, XTREAM }
 }
 
-/**
- * Extra user playlists beyond the bundled "Checked streams". Each playlist is
- * an M3U file under filesDir/playlists/ plus one metadata line in meta.txt.
- * Xtream credentials are stored in that app-private metadata file, in the clear,
- * like the stream URLs themselves; they never leave the device except to the
- * Xtream server the user entered.
- */
+/** Playlist metadata and cached streams use device-local encryption. */
 internal class PlaylistStore(context: Context) {
     private val dir = File(context.filesDir, "playlists").apply { mkdirs() }
     private val metaFile = File(dir, "meta.txt")
     private val prefs = context.getSharedPreferences("iptv", Context.MODE_PRIVATE)
 
     @Synchronized
-    fun list(): List<SavedPlaylist> = readMeta()
+    fun protectLegacyFiles(legacy: File) {
+        (dir.listFiles().orEmpty().toList() + legacy).filter {
+            it.isFile && (it.extension == "m3u" || it == metaFile)
+        }.forEach(PrivateFiles::migrate)
+    }
+
+    @Synchronized
+    fun list(): List<SavedPlaylist> = try { readMeta() } catch (_: IOException) { emptyList() }
 
     @Synchronized
     fun add(
@@ -47,9 +48,9 @@ internal class PlaylistStore(context: Context) {
             id = id,
             name = cleanName,
             kind = kind,
-            source = source.replace('|', ' ').trim(),
-            username = username.replace('|', ' ').trim(),
-            password = password.replace('|', ' ').trim(),
+            source = source.trim(),
+            username = username,
+            password = password,
             lastRefresh = System.currentTimeMillis(),
         )
         writeChannels(playlist, channels)
@@ -62,7 +63,7 @@ internal class PlaylistStore(context: Context) {
         val file = File(dir, playlist.id + ".m3u")
         if (!file.exists()) return emptyList()
         return try {
-            Playlist.parse(file.readText(Charsets.UTF_8))
+            Playlist.parse(PrivateFiles.read(file))
         } catch (_: IOException) {
             emptyList()
         }
@@ -97,7 +98,7 @@ internal class PlaylistStore(context: Context) {
     @Synchronized
     fun active(): SavedPlaylist? {
         val id = activeId ?: return null
-        return readMeta().firstOrNull { it.id == id }
+        return list().firstOrNull { it.id == id }
     }
 
     var activeId: String?
@@ -112,7 +113,7 @@ internal class PlaylistStore(context: Context) {
     fun migrateLegacy(legacyFile: File): SavedPlaylist? {
         if (!legacyFile.exists() || readMeta().isNotEmpty()) return null
         val channels = try {
-            Playlist.parse(legacyFile.readText(Charsets.UTF_8))
+            Playlist.parse(PrivateFiles.read(legacyFile))
         } catch (_: IOException) {
             return null
         }
@@ -123,7 +124,7 @@ internal class PlaylistStore(context: Context) {
     private fun writeChannels(playlist: SavedPlaylist, channels: List<Channel>) {
         val data = Playlist.serialize(channels).toByteArray(Charsets.UTF_8)
         if (data.size > Playlist.MAX_BYTES) throw IOException("Playlist exceeds 12 MB.")
-        File(dir, playlist.id + ".m3u").writeBytes(data)
+        PrivateFiles.write(File(dir, playlist.id + ".m3u"), data.toString(Charsets.UTF_8))
     }
 
     private fun saveMeta(playlists: List<SavedPlaylist>) {
@@ -136,16 +137,19 @@ internal class PlaylistStore(context: Context) {
                 playlist.username,
                 playlist.password,
                 playlist.lastRefresh.toString(),
-            ).joinToString("|")
+            ).let { org.json.JSONArray(it).toString() }
         }
-        metaFile.writeText(text, Charsets.UTF_8)
+        PrivateFiles.write(metaFile, text)
     }
 
     private fun readMeta(): List<SavedPlaylist> {
         if (!metaFile.exists()) return emptyList()
         return try {
-            metaFile.readLines(Charsets.UTF_8).mapNotNull { line ->
-                val parts = line.split("|")
+            PrivateFiles.read(metaFile).lineSequence().filter { it.isNotBlank() }.toList().mapNotNull { line ->
+                val parts = if (line.startsWith("[")) {
+                    val row = org.json.JSONArray(line)
+                    List(row.length()) { row.getString(it) }
+                } else line.split("|")
                 if (parts.size < 7) return@mapNotNull null
                 val kind = runCatching { SavedPlaylist.Kind.valueOf(parts[2]) }.getOrNull()
                     ?: return@mapNotNull null
@@ -159,8 +163,8 @@ internal class PlaylistStore(context: Context) {
                     lastRefresh = parts[6].toLongOrNull() ?: 0L,
                 )
             }
-        } catch (_: IOException) {
-            emptyList()
+        } catch (error: org.json.JSONException) {
+            throw IOException("Saved playlist metadata could not be read.", error)
         }
     }
 

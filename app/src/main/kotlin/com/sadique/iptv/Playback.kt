@@ -66,6 +66,7 @@ import java.util.concurrent.Executors
 
 
 internal fun MainActivity.play(channel: Channel) {
+    movieResumeRequest++
     // A second OK expands a channel only while its player exists.
     if (channel.key == selected?.key &&
         ((channel.web && web != null) || playerController?.isPlaying() == true)) {

@@ -8,16 +8,19 @@ on:
       - 'settings.gradle.kts'
       - 'gradle.properties'
       - 'gradle/**'
+      - 'scripts/compact_apk.py'
       - 'gradlew'
       - 'gradlew.bat'
       - 'build-apk.sh'
       - '.github/workflows/android.yml'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   # contents:write is needed for the Publish GitHub Release step below
   # (gh release create / upload). Everything else only reads.
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -36,23 +39,41 @@ jobs:
           if [[ ! -f "$sdk_root/platforms/android-35/android.jar" || ! -x "$sdk_root/build-tools/35.0.0/aapt2" ]]; then
             sdkmanager --sdk_root="$sdk_root" 'platforms;android-35' 'build-tools;35.0.0'
           fi
+      - name: Run unit tests and Android lint
+        run: |
+          if ! bash gradlew :app:testDebugUnitTest :app:lintDebug; then
+            if [ -f app/build/reports/lint-results-debug.xml ]; then
+              python3 - <<'PYLINT'
+          import xml.etree.ElementTree as xml
+          for issue in xml.parse("app/build/reports/lint-results-debug.xml").findall("issue"):
+              if issue.get("severity") in ("Error", "Fatal"):
+                  node = issue.find("location")
+                  print(issue.get("id"), node.get("file"), node.get("line"), issue.get("message")[:180])
+          PYLINT
+            fi
+            exit 1
+          fi
       - name: Build debug APK with Gradle
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew :app:compactDebugApk --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: IPTV-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/compact/IPTV-debug.apk
           if-no-files-found: error
-      # In-app auto-update (UpdateChecker.kt): every main-branch build
-      # publishes the APK as a GitHub Release so the app can check for it
-      # via the public releases API — no token needed (repo is public).
-      # Tag convention: v<versionName>.<versionCode> (e.g. v2.0.12).
-      # The app parses the versionCode from the LAST dot segment, so bump
-      # versionCode in app/build.gradle.kts for every build users should get.
-      # If the tag already exists (same versionCode pushed twice), the asset
-      # is overwritten instead of failing the build.
+  publish:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: IPTV-debug
+          path: release
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,7 +81,7 @@ jobs:
           version_name=$(grep -m1 'versionName' app/build.gradle.kts | sed -E 's/.*versionName = "([^"]+)".*/\1/')
           version_code=$(grep -m1 'versionCode' app/build.gradle.kts | grep -oE '[0-9]+')
           tag="v${version_name}.${version_code}"
-          cp app/build/outputs/apk/debug/app-debug.apk IPTV-debug.apk
+          cp release/IPTV-debug.apk IPTV-debug.apk
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" IPTV-debug.apk --clobber
           else

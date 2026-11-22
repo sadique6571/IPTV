@@ -13,6 +13,7 @@ import java.io.IOException
 internal class ChannelStore(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("iptv", Context.MODE_PRIVATE)
+    private val lastFile = File(context.filesDir, "last-channel.bin")
     private val favoritesFile = File(context.filesDir, "favorites.m3u")
     private val recentFile = File(context.filesDir, "recent.m3u")
     private var favorites: MutableList<Channel> = loadFile(favoritesFile).toMutableList()
@@ -47,7 +48,14 @@ internal class ChannelStore(context: Context) {
 
     var lastChannel: Channel?
         get() {
-            val raw = prefs.getString(KEY_LAST_CHANNEL, null) ?: return null
+            val raw = try {
+                if (lastFile.exists()) PrivateFiles.read(lastFile) else {
+                    val legacy = prefs.getString(KEY_LAST_CHANNEL, null) ?: return null
+                    PrivateFiles.write(lastFile, legacy)
+                    prefs.edit().remove(KEY_LAST_CHANNEL).apply()
+                    legacy
+                }
+            } catch (_: IOException) { return null }
             val parts = raw.split("\u0001")
             if (parts.size < 3) return null
             return Channel(
@@ -60,6 +68,7 @@ internal class ChannelStore(context: Context) {
         }
         set(value) {
             if (value == null) {
+                lastFile.delete()
                 prefs.edit().remove(KEY_LAST_CHANNEL).apply()
             } else {
                 val raw = listOf(
@@ -69,7 +78,7 @@ internal class ChannelStore(context: Context) {
                     if (value.web) "1" else "0",
                     value.logo,
                 ).joinToString("\u0001")
-                prefs.edit().putString(KEY_LAST_CHANNEL, raw).apply()
+                try { PrivateFiles.write(lastFile, raw) } catch (_: IOException) { return }
             }
         }
 
@@ -114,7 +123,7 @@ internal class ChannelStore(context: Context) {
     private fun loadFile(file: File): List<Channel> {
         if (!file.exists()) return emptyList()
         return try {
-            Playlist.parse(file.readText(Charsets.UTF_8))
+            Playlist.parse(PrivateFiles.read(file))
         } catch (_: IOException) {
             emptyList()
         }
@@ -125,7 +134,7 @@ internal class ChannelStore(context: Context) {
             if (channels.isEmpty()) {
                 if (file.exists()) file.delete()
             } else {
-                file.writeText(Playlist.serialize(channels), Charsets.UTF_8)
+                PrivateFiles.write(file, Playlist.serialize(channels))
             }
         } catch (_: IOException) {
             // Favorites/recent are best-effort; playback must not depend on them.

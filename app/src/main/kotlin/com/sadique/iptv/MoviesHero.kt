@@ -127,8 +127,8 @@ internal fun MainActivity.bindMoviesHero() {
     heroTitleView?.text = movie.title
     heroMetaView?.text = movie.year.ifEmpty { "Movie" }
     val posterView = heroPosterView
+    posterView?.setImageDrawable(null)
     if (posterView != null && movie.posterUrl.isNotEmpty()) {
-        posterView.setImageBitmap(null)
         LogoLoader.load(this, movie.posterUrl, posterView, 512)
     }
     // Prefetch the next hero poster so the 8s rotation never shows a

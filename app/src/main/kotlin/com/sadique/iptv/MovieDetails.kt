@@ -93,8 +93,9 @@ internal fun MainActivity.seekMovieBy(deltaMs: Long) {
  * streams are resolved fresh from the subjectId (and season/episode
  * for series), then it plays at the saved position — the same quality
  * as before when it is still available. */
-internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry) {
+internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscreenOnSuccess: Boolean = true) {
     val request = ++movieResumeRequest
+    ensureMoviesView()
     movieProgress.visibility = View.VISIBLE
     movieStatus.text = "Movie load ho rahi hai…"
     imports.execute {
@@ -114,6 +115,7 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry) {
                     ?: streams.firstOrNull()
                 if (stream == null) {
                     movieStatus.text = "Resume nahi ho saka: koi playable link nahi mila."
+                    status.text = movieStatus.text
                     return@runOnUiThread
                 }
                 selectedQuality = stream.resolution
@@ -124,13 +126,14 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry) {
                     episodeSeason = if (entry.isSeries) entry.season else 0,
                     episodeNumber = if (entry.isSeries) entry.episode else 0,
                 )
-                applyFullScreen(true)
+                applyFullScreen(fullscreenOnSuccess)
             }
         } catch (error: IOException) {
             runOnUiThread {
                 if (isDestroyed || request != movieResumeRequest) return@runOnUiThread
                 movieProgress.visibility = View.GONE
-                movieStatus.text = "Resume nahi ho saka: ${error.message}"
+                movieStatus.text = "Resume nahi ho saka. Dobara koshish karein."
+                status.text = movieStatus.text
             }
         }
     }
@@ -173,6 +176,9 @@ internal fun MainActivity.saveMovieProgress(async: Boolean) {
 
 
 internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
+    movieResumeRequest++
+    movieStreamsRequest++
+    movieSeasonsRequest++
     // The details pane covers the home — stop the hero rotation so it
     // stops firing details lookups for a hidden banner.
     stopMoviesHero()
@@ -318,11 +324,8 @@ internal fun MainActivity.loadMovieStreams() {
         try {
             // A dub is a different subject with its own files — reuse the
             // details we already have when the original is selected.
-            val details = if (subjectId == currentMovieDetails?.movie?.subjectId) {
-                currentMovieDetails!!
-            } else {
-                movieBox.details(subjectId)
-            }
+            val details = currentMovieDetails?.takeIf { it.movie.subjectId == subjectId }
+                ?: movieBox.details(subjectId)
             currentPlayTitle = details.movie.title
             val streams = movieBox.streams(details)
             runOnUiThread {
@@ -344,6 +347,7 @@ internal fun MainActivity.loadMovieStreams() {
  * then shows the first season's episodes. */
 internal fun MainActivity.loadSeriesSeasons(subjectId: String? = null) {
     val id = subjectId ?: selectedDubId ?: return
+    movieStreamsRequest++
     val request = ++movieSeasonsRequest
     currentSeriesSeasons = emptyList()
     selectedSeason = 0
@@ -357,11 +361,7 @@ internal fun MainActivity.loadSeriesSeasons(subjectId: String? = null) {
     movieDetailsStatus.text = "Seasons load ho rahe hain…"
     imports.execute {
         try {
-            val details = if (id == currentMovieDetails?.movie?.subjectId) {
-                currentMovieDetails!!
-            } else {
-                movieBox.details(id)
-            }
+            val details = currentMovieDetails?.takeIf { it.movie.subjectId == id } ?: movieBox.details(id)
             currentPlayTitle = details.movie.title
             val seasons = movieBox.seasons(details.movie.subjectId)
             runOnUiThread {
@@ -410,6 +410,7 @@ internal fun MainActivity.rebuildSeasonChips() {
 
 
 internal fun MainActivity.selectSeason(number: Int) {
+    movieStreamsRequest++
     selectedSeason = number
     markChipByTag(movieSeasonRow, number)
     showSeasonEpisodes(number)
@@ -439,7 +440,7 @@ internal fun MainActivity.showSeasonEpisodes(seasonNumber: Int) {
 internal fun MainActivity.seriesEpisodeRow(seasonNumber: Int, ep: MovieBox.EpisodeRef): View {
     val title = if (ep.title.isNotEmpty()) "E${ep.number} · ${ep.title}" else "Episode ${ep.number}"
     return chip(title) {
-        if (selectedEpisode != ep.number || selectedSeason != seasonNumber) {
+        if (selectedEpisode != ep.number || selectedSeason != seasonNumber || currentMovieStreams.isEmpty()) {
             selectedSeason = seasonNumber
             selectedEpisode = ep.number
             markChipByTag(movieEpisodeColumn, ep.number)
@@ -467,11 +468,8 @@ internal fun MainActivity.loadEpisodeStreams() {
     movieDetailsStatus.text = "Episode load ho raha hai…"
     imports.execute {
         try {
-            val details = if (subjectId == currentMovieDetails?.movie?.subjectId) {
-                currentMovieDetails!!
-            } else {
-                movieBox.details(subjectId)
-            }
+            val details = currentMovieDetails?.takeIf { it.movie.subjectId == subjectId }
+                ?: movieBox.details(subjectId)
             val streams = movieBox.episodeStreams(details, season, episode)
             runOnUiThread {
                 if (isDestroyed || request != movieStreamsRequest) return@runOnUiThread
@@ -625,7 +623,7 @@ internal fun MainActivity.restoreMoviePlayback(saved: Bundle?) {
             if (parts.size == 2) parts[0] to parts[1] else null
         }.toMap()
     selectedQuality = saved.getInt("movie_quality", 0)
-    playMovieStream(
+    resumeSavedPlayback(
         MovieBox.Movie(
             subjectId = saved.getString("movie_subject_id").orEmpty(),
             title = title,
@@ -641,4 +639,18 @@ internal fun MainActivity.restoreMoviePlayback(saved: Bundle?) {
 internal fun MainActivity.updateMovieTimes(position: Long, duration: Long) {
     seekLabel.text = formatTime(position.coerceAtLeast(0L))
     remainingLabel.text = "−" + formatTime((duration - position).coerceAtLeast(0L))
+}
+
+internal fun MainActivity.resumeSavedPlayback(
+    movie: MovieBox.Movie, url: String, headers: Map<String, String>, position: Long,
+    episodeSeason: Int, episodeNumber: Int,
+) {
+    if (url.startsWith("file:") || movie.subjectId.isBlank()) {
+        playMovieStream(movie, url, headers, position, episodeSeason, episodeNumber)
+        return
+    }
+    status.text = "Playback link refresh ho raha hai…"
+    resumeMovie(MovieStore.ContinueEntry(movie.subjectId, movie.title, movie.posterUrl,
+        position, 0L, selectedQuality, System.currentTimeMillis(), episodeSeason, episodeNumber,
+        movie.isSeries), fullScreen)
 }
