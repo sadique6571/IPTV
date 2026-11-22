@@ -17,17 +17,18 @@ internal data class SavedPlaylist(
     enum class Kind { URL, FILE, XTREAM }
 }
 
-/**
- * Extra user playlists beyond the bundled "Checked streams". Each playlist is
- * an M3U file under filesDir/playlists/ plus one metadata line in meta.txt.
- * Xtream credentials are stored in that app-private metadata file, in the clear,
- * like the stream URLs themselves; they never leave the device except to the
- * Xtream server the user entered.
- */
+/** Playlist metadata and cached streams use device-local encryption. */
 internal class PlaylistStore(context: Context) {
     private val dir = File(context.filesDir, "playlists").apply { mkdirs() }
     private val metaFile = File(dir, "meta.txt")
     private val prefs = context.getSharedPreferences("iptv", Context.MODE_PRIVATE)
+
+    @Synchronized
+    fun protectLegacyFiles(legacy: File) {
+        (dir.listFiles().orEmpty().toList() + legacy).filter {
+            it.isFile && (it.extension == "m3u" || it == metaFile)
+        }.forEach(PrivateFiles::migrate)
+    }
 
     @Synchronized
     fun list(): List<SavedPlaylist> = try { readMeta() } catch (_: IOException) { emptyList() }

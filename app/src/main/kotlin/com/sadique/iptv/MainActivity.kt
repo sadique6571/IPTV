@@ -1098,7 +1098,15 @@ class MainActivity : Activity() {
         // Playlist refresh + update check run after the first frame is up
         // (3s) — they are background network jobs and must not compete
         // with the app opening on a 1.5 GB TV.
-        mainHandler.postDelayed({ refreshStalePlaylists() }, 3000)
+        mainHandler.postDelayed({
+            imports.execute {
+                try { playlistStore.protectLegacyFiles(File(filesDir, "channels.m3u")) }
+                catch (_: IOException) {
+                    runOnUiThread { if (!isDestroyed) toast("Saved playlists could not be secured. Check device storage.") }
+                }
+            }
+            refreshStalePlaylists()
+        }, 3000)
         mainHandler.postDelayed({ checkForUpdateSilently() }, 3000)
     }
 

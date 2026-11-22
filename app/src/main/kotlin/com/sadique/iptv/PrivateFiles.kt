@@ -34,6 +34,13 @@ internal object PrivateFiles {
         }
     }
 
+    @Synchronized fun migrate(file: File) {
+        if (!file.isFile) return
+        val buffer = ByteArray(prefix.size)
+        val encrypted = file.inputStream().use { it.read(buffer) == prefix.size && buffer.contentEquals(prefix) }
+        if (!encrypted) read(file)
+    }
+
     @Synchronized fun read(file: File): String {
         val bytes = AtomicFile(file).readFully()
         if (!bytes.take(4).toByteArray().contentEquals(prefix)) {

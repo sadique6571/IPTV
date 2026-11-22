@@ -61,7 +61,7 @@ internal fun MovieBox.seasons(subjectId: String): List<MovieBox.Season> {
         .sortedBy { it.number }
 }
 
-private fun MovieBox.parseSeasons(data: JSONObject): List<MovieBox.Season> {
+internal fun parseSeasons(data: JSONObject): List<MovieBox.Season> {
     val arrays = listOfNotNull(
         data.optJSONArray("seasons"),
         data.optJSONArray("seasonList"),
@@ -80,16 +80,17 @@ private fun MovieBox.parseSeasons(data: JSONObject): List<MovieBox.Season> {
                 ?: s.optJSONArray("eps")
             if (epArr != null) {
                 for (j in 0 until epArr.length()) {
-                    val e = epArr.optJSONObject(j) ?: continue
-                    val epNum = longKeys(e, "ep", "episode", "episodeNumber", "index").toInt()
+                    val e = epArr.optJSONObject(j)
+                    val epNum = if (e == null) epArr.optInt(j, 0) else
+                        longKeys(e, "ep", "episode", "episodeNumber", "index").toInt()
                     if (epNum <= 0) continue
                     episodes += MovieBox.EpisodeRef(
                         number = epNum,
-                        title = e.optString("title", e.optString("name", "")),
+                        title = e?.optString("title", e.optString("name", "")).orEmpty(),
                     )
                 }
             } else {
-                val count = longKeys(s, "episodeCount", "epCount", "totalEpisode", "count").toInt()
+                val count = longKeys(s, "episodeCount", "epCount", "totalEpisode", "count", "maxEp").coerceIn(0L, 5000L).toInt()
                 for (n in 1..count) episodes += MovieBox.EpisodeRef(number = n)
             }
             if (episodes.isNotEmpty()) {
@@ -103,7 +104,7 @@ private fun MovieBox.parseSeasons(data: JSONObject): List<MovieBox.Season> {
 
 /** First non-zero long among several key spellings (the API is not
  * consistent about se/season/ep/episode naming). */
-private fun MovieBox.longKeys(obj: JSONObject, vararg keys: String): Long {
+private fun longKeys(obj: JSONObject, vararg keys: String): Long {
     for (key in keys) {
         val v = obj.optLong(key, 0L)
         if (v != 0L) return v
