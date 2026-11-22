@@ -177,14 +177,19 @@ internal fun MovieBox.episodeStreams(
         // play-info is a fallback source — detectors may already have files.
     }
     // 3. Resource list with se/ep (+ recovery for placeholder links).
+    // Paginated: the API may ignore the se/ep filter, and a long series
+    // has far more than one page of files — the wanted episode's files
+    // may sit on page 2+. Stop as soon as the episode is found.
     try {
-        val resData = request(
-            "GET",
-            "$BASE/subject-api/resource?subjectId=${urlEncode(details.movie.subjectId)}&se=$season&ep=$episode&page=1&perPage=20",
-            null,
-        )
-        val items = resData.optJSONArray("list")
-        if (items != null) {
+        for (page in 1..5) {
+            if (found.isNotEmpty()) break
+            val resData = request(
+                "GET",
+                "$BASE/subject-api/resource?subjectId=${urlEncode(details.movie.subjectId)}&se=$season&ep=$episode&page=$page&perPage=20",
+                null,
+            )
+            val items = resData.optJSONArray("list") ?: break
+            if (items.length() == 0) break
             for (i in 0 until items.length()) {
                 val item = items.optJSONObject(i) ?: continue
                 // The API may ignore the se/ep filter — check client-side.
@@ -204,6 +209,8 @@ internal fun MovieBox.episodeStreams(
                     longValue(item, "resolution").toInt(),
                     item.optString("codecName", item.optString("codec", "")),
                     longValue(item, "size"),
+                    season,
+                    episode,
                 )?.let { add(it) }
             }
         }

@@ -186,6 +186,10 @@ internal fun MainActivity.playDownloadedMovie(entry: DownloadedMovie) {
         return
     }
     closeMovies()
+    // A local file has no alternate qualities — drop any stale stream
+    // list so the quality switcher cannot offer another title's
+    // streams for this playback.
+    currentMovieStreams = emptyList()
     playMovieStream(
         MovieBox.Movie(
             subjectId = entry.subjectId,

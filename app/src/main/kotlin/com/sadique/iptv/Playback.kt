@@ -172,8 +172,32 @@ internal fun MainActivity.applyControlVisibility() {
     }
     seekRow.visibility = if (movie && seekable) View.VISIBLE else View.GONE
     val seekTarget = if (movie && seekable) seekBar.id else View.NO_ID
-    playPauseButton.nextFocusRightId = if (movie) fullscreenButton.id else View.NO_ID
-    fullscreenButton.nextFocusLeftId = if (movie) playPauseButton.id else View.NO_ID
+    // Movies: quality button in the controls row — adaptive tracks
+    // (videoOptions) or the resolved stream list (one MP4 per quality).
+    // Channels keep the corner button; movies play fullscreen, where
+    // the corner button is hidden, so the row is the only place it
+    // can live.
+    val streamResolutions = if (movie) {
+        currentMovieStreams.map { it.resolution }.filter { it > 0 }.distinct()
+    } else {
+        emptyList()
+    }
+    val showMovieQuality = movie && (videoOptions.size >= 2 || streamResolutions.size >= 2)
+    movieQualityButton.visibility = if (showMovieQuality) View.VISIBLE else View.GONE
+    if (showMovieQuality) {
+        movieQualityButton.text = when {
+            videoOptions.size >= 2 && selectedVideoIndex in videoOptions.indices ->
+                videoOptions[selectedVideoIndex].label
+            selectedQuality > 0 -> "${selectedQuality}p"
+            else -> "Quality"
+        }
+    }
+    val qualityTarget = if (showMovieQuality) movieQualityButton.id else fullscreenButton.id
+    playPauseButton.nextFocusRightId = if (movie) qualityTarget else View.NO_ID
+    movieQualityButton.nextFocusLeftId = playPauseButton.id
+    movieQualityButton.nextFocusRightId = fullscreenButton.id
+    movieQualityButton.nextFocusUpId = seekTarget
+    fullscreenButton.nextFocusLeftId = if (movie) qualityTarget else View.NO_ID
     playPauseButton.nextFocusUpId = seekTarget
     fullscreenButton.nextFocusUpId = seekTarget
     seekBar.nextFocusDownId = playPauseButton.id
@@ -226,6 +250,22 @@ internal fun MainActivity.setQualityText(label: String) {
 
 
 internal fun MainActivity.showQualityDialog() {
+    // Movies with single-file streams (one MP4 per quality) report a
+    // single track, so track switching has nothing to pick — switch
+    // the stream URL instead, resuming at the current position.
+    if (playingMovie != null && videoOptions.size < 2) {
+        val resolutions = currentMovieStreams.map { it.resolution }
+            .filter { it > 0 }.distinct().sortedDescending()
+        if (resolutions.size >= 2) {
+            val checked = resolutions.indexOf(selectedQuality).coerceAtLeast(0)
+            AlertDialog.Builder(this).setTitle("Quality")
+                .setSingleChoiceItems(resolutions.map { "${it}p" }.toTypedArray(), checked) { dialog, which ->
+                    switchMovieQuality(resolutions[which])
+                    dialog.dismiss()
+                }.show()
+            return
+        }
+    }
     val items = mutableListOf("Auto")
     items += videoOptions.map { it.label }
     val checked = if (selectedVideoIndex in videoOptions.indices) selectedVideoIndex + 1 else 0

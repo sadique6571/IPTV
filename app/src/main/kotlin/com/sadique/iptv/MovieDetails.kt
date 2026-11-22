@@ -118,6 +118,10 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscree
                     status.text = movieStatus.text
                     return@runOnUiThread
                 }
+                // Keep the resolved streams: the in-player quality
+                // switcher offers these after a resume, same as after
+                // picking a quality on the details screen.
+                currentMovieStreams = streams
                 selectedQuality = stream.resolution
                 closeMovies()
                 playMovieStream(
@@ -603,6 +607,23 @@ internal fun MainActivity.playMovieStream(
 }
 
 
+/** Switches the playing movie/episode to another resolved quality,
+ * resuming at the current position. Same mechanism as Play — the
+ * signed URL is swapped and progress is saved first — so it works
+ * for movies and series episodes alike. */
+internal fun MainActivity.switchMovieQuality(resolution: Int) {
+    val movie = playingMovie ?: return
+    val stream = currentMovieStreams.firstOrNull { it.resolution == resolution } ?: return
+    if (stream.url == playingMovieUrl) {
+        selectedQuality = resolution
+        return
+    }
+    selectedQuality = resolution
+    val position = playerController?.position() ?: 0L
+    playMovieStream(movie, stream.url, stream.headers, position, playingEpisodeSeason, playingEpisodeEpisode)
+}
+
+
 internal fun MainActivity.setMovieMeta(movie: MovieBox.Movie, season: Int = 0, episode: Int = 0) {
     val label = if (movie.isSeries && season > 0 && episode > 0) " S$season E$episode" else ""
     metaName.text = movie.title + label
@@ -646,6 +667,10 @@ internal fun MainActivity.resumeSavedPlayback(
     episodeSeason: Int, episodeNumber: Int,
 ) {
     if (url.startsWith("file:") || movie.subjectId.isBlank()) {
+        // A local file has no alternate qualities — drop any stale
+        // stream list so the quality switcher cannot offer another
+        // title's streams for this playback.
+        currentMovieStreams = emptyList()
         playMovieStream(movie, url, headers, position, episodeSeason, episodeNumber)
         return
     }

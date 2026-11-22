@@ -424,6 +424,8 @@ internal class MovieBox(context: Context) {
         origResolution: Int,
         origCodec: String,
         origSize: Long,
+        season: Int = 0,
+        episode: Int = 0,
     ): MovieStream? {
         val query = listOf(
             "subjectId" to subjectId,
@@ -442,7 +444,12 @@ internal class MovieBox(context: Context) {
         for (i in 0 until items.length()) {
             val item = items.optJSONObject(i) ?: continue
             if (idString(item, "resourceId", "id").orEmpty() != resourceId) continue
-            if (longValue(item, "se") != 0L || longValue(item, "ep") != 0L) continue
+            // Movies are se 0 / ep 0; an episode recovery must match
+            // the requested season/episode instead (the old hardcoded
+            // 0/0 check rejected every episode recovery).
+            if (longValue(item, "se").toInt() != season ||
+                longValue(item, "ep").toInt() != episode
+            ) continue
             val url = item.optString("resourceLink", item.optString("url", "")).orEmpty()
             if (url.isEmpty() || isDeprecationNoticeUrl(url)) continue
             if (!url.startsWith("http")) continue

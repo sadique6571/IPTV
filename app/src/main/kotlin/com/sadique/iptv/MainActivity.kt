@@ -123,6 +123,9 @@ class MainActivity : Activity() {
     // the overlay pill (movies only — channels never need it).
     internal lateinit var favButton: Button
     internal lateinit var qualityButton: Button
+    // Movie quality switch inside the controls row (movies play
+    // fullscreen, where the corner quality button is hidden).
+    internal lateinit var movieQualityButton: Button
     internal lateinit var remainingLabel: TextView
     internal lateinit var seekRow: LinearLayout
     internal lateinit var seekBar: SeekBar
@@ -850,6 +853,29 @@ class MainActivity : Activity() {
         seekRow.addView(seekBar, LinearLayout.LayoutParams(0, dp(48), 1f))
         seekRow.addView(remainingLabel)
         overlayBar.addView(seekRow, LinearLayout.LayoutParams(0, -2, 1f))
+        movieQualityButton = Button(this).apply {
+            text = "Quality"
+            isAllCaps = false
+            contentDescription = "Quality"
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            textSize = if (isTv) 14f else 13f
+            gravity = Gravity.CENTER
+            id = View.generateViewId()
+            minimumWidth = 0
+            minimumHeight = 0
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = overlayButtonBackground()
+            visibility = View.GONE
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { showQualityDialog() }
+        }
+        overlayBar.addView(movieQualityButton, LinearLayout.LayoutParams(
+            -2, dp(if (isTv) 48 else 44),
+        ).apply {
+            marginStart = dp(3)
+            marginEnd = dp(3)
+        })
         overlayBar.addView(fullscreenButton, overlayParams())
         screen.addView(overlayBar, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
             marginStart = dp(8)
