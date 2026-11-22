@@ -266,9 +266,10 @@ internal fun MainActivity.channelRow(channel: Channel): View {
         isClickable = true
         // 48dp+ touch target on phones; padded rounded cards on TV
         // (v2.0.38, mockup) — roomier rows, plenty still fit.
-        minimumHeight = dp(if (isTv) 56 else 52)
-        setPadding(dp(16), dp(if (isTv) 10 else 12), dp(16), dp(if (isTv) 10 else 12))
+        minimumHeight = dp(if (isTv) 52 else 48)
+        setPadding(dp(16), dp(if (isTv) 6 else 8), dp(16), dp(if (isTv) 6 else 8))
         tag = channel.key
+        contentDescription = listOf(channel.name, channel.group).filter { it.isNotBlank() }.joinToString(", ")
         background = rowBackground(isPlaying)
         elevation = dp(3).toFloat()
         setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }

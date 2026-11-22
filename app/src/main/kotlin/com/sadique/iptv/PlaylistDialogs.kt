@@ -131,6 +131,7 @@ internal fun MainActivity.askXtream() {
     }
     val layout = column().apply {
         setPadding(dp(16), dp(8), dp(16), dp(8))
+        addView(label("HTTP sends your login without encryption. Use HTTPS when supported.", 14, muted))
         addView(serverInput)
         addView(userInput)
         addView(passInput)
@@ -141,7 +142,7 @@ internal fun MainActivity.askXtream() {
             connectXtream(
                 serverInput.text.toString().trim(),
                 userInput.text.toString().trim(),
-                passInput.text.toString().trim(),
+                passInput.text.toString(),
             )
         }.show()
 }
@@ -169,7 +170,7 @@ internal fun MainActivity.connectXtream(server: String, username: String, passwo
                 toast("${channels.size} Xtream channels loaded.")
             }
         } catch (error: IOException) {
-            runOnUiThread { if (!isDestroyed) toast("Xtream failed: ${error.message}") }
+            runOnUiThread { if (!isDestroyed) toast("Xtream failed: check your connection and playlist settings.") }
         }
     }
 }
@@ -247,7 +248,7 @@ internal fun MainActivity.refreshPlaylist(playlist: SavedPlaylist) {
                 toast("${playlist.name}: ${fresh.size} channels.")
             }
         } catch (error: IOException) {
-            runOnUiThread { if (!isDestroyed) toast("Refresh failed: ${error.message}") }
+            runOnUiThread { if (!isDestroyed) toast("Refresh failed: check your connection and playlist settings.") }
         }
     }
 }
@@ -292,7 +293,7 @@ internal fun MainActivity.importPlaylist(
                             playlistStore.add(name, kind, source, "", "", channels)
                         } catch (error: IOException) {
                             runOnUiThread {
-                                if (!isDestroyed) toast("Could not save playlist: ${error.message}")
+                                if (!isDestroyed) toast("Could not save playlist: check your connection and playlist settings.")
                             }
                             return@execute
                         }
@@ -310,7 +311,7 @@ internal fun MainActivity.importPlaylist(
                 }
             }
         } catch (error: IOException) {
-            runOnUiThread { if (!isDestroyed) toast("Playlist import failed: ${error.message}") }
+            runOnUiThread { if (!isDestroyed) toast("Playlist import failed: check your connection and playlist settings.") }
         } catch (_: SecurityException) {
             runOnUiThread { if (!isDestroyed) toast("Cannot access this playlist.") }
         }

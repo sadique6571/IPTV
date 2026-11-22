@@ -377,13 +377,14 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         store = ChannelStore(this)
         playlistStore = PlaylistStore(this)
-        playlistStore.migrateLegacy(File(filesDir, "channels.m3u"))
-        verifiedChannels = try {
-            assets.open("verified-channels.m3u").use { Playlist.parse(Playlist.read(it)) }
-        } catch (_: IOException) {
-            emptyList()
+        val catalog = imports.submit<Pair<List<Channel>, List<Channel>>> {
+            val builtIn = assets.open("verified-channels.m3u").use { Playlist.parse(Playlist.read(it)) }
+            val extra = try {
+                playlistStore.migrateLegacy(File(filesDir, "channels.m3u"))
+                playlistStore.active()?.let { playlistStore.channelsOf(it) }.orEmpty()
+            } catch (_: IOException) { emptyList() }
+            builtIn to extra
         }
-        imported = playlistStore.active()?.let { playlistStore.channelsOf(it) } ?: emptyList()
 
         isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         isTv = isTvDevice()
@@ -1072,18 +1073,23 @@ class MainActivity : Activity() {
         contentFrame = FrameLayout(this)
         contentFrame.addView(rootView, FrameLayout.LayoutParams(-1, -1))
         setContentView(contentFrame)
-        populate()
-        list.getChildAt(0)?.requestFocus()
-        // A movie playing across a rotation (or a process death) restores
-        // from its saved signed URL instead of auto-playing the last channel.
-        val savedMovieUrl = savedInstanceState?.getString(STATE_MOVIE_URL)
-        if (savedMovieUrl != null) {
-            restoreMoviePlayback(savedInstanceState)
-        } else {
-            store.lastChannel?.let { last ->
-                val match = (verifiedChannels + imported + store.favoritesList() + store.recentList())
-                    .firstOrNull { it.key == last.key } ?: last
-                play(match)
+        catalogTitle.text = "Loading channels…"
+        imports.execute {
+            val loaded = try { catalog.get() } catch (_: java.util.concurrent.ExecutionException) {
+                emptyList<Channel>() to emptyList<Channel>()
+            } catch (_: InterruptedException) { return@execute }
+            runOnUiThread {
+                if (isDestroyed || isFinishing) return@runOnUiThread
+                verifiedChannels = loaded.first
+                imported = loaded.second
+                populate()
+                if (!moviesOpen && currentFocus == null) list.getChildAt(0)?.requestFocus()
+                if (!stoppedForBackground && selected == null && playingMovie == null && !moviesOpen) {
+                    if (savedInstanceState?.containsKey(STATE_MOVIE_URL) == true) restoreMoviePlayback(savedInstanceState)
+                    else store.lastChannel?.let { last ->
+                        play((verifiedChannels + imported).firstOrNull { it.key == last.key } ?: last)
+                    }
+                }
             }
         }
         // Restored fullscreen (after a process death): hide the
@@ -1325,7 +1331,7 @@ class MainActivity : Activity() {
             val movie = playingMovie
             val url = playingMovieUrl
             if (movie != null && url != null) {
-                playMovieStream(
+                resumeSavedPlayback(
                     movie, url, playingMovieHeaders, savedMoviePosition,
                     episodeSeason = playingEpisodeSeason,
                     episodeNumber = playingEpisodeEpisode,
@@ -1348,11 +1354,12 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
+        movieResumeRequest++
         mainHandler.removeCallbacks(networkTickRunnable)
         NetworkUsage.reset()
         // Capture the movie position BEFORE stopPlayback releases the player,
         // so coming back from background resumes the movie where it left off.
-        if (playingMovie != null) savedMoviePosition = playerController?.position() ?: 0L
+        if (playingMovie != null) savedMoviePosition = playerController?.position() ?: savedMoviePosition
         saveMovieProgress(async = false)
         stopPlayback()
         stoppedForBackground = true

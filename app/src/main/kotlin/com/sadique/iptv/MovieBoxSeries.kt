@@ -137,16 +137,15 @@ internal fun MovieBox.episodeStreams(
             val det = detectors.optJSONObject(i) ?: continue
             val resList = det.optJSONArray("resolutionList")
             if (resList != null && resList.length() > 0) {
+                val before = found.size
                 for (j in 0 until resList.length()) {
-                    parseEpisodeDetectorItem(resList.optJSONObject(j), season, episode)
+                    parseEpisodeDetectorItem(resList.optJSONObject(j), det, season, episode)
                         ?.let { add(it) }
                 }
-                continue
+                if (found.size > before) continue
             }
-            if (longValue(det, "se").toInt() != season ||
-                longValue(det, "ep").toInt() != episode
-            ) continue
-            val downloadUrl = det.optString("downloadUrl", "").orEmpty()
+            if (!matchesEpisode(det, null, season, episode)) continue
+            val downloadUrl = episodeUrl(det) ?: continue
             if (downloadUrl.isEmpty()) continue
             add(
                 MovieBox.MovieStream(
@@ -188,10 +187,8 @@ internal fun MovieBox.episodeStreams(
             for (i in 0 until items.length()) {
                 val item = items.optJSONObject(i) ?: continue
                 // The API may ignore the se/ep filter — check client-side.
-                if (longValue(item, "se").toInt() != season ||
-                    longValue(item, "ep").toInt() != episode
-                ) continue
-                val parsed = parseResourceItem(item)
+                if (!matchesEpisode(item, null, season, episode)) continue
+                val parsed = parseEpisodeDetectorItem(item, item, season, episode)
                 if (parsed != null) {
                     add(parsed)
                     continue
@@ -226,15 +223,13 @@ internal fun MovieBox.episodeStreams(
  * file must match this season/episode instead of being se 0 / ep 0. */
 private fun MovieBox.parseEpisodeDetectorItem(
     item: JSONObject?,
+    parent: JSONObject,
     season: Int,
     episode: Int,
 ): MovieBox.MovieStream? {
     if (item == null) return null
-    if (longValue(item, "se").toInt() != season ||
-        longValue(item, "ep").toInt() != episode
-    ) return null
-    val url = item.optString("resourceLink", item.optString("url", "")).orEmpty()
-    if (url.isEmpty() || isDeprecationNoticeUrl(url)) return null
+    if (!matchesEpisode(item, parent, season, episode)) return null
+    val url = episodeUrl(item) ?: return null
     val title = item.optString("title", item.optString("fileName", "")).orEmpty()
     if (isCamTitle(title)) return null
     return MovieBox.MovieStream(
@@ -246,3 +241,21 @@ private fun MovieBox.parseEpisodeDetectorItem(
         headers = mapOf("User-Agent" to USER_AGENT),
     )
 }
+
+internal fun matchesEpisode(item: JSONObject, parent: JSONObject?, season: Int, episode: Int): Boolean {
+    fun number(vararg names: String): Int? {
+        for (record in listOfNotNull(item, parent)) {
+            for (name in names) {
+                if (record.has(name) && !record.isNull(name)) return record.optInt(name, -1)
+            }
+        }
+        return null
+    }
+    return number("se", "season", "seasonNumber") == season &&
+        number("ep", "episode", "episodeNumber") == episode
+}
+
+private fun MovieBox.episodeUrl(row: JSONObject): String? =
+    listOf("downloadUrl", "resourceLink", "url").asSequence()
+        .map { row.optString(it).trim() }
+        .firstOrNull { (it.startsWith("https://") || it.startsWith("http://")) && !isDeprecationNoticeUrl(it) }

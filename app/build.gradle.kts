@@ -24,9 +24,10 @@ android {
         applicationId = "com.sadique.iptv"
         minSdk = 23
         targetSdk = 34
-        versionCode = 45
+        versionCode = 46
         versionName = "2.0"
     }
+    packaging { dex { useLegacyPackaging = true } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -40,6 +41,7 @@ kotlin {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     // Media3 1.9.2 is the newest stable that still builds against compileSdk 35:
     // 1.11.x requires minCompileSdk 36 (checked in the published AAR metadata).
     val media3Version = "1.9.2"
@@ -60,4 +62,8 @@ dependencies {
     // makes the already-present library visible at compile time. Without it,
     // `import androidx.core.content.FileProvider` fails to compile.
     implementation("androidx.core:core:1.13.1")
+}
+
+dependencies {
+    testImplementation("org.json:json:20240303")
 }

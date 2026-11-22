@@ -5,7 +5,7 @@ Free online TV channels for Android TV / Google TV. Kotlin, AndroidX Media3
 
 ## Features
 
-- 100 built-in channels (Pakistani drama, entertainment, news, sports,
+- 109 built-in channel entries (Pakistani drama, entertainment, news, sports,
   cricket) in `app/src/main/assets/verified-channels.m3u`
 - Media3 ExoPlayer playback: adaptive HLS/DASH, quality selection, playback
   speed, system volume, seek bar on movies
@@ -18,7 +18,11 @@ Free online TV channels for Android TV / Google TV. Kotlin, AndroidX Media3
 - Sleep timer, buffering indicator, automatic retry with backoff
 - YouTube/Dailymotion links play through an embedded WebView fallback
 
-No EPG, by design.
+Movies and series use a third-party MovieBox resolver. For series, select a season and episode before choosing a quality. A title being listed does not guarantee that a playable link is available in your region. If an episode fails to load, select it again to retry.
+
+Only use content and playlists you are authorized to access. Contact the relevant provider about availability and permissions. HTTP panels transmit login details without transport encryption. Prefer HTTPS when available. Saved playlist credentials are protected with the device keystore. Clearing app data removes the saved login.
+
+The header shows IPTV upload and download combined. Its daily total uses Pakistan time and waits for an online date check at startup and at a day boundary.
 
 ## Build
 
