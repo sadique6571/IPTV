@@ -1,0 +1,48 @@
+import re
+import time
+import uiautomator2 as u2
+
+d = u2.connect()
+d.app_start("com.sadique.iptv", stop=True)
+def report(step):
+    print("PHONE_TEST", step, flush=True)
+def summary():
+    import xml.etree.ElementTree as ET
+    xml = ET.fromstring(d.dump_hierarchy())
+    words = [n.get("text","") for n in xml.iter("node") if n.get("package") == "com.sadique.iptv"]
+    return [re.sub(r'https?://\S+', '[URL]', w)[:100] for w in words if w and "token" not in w.lower()][:45]
+def tap(obj, name, scrolling=False):
+    if not obj.wait(timeout=12) and scrolling:
+        for _ in range(5):
+            d.swipe_ext("up", scale=.5)
+            if obj.exists: break
+    if not obj.exists:
+        report(str((name, summary())))
+        raise RuntimeError(name + " missing")
+    obj.click()
+    report(name)
+
+report("Android "+d.device_info["version"])
+tap(d(textMatches="(?i).*Movies.*", packageName="com.sadique.iptv"),"Movies on phone",True)
+tap(d(className="android.widget.EditText",textContains="Movie"),"Movie search")
+d.set_fastinput_ime(True)
+d.send_keys("The Body",clear=True)
+d.send_action("search")
+time.sleep(12)
+report("search results "+str(summary()))
+tap(d(textMatches=r"(?i)^The Body\s*\[Hindi\].*$"),"Exact Hindi series",True)
+time.sleep(6)
+tap(d(textMatches=r"(?i)^(Episode 1|E1\s*·.*)$"),"Season 1 episode 1",True)
+time.sleep(10)
+report("episode view "+str(summary()))
+tap(d(textMatches=r"(?i).*play.*",className="android.widget.Button",enabled=True),"Play",True)
+time.sleep(6)
+samples=[]
+for _ in range(4):
+    d.click(.5,.5)
+    time.sleep(.4)
+    samples.append([s for s in summary() if re.match(r"^\d+:\d\d(:\d\d)?$",s)])
+    time.sleep(3)
+report("visible elapsed playback times "+str(samples))
+if len({t for row in samples for t in row if t not in ("0:00","00:00")})<2:
+    raise RuntimeError("Playback advancement unverified")
