@@ -192,20 +192,40 @@ internal fun MainActivity.applyControlVisibility() {
             else -> "Quality"
         }
     }
-    val audio = movie && (playingDubs.size > 1 || (playerController?.audioTracks()?.size ?: 0) > 1)
+    // Audio is always offered while a movie/series plays (like Quality):
+    // the dialog lists the audio tracks + dubs that exist.
+    val audio = movie
     movieAudioButton.visibility = if (audio) View.VISIBLE else View.GONE
-    val afterQuality = if (audio) movieAudioButton.id else fullscreenButton.id
-    val qualityTarget = if (showMovieQuality) movieQualityButton.id else afterQuality
-    playPauseButton.nextFocusRightId = if (movie) qualityTarget else View.NO_ID
-    movieQualityButton.nextFocusLeftId = playPauseButton.id
-    movieQualityButton.nextFocusRightId = afterQuality
-    movieAudioButton.nextFocusLeftId = if (showMovieQuality) movieQualityButton.id else playPauseButton.id
-    movieAudioButton.nextFocusRightId = fullscreenButton.id
-    movieAudioButton.nextFocusUpId = seekTarget
-    movieQualityButton.nextFocusUpId = seekTarget
-    fullscreenButton.nextFocusLeftId = if (audio) movieAudioButton.id else if (showMovieQuality) movieQualityButton.id else if (movie) playPauseButton.id else View.NO_ID
+    // Series episode buttons: Prev unless on the first episode, Next
+    // unless on the last (episode count from the loaded seasons).
+    val episode = playingEpisodeEpisode
+    val episodeCount = currentSeriesSeasons.firstOrNull { it.number == playingEpisodeSeason }?.episodeCount ?: 0
+    val showPrev = movie && playingEpisodeSeason > 0 && episode > 1
+    val showNext = movie && playingEpisodeSeason > 0 && episodeCount > 0 && episode < episodeCount
+    moviePrevButton.visibility = if (showPrev) View.VISIBLE else View.GONE
+    movieNextButton.visibility = if (showNext) View.VISIBLE else View.GONE
+    // CC (English subtitles only): shown when this title has one.
+    val showCC = movie && currentSubtitle != null
+    movieCCButton.visibility = if (showCC) View.VISIBLE else View.GONE
+    if (showCC) updateCCButton()
+    // D-pad chain across the visible row buttons, in visual order.
+    val rowButtons = listOf(
+        moviePrevButton, movieNextButton, movieQualityButton,
+        movieAudioButton, movieCCButton, fullscreenButton,
+    ).filter { it.visibility == View.VISIBLE }
+    for (i in rowButtons.indices) {
+        val button = rowButtons[i]
+        button.nextFocusLeftId = if (i == 0) {
+            if (movie) playPauseButton.id else View.NO_ID
+        } else {
+            rowButtons[i - 1].id
+        }
+        button.nextFocusRightId = if (i == rowButtons.lastIndex) View.NO_ID else rowButtons[i + 1].id
+        button.nextFocusUpId = seekTarget
+    }
+    playPauseButton.nextFocusRightId =
+        if (movie && rowButtons.isNotEmpty()) rowButtons.first().id else View.NO_ID
     playPauseButton.nextFocusUpId = seekTarget
-    fullscreenButton.nextFocusUpId = seekTarget
     seekBar.nextFocusDownId = playPauseButton.id
     syncRowFocusTargets()
 }
