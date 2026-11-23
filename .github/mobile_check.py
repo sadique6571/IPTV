@@ -10,7 +10,7 @@ def summary():
     import xml.etree.ElementTree as ET
     xml = ET.fromstring(d.dump_hierarchy())
     words = [n.get("text","") for n in xml.iter("node") if n.get("package") == "com.sadique.iptv"]
-    return [re.sub(r'https?://\S+', '[URL]', w)[:100] for w in words if w and "token" not in w.lower()][:45]
+    return [re.sub(r'https?://\S+', '[URL]', w)[:100] for w in words if w and "token" not in w.lower()][-65:]
 def tap(obj, name, scrolling=False):
     if not obj.wait(timeout=12) and scrolling:
         for _ in range(5):
@@ -25,10 +25,25 @@ def tap(obj, name, scrolling=False):
 report("Android "+str(d.device_info["version"]))
 tap(d(textMatches="(?i).*Movies.*", packageName="com.sadique.iptv"),"Movies on phone",True)
 tap(d(className="android.widget.EditText",textContains="Movie"),"Movie search")
-d.set_input_ime(True)
-d.send_keys("The Body",clear=True)
-d.send_action("search")
-time.sleep(12)
+field=d(className="android.widget.EditText", focused=True)
+field.set_text("The Body")
+field.click()
+time.sleep(2)
+report("keyboard "+str(d.shell("dumpsys input_method | grep mInputShown | head -1").output.strip())[:150])
+keyboard=d(descriptionMatches="(?i)^search$",packageNameMatches=".*(inputmethod|latin).*")
+if keyboard.exists:
+    keyboard.click()
+else:
+    d.click(.94,.91)
+time.sleep(14)
+if d(text="Trending · New Release").exists:
+    field=d(className="android.widget.EditText",text="The Body")
+    field.click()
+    d.set_input_ime(True)
+    time.sleep(3)
+    field.click()
+    d.send_action(3)
+    time.sleep(20)
 report("search results "+str(summary()))
 tap(d(textMatches=r"(?i)^The Body\s*\[Hindi\].*$"),"Exact Hindi series",True)
 time.sleep(6)
