@@ -122,6 +122,7 @@ internal fun MovieBox.episodeStreams(
     season: Int,
     episode: Int,
 ): List<MovieBox.MovieStream> {
+    var providerSentNotice = false
     val found = mutableListOf<MovieBox.MovieStream>()
     val seen = mutableSetOf<String>()
     fun add(stream: MovieBox.MovieStream) {
@@ -170,7 +171,9 @@ internal fun MovieBox.episodeStreams(
         if (playStreams != null) {
             val displayRes = playInfo.optString("displayResolutions", "")
             for (i in 0 until playStreams.length()) {
-                parsePlayInfoStream(playStreams.optJSONObject(i), displayRes)?.let { add(it) }
+                val row = playStreams.optJSONObject(i) ?: continue
+                if (isDeprecationNoticeUrl(row.optString("url"))) providerSentNotice = true
+                parsePlayInfoStream(row, displayRes)?.let { add(it) }
             }
         }
     } catch (_: IOException) {
@@ -194,7 +197,7 @@ internal fun MovieBox.episodeStreams(
                 val item = items.optJSONObject(i) ?: continue
                 // The API may ignore the se/ep filter — check client-side.
                 if (!matchesEpisode(item, null, season, episode)) continue
-                val resourceId = idString(item, "resourceId").orEmpty()
+                val resourceId = idString(item, "resourceId", "id").orEmpty()
                 if (resourceId.isNotBlank() && detectors != null) {
                     for (index in 0 until detectors.length()) {
                         val detector = detectors.optJSONObject(index) ?: continue
@@ -208,7 +211,9 @@ internal fun MovieBox.episodeStreams(
                     continue
                 }
                 val link = item.optString("resourceLink", item.optString("url", "")).orEmpty()
-                if (resourceId.isEmpty() || !isDeprecationNoticeUrl(link)) continue
+                if (!isDeprecationNoticeUrl(link)) continue
+                providerSentNotice = true
+                if (resourceId.isEmpty()) continue
                 recoverResource(
                     details.movie.subjectId,
                     resourceId,
@@ -224,7 +229,10 @@ internal fun MovieBox.episodeStreams(
     } catch (_: IOException) {
         // Same: best-effort fallback.
     }
-    if (found.isEmpty()) throw IOException("Is episode ke liye koi playable link nahi mila.")
+    if (found.isEmpty()) {
+        if (providerSentNotice) throw IOException("Provider ne S${season} E${episode} ki video ki jagah notice bheja.")
+        throw IOException("Is episode ke liye koi playable link nahi mila.")
+    }
     // No runtime filter here: episode lengths vary too much for the
     // movie-style duration check.
     return found.sortedWith(
