@@ -197,7 +197,6 @@ internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
     selectedQuality = 0
     currentSubtitle = null
     subtitlesEnabled = true
-    prefetchedStreams.clear()
     movieDetailsTitle.text = movie.title
     movieDetailsMeta.text = ""
     movieDetailsDesc.text = ""
@@ -658,12 +657,10 @@ internal fun MainActivity.playMovieStream(
     // moves to the play/pause button, since the list is gone.
     updateBrowseVisibility()
     if (isTv || isLandscape) playPauseButton.requestFocus()
-    // Prefetch the next episode's streams while this one plays, so the
-    // Next button starts instantly instead of waiting on the slow
-    // resolve (details + play-info + H5 fallback).
-    if (episodeSeason > 0 && episodeNumber > 0) {
-        prefetchEpisodeStreams(movie.subjectId, episodeSeason, episodeNumber + 1)
-    }
+    // No next-episode prefetch (v2.0.5): resolving the next episode
+    // while this one plays doubled requests to the file server and
+    // helped trip its 429 rate limit. Next now resolves on demand
+    // in playAdjacentEpisode, which already worked as the fallback.
 }
 
 
@@ -718,8 +715,7 @@ internal fun MainActivity.updateCCButton() {
 
 
 /** Play the previous/next episode from the player (Prev/Next buttons).
- * Uses the prefetched streams when ready, otherwise resolves the
- * episode in the background. */
+ * Resolves the episode in the background on demand (no prefetch). */
 internal fun MainActivity.playAdjacentEpisode(delta: Int) {
     val movie = playingMovie ?: return
     val season = playingEpisodeSeason
@@ -729,11 +725,6 @@ internal fun MainActivity.playAdjacentEpisode(delta: Int) {
     val count = currentSeriesSeasons.firstOrNull { it.number == season }?.episodeCount ?: 0
     if (target < 1 || (count > 0 && target > count)) {
         toast(if (delta > 0) "Aakhri episode hai." else "Pehla episode hai.")
-        return
-    }
-    val cached = prefetchedStreams["${movie.subjectId}|$season|$target"]
-    if (cached != null) {
-        playAdjacentStreams(movie, season, target, cached)
         return
     }
     toast("Episode load ho raha hai…")
@@ -774,32 +765,6 @@ private fun MainActivity.playAdjacentStreams(
         episodeSeason = season, episodeNumber = target, dubs = playingDubs,
     )
     applyControlVisibility()
-}
-
-
-/** Resolve one episode's streams in the background and cache them, so
- * the Next button can start it instantly. Only the episode right after
- * the one playing is prefetched, and only when the season's episode
- * count is known (no wasted resolve past the last episode). */
-internal fun MainActivity.prefetchEpisodeStreams(subjectId: String, season: Int, episode: Int) {
-    val count = currentSeriesSeasons.firstOrNull { it.number == season }?.episodeCount ?: 0
-    if (count > 0 && episode > count) return
-    val key = "$subjectId|$season|$episode"
-    if (prefetchedStreams.containsKey(key)) return
-    imports.execute {
-        try {
-            val details = currentMovieDetails?.takeIf { it.movie.subjectId == subjectId }
-                ?: movieBox.details(subjectId)
-            val streams = movieBox.episodeStreams(details, season, episode)
-            if (streams.isNotEmpty()) {
-                if (prefetchedStreams.size > 4) prefetchedStreams.clear()
-                prefetchedStreams[key] = streams
-            }
-        } catch (_: IOException) {
-            // Next episode may not exist or failed to resolve — the
-            // Next button resolves it on demand instead.
-        }
-    }
 }
 
 
