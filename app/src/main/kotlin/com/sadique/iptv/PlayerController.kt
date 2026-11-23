@@ -128,8 +128,10 @@ internal class PlayerController(
      * created, so a quality switch does not turn captions back on. */
     var subtitlesEnabled = true
 
-    /** Enables or disables the text (subtitle) track. */
-    fun setSubtitlesEnabled(enabled: Boolean) {
+    /** Enables or disables the text (subtitle) track. Named apply-*
+     * because the var above already owns the setSubtitlesEnabled
+     * setter name on the JVM. */
+    fun applySubtitlesEnabled(enabled: Boolean) {
         subtitlesEnabled = enabled
         val selector = trackSelector ?: return
         selector.setParameters(
@@ -157,7 +159,7 @@ internal class PlayerController(
         ensurePlayer(live)
         val active = player ?: return
         selectTrack(null)
-        setSubtitlesEnabled(subtitlesEnabled)
+        applySubtitlesEnabled(subtitlesEnabled)
         active.setMediaItem(mediaItemFor(url))
         active.prepare()
         active.playWhenReady = true
