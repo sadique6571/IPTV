@@ -274,9 +274,10 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     detailsInner.addView(movieEpisodeColumn, LinearLayout.LayoutParams(-1, -2).apply {
         bottomMargin = dp(12)
     })
-    detailsInner.addView(label("Quality", if (isTv) 15 else 13, textColor).apply {
+    movieQualityLabel = label("Quality", if (isTv) 15 else 13, textColor).apply {
         setTypeface(null, Typeface.BOLD)
-    })
+    }
+    detailsInner.addView(movieQualityLabel)
     val qualityScroll = HorizontalScrollView(this).apply {
         isHorizontalScrollBarEnabled = false
         overScrollMode = View.OVER_SCROLL_NEVER
