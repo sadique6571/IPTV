@@ -1186,7 +1186,7 @@ class MainActivity : Activity() {
             })
         // The CC menu's remembered subtitle size (default Medium 20sp) —
         // the player applies it whenever a PlayerView is created.
-        playerController.subtitleSizeSp = subtitleSizeSp
+        playerController?.subtitleSizeSp = subtitleSizeSp
         // The Movies overlay sits on top of the Live TV layout in a frame,
         // so opening it never detaches the player view underneath. It
         // builds on first open (ensureMoviesView), not here — building it
