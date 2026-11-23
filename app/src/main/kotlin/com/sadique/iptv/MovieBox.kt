@@ -102,6 +102,13 @@ internal class MovieBox(context: Context) {
         val durationSec: Long = 0,
         val headers: Map<String, String> = emptyMap(),
         val isDash: Boolean = false,
+        // Play-response stream id (H5 / play-info) — the caption
+        // endpoint keys subtitles by it. Empty for detector/resource
+        // streams, which have no play id.
+        val id: String = "",
+        // English subtitle (.srt) URL for this episode/title, fetched
+        // from the caption endpoint at resolve time (empty = none).
+        val subtitleUrl: String = "",
     ) {
         val label: String get() = if (resolution > 0) "${resolution}p" else "Auto"
     }
@@ -325,11 +332,80 @@ internal class MovieBox(context: Context) {
             found
         }
         val usable = if (matched.isNotEmpty()) matched else found
-        return usable.sortedWith(
+        val captioned = attachEnglishCaptions(usable, details.movie.subjectId, details.detailPath)
+        return captioned.sortedWith(
             compareByDescending<MovieStream> { it.resolution }
                 .thenBy { it.isDash } // direct mp4 before DASH at the same resolution
                 .thenByDescending { it.sizeBytes },
         )
+    }
+
+    /**
+     * English subtitle (.srt) for one resolved stream, from the web
+     * player's caption endpoint — the same source the website's own
+     * player uses (verified live 2026-11-23: The Body S1E1 returns 9
+     * captions incl. English). No signing is needed. Returns the
+     * subtitle file URL, or null when the title has no English
+     * caption (e.g. Overgeared) or the call fails — CC then stays
+     * off, as before. The signed URL expires in ~7 days, so it is
+     * resolved fresh at resolve time, like the video streams.
+     */
+    internal fun englishCaptionUrl(streamId: String, subjectId: String, detailPath: String): String? {
+        val url = "https://themoviebox.xyz/wefeed-h5api-bff/subject/caption" +
+            "?format=MP4&id=${urlEncode(streamId)}&subjectId=${urlEncode(subjectId)}" +
+            "&detailPath=${urlEncode(detailPath)}"
+        val text = try {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 8000
+                connection.readTimeout = 15000
+                connection.setRequestProperty("User-Agent", USER_AGENT)
+                connection.setRequestProperty("Accept", "application/json")
+                connection.setRequestProperty(
+                    "X-Client-Info",
+                    "{\"timezone\":\"${java.util.TimeZone.getDefault().id}\"}",
+                )
+                connection.setRequestProperty("Referer", detailPageUrl(subjectId, detailPath))
+                if (connection.responseCode !in 200..299) return null
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: IOException) {
+            return null
+        }
+        val captions = try {
+            JSONObject(text).optJSONObject("data")?.optJSONArray("captions")
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        for (i in 0 until captions.length()) {
+            val cap = captions.optJSONObject(i) ?: continue
+            if (!cap.optString("lan", "").equals("en", ignoreCase = true)) continue
+            val capUrl = cap.optString("url", "").orEmpty()
+            if (capUrl.isNotEmpty() && capUrl.startsWith("http")) return capUrl
+        }
+        return null
+    }
+
+    /**
+     * Attaches the English caption URL to resolved streams. Captions
+     * are per-episode — the same subtitles for every quality of the
+     * episode — so one caption call for the first stream with an id
+     * is enough, and the URL is shared across that title's streams
+     * (detector/resource streams have no play id of their own).
+     * Best-effort: any failure returns the streams unchanged.
+     */
+    internal fun attachEnglishCaptions(
+        streams: List<MovieStream>,
+        subjectId: String,
+        detailPath: String,
+    ): List<MovieStream> {
+        if (streams.isEmpty() || detailPath.isBlank()) return streams
+        val firstId = streams.firstOrNull { it.id.isNotEmpty() }?.id ?: return streams
+        val captionUrl = englishCaptionUrl(firstId, subjectId, detailPath) ?: return streams
+        return streams.map { if (it.subtitleUrl.isEmpty()) it.copy(subtitleUrl = captionUrl) else it }
     }
 
     // ---- Parsing ----
@@ -423,6 +499,7 @@ internal class MovieBox(context: Context) {
             durationSec = longValue(stream, "duration"),
             headers = headers,
             isDash = isDash,
+            id = stream.optString("id", "").orEmpty(),
         )
     }
 
@@ -987,3 +1064,12 @@ internal const val BASE = "/wefeed-mobile-bff"
 internal const val USER_AGENT =
     "com.community.oneroom/50020044 (Linux; U; Android 11; en_US; " +
         "2201117TY; Build/RP1A.200720.011; Cronet/135.0.7012.3)"
+
+/**
+ * Detail-page URL of a title — the Referer a phone browser sends
+ * when its <video> element fetches a file (series file requests)
+ * and when the web player loads captions. Shared so the format
+ * stays identical everywhere.
+ */
+internal fun detailPageUrl(subjectId: String, detailPath: String): String =
+    "https://themoviebox.xyz/movies/$detailPath?id=$subjectId&type=/movie/detail&detailSe=&detailEp=&lang=en"

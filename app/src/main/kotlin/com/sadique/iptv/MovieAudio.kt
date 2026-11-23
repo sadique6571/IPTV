@@ -56,6 +56,9 @@ private fun MainActivity.switchMovieDub(movie: MovieBox.Movie, dub: MovieBox.Dub
             }
             val position = controller.position()
             val autoplay = controller.wantsPlayback
+            // Dub switch: the new subject's own caption (its streams
+            // were resolved with captions attached, like Play).
+            currentSubtitle = subtitleForStream(stream, details)
             playMovieStream(movie.copy(subjectId = dub.subjectId), stream.url, stream.headers,
                 position, season, episode, playingDubs, autoplay)
             currentMovieStreams = streams

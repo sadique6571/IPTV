@@ -305,7 +305,8 @@ internal fun MovieBox.episodeStreams(
     }
     // No runtime filter here: episode lengths vary too much for the
     // movie-style duration check.
-    return found.sortedWith(
+    val captioned = attachEnglishCaptions(found, details.movie.subjectId, details.detailPath)
+    return captioned.sortedWith(
         compareByDescending<MovieBox.MovieStream> { it.resolution }
             .thenBy { it.isDash } // direct mp4 before DASH at the same resolution
             .thenByDescending { it.sizeBytes },
@@ -371,7 +372,7 @@ private fun MovieBox.episodeUrl(row: JSONObject): String? =
  * this is only for the file requests themselves.
  */
 private fun seriesFileReferer(subjectId: String, detailPath: String): String =
-    "https://themoviebox.xyz/movies/$detailPath?id=$subjectId&type=/movie/detail&detailSe=&detailEp=&lang=en"
+    detailPageUrl(subjectId, detailPath)
 
 /**
  * Web-player (H5) play endpoint fallback. Unlike the mobile
@@ -436,6 +437,9 @@ private fun MovieBox.h5PlayStreams(
                 "User-Agent" to USER_AGENT,
                 "Referer" to seriesFileReferer(subjectId, detailPath),
             ),
+            // Play-response stream id — the caption endpoint keys
+            // subtitles by it.
+            id = row.optString("id", "").orEmpty(),
         )
     }
     return out
