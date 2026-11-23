@@ -88,6 +88,10 @@ internal class MovieBox(context: Context) {
         val dubs: List<Dub> = emptyList(),
         val subtitles: List<Subtitle> = emptyList(),
         internal val detectors: JSONArray? = null,
+        // Web player slug (last segment of detailUrl, e.g.
+        // "the-body-hindi-AMlsju1DK46") — the H5 play endpoint needs
+        // it in the Referer header.
+        val detailPath: String = "",
     )
 
     data class MovieStream(
@@ -193,6 +197,10 @@ internal class MovieBox(context: Context) {
         }
         val poster = subject.optJSONObject("cover")?.optString("url", "")
             ?: subject.optString("coverUrl", subject.optString("poster", subject.optString("pic", "")))
+        // Web player slug (last segment of detailUrl) — the H5 play
+        // endpoint used by the web player requires it in the Referer.
+        val detailPath = subject.optString("detailUrl", "")
+            .substringAfterLast("/").substringBefore("?").trim()
         return Details(
             movie = Movie(
                 subjectId = idString(subject, "subjectId", "id").orEmpty(),
@@ -211,6 +219,7 @@ internal class MovieBox(context: Context) {
             dubs = dubs,
             subtitles = subtitles,
             detectors = detectors,
+            detailPath = detailPath,
         )
     }
 
