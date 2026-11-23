@@ -22,10 +22,10 @@ def tap(obj, name, scrolling=False):
     obj.click()
     report(name)
 
-report("Android "+d.device_info["version"])
+report("Android "+str(d.device_info["version"]))
 tap(d(textMatches="(?i).*Movies.*", packageName="com.sadique.iptv"),"Movies on phone",True)
 tap(d(className="android.widget.EditText",textContains="Movie"),"Movie search")
-d.set_fastinput_ime(True)
+d.set_input_ime(True)
 d.send_keys("The Body",clear=True)
 d.send_action("search")
 time.sleep(12)
