@@ -201,7 +201,6 @@ internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
     movieDetailsTitle.text = movie.title
     movieDetailsMeta.text = ""
     movieDetailsDesc.text = ""
-    movieDubRow.removeAllViews()
     movieQualityRow.removeAllViews()
     movieSeasonRow.removeAllViews()
     movieEpisodeColumn.removeAllViews()
@@ -250,7 +249,6 @@ internal fun MainActivity.showMovieDetails(details: MovieBox.Details) {
     if (details.director.isNotEmpty()) descParts += "Director: ${details.director}"
     if (details.stars.isNotEmpty()) descParts += "Cast: ${details.stars}"
     movieDetailsDesc.text = descParts.joinToString("\n\n")
-    rebuildDubChips(details)
     loadMovieStreams()
 }
 
@@ -275,33 +273,7 @@ internal fun MainActivity.showSeriesDetails(details: MovieBox.Details) {
     if (details.director.isNotEmpty()) descParts += "Director: ${details.director}"
     if (details.stars.isNotEmpty()) descParts += "Cast: ${details.stars}"
     movieDetailsDesc.text = descParts.joinToString("\n\n")
-    rebuildDubChips(details)
     loadSeriesSeasons()
-}
-
-
-internal fun MainActivity.rebuildDubChips(details: MovieBox.Details) {
-    movieDubRow.removeAllViews()
-    val options = mutableListOf(details.movie.subjectId to "Original")
-    for (dub in details.dubs) {
-        if (dub.subjectId == details.movie.subjectId) continue
-        options += dub.subjectId to dub.language.ifEmpty { dub.label }
-    }
-    for ((subjectId, label) in options) {
-        val chipView = chip(label) {
-            if (selectedDubId != subjectId) {
-                selectedDubId = subjectId
-                markChipByTag(movieDubRow, subjectId)
-                loadMovieStreams()
-            }
-        }
-        chipView.tag = subjectId
-        chipView.isSelected = subjectId == selectedDubId
-        refreshFilterText(chipView)
-        movieDubRow.addView(chipView, LinearLayout.LayoutParams(-2, -2).apply {
-            marginEnd = dp(8)
-        })
-    }
 }
 
 
@@ -441,17 +413,34 @@ internal fun MainActivity.showSeasonEpisodes(seasonNumber: Int) {
     moviePlayButton.isEnabled = false
     // Compact number grid: small "1" "2" "3" buttons in rows instead of
     // one full-width box per episode.
-    val perRow = if (isTv) 8 else 5
-    for (chunk in season.episodes.chunked(perRow)) {
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        for (ep in chunk) {
-            row.addView(seriesEpisodeRow(seasonNumber, ep), LinearLayout.LayoutParams(-2, -2).apply {
-                marginEnd = dp(8)
+    fun buildGrid(perRow: Int) {
+        movieEpisodeColumn.removeAllViews()
+        for (chunk in season.episodes.chunked(perRow)) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (ep in chunk) {
+                row.addView(seriesEpisodeRow(seasonNumber, ep), LinearLayout.LayoutParams(-2, -2).apply {
+                    marginEnd = dp(8)
+                })
+            }
+            movieEpisodeColumn.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
+                bottomMargin = dp(8)
             })
         }
-        movieEpisodeColumn.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
-            bottomMargin = dp(8)
-        })
+    }
+    val perRow = if (isTv) 8 else 5
+    buildGrid(perRow)
+    if (!isTv) {
+        // Auto-fit (mobile): a narrow phone fits fewer 56dp buttons per
+        // row than 5 — measure the column once laid out and rebuild with
+        // however many actually fit, so the last button is never cut off
+        // at the side. Only shrinks, and only before an episode is picked.
+        movieEpisodeColumn.post {
+            val w = movieEpisodeColumn.width
+            if (w > 0 && selectedEpisode == 0) {
+                val fit = (w / (dp(56) + dp(8))).coerceIn(2, 5)
+                if (fit < perRow) buildGrid(fit)
+            }
+        }
     }
     movieDetailsStatus.text = "${season.episodes.size} episodes — episode chunein."
 }
@@ -524,7 +513,11 @@ internal fun MainActivity.showMovieStreams(streams: List<MovieBox.MovieStream>) 
         selectedQuality = resolutions.firstOrNull() ?: 0
         movieQualityLabel.visibility = View.GONE
         movieQualityRow.visibility = View.GONE
-        movieDetailsStatus.text = "Stream ready hai — Play dabayein."
+        // The file size again (v2.0.2 showed it, v2.0.4 lost it): the
+        // best stream's size, e.g. "Stream ready hai · 282 MB — Play dabayein."
+        val best = streams.firstOrNull()
+        val sizeText = if (best != null && best.sizeBytes > 0) " · ${formatSize(best.sizeBytes)}" else ""
+        movieDetailsStatus.text = "Stream ready hai$sizeText — Play dabayein."
         moviePlayButton.isEnabled = true
         // If the user hasn't moved off the Fav landing yet, put focus
         // on Play now that it works.
@@ -652,7 +645,11 @@ internal fun MainActivity.playMovieStream(
     val subtitleConfig = currentSubtitle?.let { subtitleConfigFor(it) }
     if (subtitleConfig == null) currentSubtitle = null
     playerController?.subtitlesEnabled = subtitlesEnabled
-    playerController?.play(url, headers, subtitle = subtitleConfig)
+    // Fallback file: another resolved quality of the same episode/movie.
+    // If the file server refuses the first URL (rate limit / dead link),
+    // the player tries this one before giving up.
+    val backupUrl = currentMovieStreams.firstOrNull { it.url != url }?.url
+    playerController?.play(url, headers, backup = backupUrl, subtitle = subtitleConfig)
     if (positionMs > 0) playerController?.seekTo(positionMs)
     if (!autoplay && playerController?.wantsPlayback == true) playerController?.togglePlayPause()
     bringPlayerOverlaysToFront()

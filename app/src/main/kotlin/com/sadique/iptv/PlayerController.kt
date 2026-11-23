@@ -72,6 +72,7 @@ internal class PlayerController(
         bufferEvents = 0
     }
     private var retryCount = 0
+    private var rateLimitRetries = 0
     private var triedHlsFallback = false
     private val retryHandler = Handler(Looper.getMainLooper())
 
@@ -156,6 +157,7 @@ internal class PlayerController(
         retryCount = 0
         triedHlsFallback = false
         currentSubtitleConfig = subtitle
+        rateLimitRetries = 0
         ensurePlayer(live)
         val active = player ?: return
         selectTrack(null)
@@ -259,6 +261,7 @@ internal class PlayerController(
         playerView = null
         currentUrl = null
         currentSubtitleConfig = null
+        rateLimitRetries = 0
     }
 
     private fun ensurePlayer(live: Boolean = false) {
@@ -387,6 +390,9 @@ internal class PlayerController(
         backupUrl = null
         currentUrl = url
         triedHlsFallback = false
+        // The fallback file gets its own full retry budget.
+        retryCount = 0
+        rateLimitRetries = 0
         events.onError("Switching to backup feed…")
         selectTrack(null)
         active.setMediaItem(mediaItemFor(url))
@@ -450,6 +456,27 @@ internal class PlayerController(
             }
             return
         }
+        // Rate-limited by the file server (HTTP 429 — the H5 CDN
+        // throttles hard, and the app's own quick retries only extend
+        // the ban): wait it out (60s, then 2 min) and then try the
+        // other quality's file before giving up.
+        if (isRateLimited(error)) {
+            if (rateLimitRetries < MAX_RATE_LIMIT_RETRIES) {
+                rateLimitRetries++
+                val delay = if (rateLimitRetries == 1) RATE_LIMIT_RETRY_1_MS else RATE_LIMIT_RETRY_2_MS
+                events.onError("Server busy — retrying in ${delay / 1000}s…")
+                retryHandler.postDelayed({
+                    if (player === active && currentUrl == url) {
+                        active.prepare()
+                        active.playWhenReady = true
+                    }
+                }, delay)
+                return
+            }
+            if (useBackup()) return
+            events.onError(friendlyMessage(error) + " Select the stream again to reconnect.")
+            return
+        }
         if (retryCount < MAX_RETRIES) {
             retryCount++
             // Backoff 2s → 4s → 8s → 16s → 16s (capped): the user never has
@@ -466,6 +493,8 @@ internal class PlayerController(
             }, delay)
             return
         }
+        // Last resort for a dead first file: the other quality's URL.
+        if (useBackup()) return
         events.onError(friendlyMessage(error) + " Select the stream again to reconnect.")
     }
 
@@ -474,6 +503,17 @@ internal class PlayerController(
      * Walks the cause chain: ExoPlayer wraps the data-source error.
      * 5xx stays retryable (a server hiccup can heal), 408/429 are
      * transient by definition. */
+    /** HTTP 429 (rate limit) anywhere in the error's cause chain. */
+    private fun isRateLimited(error: PlaybackException): Boolean {
+        var cause: Throwable? = error.cause
+        while (cause != null) {
+            val httpError = cause as? HttpDataSource.InvalidResponseCodeException
+            if (httpError != null) return httpError.responseCode == 429
+            cause = cause.cause
+        }
+        return false
+    }
+
     private fun isPermanentHttpError(error: PlaybackException): Boolean {
         var cause: Throwable? = error.cause
         while (cause != null) {
@@ -487,7 +527,11 @@ internal class PlayerController(
         return false
     }
 
-    private fun friendlyMessage(error: PlaybackException): String = when (error.errorCode) {
+    private fun friendlyMessage(error: PlaybackException): String {
+        // The file server's rate limit (HTTP 429): the file itself is
+        // fine — the server is refusing this network for now.
+        if (isRateLimited(error)) return "Server busy (too many requests) — try again in a few minutes."
+        return when (error.errorCode) {
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
             "No network connection to the stream."
@@ -504,12 +548,18 @@ internal class PlayerController(
         PlaybackException.ERROR_CODE_TIMEOUT -> "Stream timed out."
         PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> "Live stream moved on."
         else -> "Stream unavailable (${error.errorCodeName})."
+        }
     }
 
     companion object {
         // Auto-retry: 5 attempts (was 3) — a flaky mobile connection gets
         // more chances before the user ever sees the manual Retry button.
         private const val MAX_RETRIES = 5
+        // Rate-limit retries (HTTP 429): the file server throttles hard,
+        // so wait it out instead of hammering — 60s, then 2 min.
+        private const val MAX_RATE_LIMIT_RETRIES = 2
+        private const val RATE_LIMIT_RETRY_1_MS = 60_000L
+        private const val RATE_LIMIT_RETRY_2_MS = 120_000L
         private const val RETRY_BASE_MS = 2000L
         // Streaming tuning for a steady 4 Mbps connection (v2.0.34).
         private const val MAX_VIDEO_BITRATE = 3_500_000
