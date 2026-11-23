@@ -129,6 +129,7 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscree
                     stream.url, stream.headers, entry.positionMs,
                     episodeSeason = if (entry.isSeries) entry.season else 0,
                     episodeNumber = if (entry.isSeries) entry.episode else 0,
+                    dubs = details.audioDubs(),
                 )
                 applyFullScreen(fullscreenOnSuccess)
             }
@@ -554,6 +555,7 @@ internal fun MainActivity.playSelectedMovie() {
         played, stream.url, stream.headers,
         episodeSeason = if (isSeries) selectedSeason else 0,
         episodeNumber = if (isSeries) selectedEpisode else 0,
+        dubs = details.audioDubs(),
     )
     applyFullScreen(true)
 }
@@ -573,7 +575,11 @@ internal fun MainActivity.playMovieStream(
     positionMs: Long = 0L,
     episodeSeason: Int = 0,
     episodeNumber: Int = 0,
+    dubs: List<MovieBox.Dub> = emptyList(),
+    autoplay: Boolean = true,
 ) {
+    audioRequest++
+    playingDubs = dubs
     // A new movie replaces the old one — save the old movie's place
     // in Continue Watching before the player switches streams.
     saveMovieProgress(async = false)
@@ -598,6 +604,7 @@ internal fun MainActivity.playMovieStream(
     status.text = "Connecting to stream…"
     playerController?.play(url, headers)
     if (positionMs > 0) playerController?.seekTo(positionMs)
+    if (!autoplay && playerController?.wantsPlayback == true) playerController?.togglePlayPause()
     bringPlayerOverlaysToFront()
     showPlayerControls()
     // A movie hides the browse pane on side-by-side screens — focus
@@ -620,7 +627,7 @@ internal fun MainActivity.switchMovieQuality(resolution: Int) {
     }
     selectedQuality = resolution
     val position = playerController?.position() ?: 0L
-    playMovieStream(movie, stream.url, stream.headers, position, playingEpisodeSeason, playingEpisodeEpisode)
+    playMovieStream(movie, stream.url, stream.headers, position, playingEpisodeSeason, playingEpisodeEpisode, playingDubs, playerController?.wantsPlayback == true)
 }
 
 

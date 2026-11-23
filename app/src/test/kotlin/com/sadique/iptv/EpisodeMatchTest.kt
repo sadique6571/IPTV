@@ -13,6 +13,15 @@ class EpisodeMatchTest {
         org.junit.Assert.assertEquals(listOf(1, 2), seasons[1].episodes.map { it.number })
     }
 
+    @Test fun joinsOnlyTheExactEpisodeResource() {
+        val row = JSONObject().put("se", 1).put("ep", 2).put("resourceId", "123")
+        val detector = JSONObject().put("resourceId", "123")
+        assertTrue(sameEpisodeFile(detector, row, 1, 2))
+        assertFalse(sameEpisodeFile(detector, row, 1, 3))
+        assertFalse(sameEpisodeFile(detector.put("ep", 1), row, 1, 2))
+        assertFalse(sameEpisodeFile(JSONObject().put("resourceId", "456"), row, 1, 2))
+    }
+
     @Test fun inheritsMissingEpisodeFieldsFromParent() {
         val parent = JSONObject().put("season", 2).put("episode", 3)
         assertTrue(matchesEpisode(JSONObject(), parent, 2, 3))

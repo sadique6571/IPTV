@@ -194,13 +194,20 @@ internal fun MovieBox.episodeStreams(
                 val item = items.optJSONObject(i) ?: continue
                 // The API may ignore the se/ep filter — check client-side.
                 if (!matchesEpisode(item, null, season, episode)) continue
+                val resourceId = idString(item, "resourceId").orEmpty()
+                if (resourceId.isNotBlank() && detectors != null) {
+                    for (index in 0 until detectors.length()) {
+                        val detector = detectors.optJSONObject(index) ?: continue
+                        if (!sameEpisodeFile(detector, item, season, episode)) continue
+                        parseEpisodeDetectorItem(detector, item, season, episode)?.let { add(it) }
+                    }
+                }
                 val parsed = parseEpisodeDetectorItem(item, item, season, episode)
                 if (parsed != null) {
                     add(parsed)
                     continue
                 }
                 val link = item.optString("resourceLink", item.optString("url", "")).orEmpty()
-                val resourceId = idString(item, "resourceId", "id").orEmpty()
                 if (resourceId.isEmpty() || !isDeprecationNoticeUrl(link)) continue
                 recoverResource(
                     details.movie.subjectId,
@@ -261,6 +268,12 @@ internal fun matchesEpisode(item: JSONObject, parent: JSONObject?, season: Int, 
     }
     return number("se", "season", "seasonNumber") == season &&
         number("ep", "episode", "episodeNumber") == episode
+}
+
+internal fun sameEpisodeFile(detector: JSONObject, row: JSONObject, season: Int, episode: Int): Boolean {
+    val id = row.optString("resourceId")
+    return id.isNotBlank() && id != "0" && id != "null" && id == detector.optString("resourceId") &&
+        matchesEpisode(row, null, season, episode) && matchesEpisode(detector, row, season, episode)
 }
 
 private fun MovieBox.episodeUrl(row: JSONObject): String? =
