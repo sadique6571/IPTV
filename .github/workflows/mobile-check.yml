@@ -1,7 +1,7 @@
 name: Verify released IPTV on Android phone
 on:
   push:
-    branches: [verify/episode-metadata-48]
+    branches: [verify/episode-duration-48]
 permissions:
   contents: read
 jobs:

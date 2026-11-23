@@ -175,6 +175,17 @@ internal fun MovieBox.episodeStreams(
             else -> "notice-directory"
         }
         android.util.Log.i("SeriesMetadata", "play=" + kind(playStreams?.optJSONObject(0)?.optString("url").orEmpty()))
+        val source = playStreams?.optJSONObject(0)?.optString("url").orEmpty()
+        if (source.startsWith("https://") && kind(source) == "notice-directory") {
+            val reader = android.media.MediaMetadataRetriever()
+            try {
+                reader.setDataSource(source, mapOf("User-Agent" to USER_AGENT))
+                android.util.Log.i("SeriesMetadata","actual durationMs=" + reader.extractMetadata(9) +
+                    " video=" + reader.extractMetadata(17) + " width=" + reader.extractMetadata(18))
+            } catch (e: Exception) {
+                android.util.Log.i("SeriesMetadata","metadata unavailable: " + e.javaClass.simpleName)
+            } finally { reader.release() }
+        }
         val det = detectors?.optJSONObject(0)
         android.util.Log.i("SeriesMetadata", "detector download=" + kind(det?.optString("downloadUrl").orEmpty()) +
             " resource=" + kind(det?.optString("resourceLink").orEmpty()))
