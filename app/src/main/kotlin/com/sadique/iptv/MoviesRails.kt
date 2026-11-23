@@ -55,6 +55,52 @@ internal fun MainActivity.buildMoviesRail(title: String, movies: List<MovieBox.M
     return rail
 }
 
+/** Top 10 rail (Netflix-style): the same poster cards, each preceded
+ * by a big rank number. */
+internal fun MainActivity.buildTop10Rail(title: String, movies: List<MovieBox.Movie>): View {
+    val rail = column()
+    val header = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
+    header.addView(sectionLabel(title), LinearLayout.LayoutParams(0, -2, 1f))
+    val top10 = movies.take(10)
+    val seeAll = button("See All", R.drawable.ic_chevron_right, iconEnd = true) { showMoviesSeeAll(title, top10) }
+    header.addView(seeAll)
+    rail.addView(header)
+    val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+    val eagerCount = if (isTv) 8 else 4
+    for ((index, movie) in top10.withIndex()) {
+        val item = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.BOTTOM
+        }
+        item.addView(TextView(this).apply {
+            text = "${index + 1}"
+            textSize = if (isTv) 56f else 44f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(textColor)
+        })
+        item.addView(posterCard(movie, backgroundLoad = index >= eagerCount))
+        row.addView(item, LinearLayout.LayoutParams(-2, -2).apply {
+            marginEnd = dp(16)
+        })
+    }
+    // End stops on the cards themselves (the rank numbers are not
+    // focusable — the wrappers are).
+    (row.getChildAt(0) as? LinearLayout)?.getChildAt(1)?.nextFocusLeftId = View.NO_ID
+    if (row.childCount > 0) {
+        (row.getChildAt(row.childCount - 1) as? LinearLayout)?.getChildAt(1)?.nextFocusRightId = View.NO_ID
+    }
+    val scroller = HorizontalScrollView(this).apply {
+        isHorizontalScrollBarEnabled = false
+        overScrollMode = View.OVER_SCROLL_NEVER
+        addView(row)
+    }
+    rail.addView(scroller)
+    return rail
+}
+
 /** Poster card: 2:3 poster + title + year (and a HINDI note for
  * Hindi-dubbed titles). Tapping opens the details pane. */
 internal fun MainActivity.posterCard(movie: MovieBox.Movie, backgroundLoad: Boolean = false): View {

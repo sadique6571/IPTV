@@ -1,6 +1,7 @@
 package com.sadique.iptv
 
 import android.content.Context
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -119,11 +120,30 @@ internal class PlayerController(
         }
     }
 
+    /** Subtitle (CC) for the current movie/episode, if any — kept across
+     * retries so a retry does not drop the captions. */
+    private var currentSubtitleConfig: MediaItem.SubtitleConfiguration? = null
+
+    /** CC on/off (player CC button). Applied whenever a new player is
+     * created, so a quality switch does not turn captions back on. */
+    var subtitlesEnabled = true
+
+    /** Enables or disables the text (subtitle) track. Named apply-*
+     * because the var above already owns the setSubtitlesEnabled
+     * setter name on the JVM. */
+    fun applySubtitlesEnabled(enabled: Boolean) {
+        subtitlesEnabled = enabled
+        val selector = trackSelector ?: return
+        selector.setParameters(
+            selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled).build(),
+        )
+    }
+
     fun hasPlayer(): Boolean = player != null
 
     fun isPlaying(): Boolean = player?.isPlaying == true
 
-    fun play(url: String, headers: Map<String, String> = emptyMap(), live: Boolean = false, backup: String? = null) {
+    fun play(url: String, headers: Map<String, String> = emptyMap(), live: Boolean = false, backup: String? = null, subtitle: MediaItem.SubtitleConfiguration? = null) {
         retryHandler.removeCallbacksAndMessages(null)
         if (headers != currentHeaders) {
             currentHeaders = headers
@@ -135,9 +155,11 @@ internal class PlayerController(
         currentUrl = url
         retryCount = 0
         triedHlsFallback = false
-        ensurePlayer()
+        currentSubtitleConfig = subtitle
+        ensurePlayer(live)
         val active = player ?: return
         selectTrack(null)
+        applySubtitlesEnabled(subtitlesEnabled)
         active.setMediaItem(mediaItemFor(url))
         active.prepare()
         active.playWhenReady = true
@@ -236,9 +258,10 @@ internal class PlayerController(
         }
         playerView = null
         currentUrl = null
+        currentSubtitleConfig = null
     }
 
-    private fun ensurePlayer() {
+    private fun ensurePlayer(live: Boolean = false) {
         if (player != null) return
         val selector = DefaultTrackSelector(context)
         trackSelector = selector
@@ -260,10 +283,16 @@ internal class PlayerController(
         // network hiccups play through the buffer instead of freezing.
         // Cost: a channel takes ~5s to start, and live runs ~5s
         // behind real time (live data only arrives in real time).
+        // Movies start faster than live channels (v2.0.4): a file plays
+        // from a fast server, so 3s of buffer is enough to start, while
+        // live keeps the 5s cushion from v2.0.34 (a slow free server
+        // stalled at once with a shorter start buffer).
+        val bufferForPlaybackMs =
+            if (live) BUFFER_FOR_PLAYBACK_MS else MOVIE_BUFFER_FOR_PLAYBACK_MS
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 MIN_BUFFER_MS, MAX_BUFFER_MS,
-                BUFFER_FOR_PLAYBACK_MS, BUFFER_AFTER_REBUFFER_MS,
+                bufferForPlaybackMs, BUFFER_AFTER_REBUFFER_MS,
             )
             .build()
         // Timeouts (v2.0.36): ExoPlayer's defaults are 8s/8s — a dead
@@ -318,6 +347,7 @@ internal class PlayerController(
             forceHls || ".m3u8" in lower -> builder.setMimeType(MimeTypes.APPLICATION_M3U8)
             ".mpd" in lower -> builder.setMimeType(MimeTypes.APPLICATION_MPD)
         }
+        currentSubtitleConfig?.let { builder.setSubtitleConfigurations(listOf(it)) }
         return builder.build()
     }
 
@@ -487,10 +517,30 @@ internal class PlayerController(
         private const val MIN_BUFFER_MS = 30_000
         private const val MAX_BUFFER_MS = 60_000
         private const val BUFFER_FOR_PLAYBACK_MS = 5_000
+        private const val MOVIE_BUFFER_FOR_PLAYBACK_MS = 3_000
         private const val BUFFER_AFTER_REBUFFER_MS = 5_000
         // Fail-fast (v2.0.36): HTTP timeouts + backup failover delay.
         private const val CONNECT_TIMEOUT_MS = 5000
         private const val READ_TIMEOUT_MS = 8000
         private const val BUFFER_FAILOVER_MS = 15_000L
     }
+}
+
+/** Subtitle configuration for one English subtitle (CC): the MIME type
+ * comes from the file extension, so an unknown format returns null
+ * instead of a track ExoPlayer cannot render. */
+internal fun subtitleConfigFor(subtitle: MovieBox.Subtitle): MediaItem.SubtitleConfiguration? {
+    val lower = subtitle.url.substringBefore("?").lowercase()
+    val mime = when {
+        lower.endsWith(".srt") -> MimeTypes.APPLICATION_SUBRIP
+        lower.endsWith(".vtt") -> MimeTypes.TEXT_VTT
+        lower.endsWith(".ass") || lower.endsWith(".ssa") -> MimeTypes.TEXT_SSA
+        lower.endsWith(".ttml") -> MimeTypes.APPLICATION_TTML
+        else -> return null
+    }
+    return MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.url))
+        .setMimeType(mime)
+        .setLanguage("en")
+        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+        .build()
 }

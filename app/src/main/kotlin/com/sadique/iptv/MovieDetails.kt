@@ -31,6 +31,7 @@ import android.text.TextWatcher
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
@@ -123,6 +124,7 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscree
                 // picking a quality on the details screen.
                 currentMovieStreams = streams
                 selectedQuality = stream.resolution
+                currentSubtitle = details.subtitles.englishSubtitle()
                 closeMovies()
                 playMovieStream(
                     details.movie.copy(title = entry.title),
@@ -193,6 +195,9 @@ internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
     currentPlayTitle = movie.title
     selectedDubId = movie.subjectId
     selectedQuality = 0
+    currentSubtitle = null
+    subtitlesEnabled = true
+    prefetchedStreams.clear()
     movieDetailsTitle.text = movie.title
     movieDetailsMeta.text = ""
     movieDetailsDesc.text = ""
@@ -300,12 +305,16 @@ internal fun MainActivity.rebuildDubChips(details: MovieBox.Details) {
 }
 
 
-internal fun MainActivity.markChipByTag(row: LinearLayout, tag: Any?) {
+internal fun MainActivity.markChipByTag(row: ViewGroup, tag: Any?) {
     for (i in 0 until row.childCount) {
         val child = row.getChildAt(i)
-        if (child is Button) {
-            child.isSelected = child.tag == tag
-            refreshFilterText(child)
+        when (child) {
+            is Button -> {
+                child.isSelected = child.tag == tag
+                refreshFilterText(child)
+            }
+            // The episode grid nests its buttons inside row layouts.
+            is ViewGroup -> markChipByTag(child, tag)
         }
     }
 }
@@ -430,21 +439,29 @@ internal fun MainActivity.showSeasonEpisodes(seasonNumber: Int) {
     currentMovieStreams = emptyList()
     selectedQuality = 0
     moviePlayButton.isEnabled = false
-    for (ep in season.episodes) {
-        movieEpisodeColumn.addView(
-            seriesEpisodeRow(seasonNumber, ep),
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) },
-        )
+    // Compact number grid: small "1" "2" "3" buttons in rows instead of
+    // one full-width box per episode.
+    val perRow = if (isTv) 8 else 5
+    for (chunk in season.episodes.chunked(perRow)) {
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        for (ep in chunk) {
+            row.addView(seriesEpisodeRow(seasonNumber, ep), LinearLayout.LayoutParams(-2, -2).apply {
+                marginEnd = dp(8)
+            })
+        }
+        movieEpisodeColumn.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(8)
+        })
     }
     movieDetailsStatus.text = "${season.episodes.size} episodes — episode chunein."
 }
 
 
-/** One episode row: a full-width chip (selected state shows the picked
- * episode). Tapping it loads that episode's streams. */
+/** One episode button: a small number button in the grid (selected
+ * state shows the picked episode). Tapping it loads that episode's
+ * streams; the episode title shows in the status line instead. */
 internal fun MainActivity.seriesEpisodeRow(seasonNumber: Int, ep: MovieBox.EpisodeRef): View {
-    val title = if (ep.title.isNotEmpty()) "E${ep.number} · ${ep.title}" else "Episode ${ep.number}"
-    return chip(title) {
+    return episodeNumberButton("${ep.number}") {
         if (selectedEpisode != ep.number || selectedSeason != seasonNumber || currentMovieStreams.isEmpty()) {
             selectedSeason = seasonNumber
             selectedEpisode = ep.number
@@ -470,7 +487,13 @@ internal fun MainActivity.loadEpisodeStreams() {
     selectedQuality = 0
     movieQualityRow.removeAllViews()
     moviePlayButton.isEnabled = false
-    movieDetailsStatus.text = "Episode load ho raha hai…"
+    val epTitle = currentSeriesSeasons.firstOrNull { it.number == season }
+        ?.episodes?.firstOrNull { it.number == episode }?.title.orEmpty()
+    movieDetailsStatus.text = if (epTitle.isNotEmpty()) {
+        "E$episode · $epTitle load ho raha hai…"
+    } else {
+        "Episode load ho raha hai…"
+    }
     imports.execute {
         try {
             val details = currentMovieDetails?.takeIf { it.movie.subjectId == subjectId }
@@ -568,6 +591,9 @@ internal fun MainActivity.playSelectedMovie() {
         subjectId = selectedDubId ?: details.movie.subjectId,
         title = currentPlayTitle,
     )
+    // English CC for this title (null when it has no English subtitle,
+    // so a previous title's subtitle never leaks into this one).
+    currentSubtitle = details.subtitles.englishSubtitle()
     val isSeries = details.movie.isSeries
     playMovieStream(
         played, stream.url, stream.headers,
@@ -620,7 +646,13 @@ internal fun MainActivity.playMovieStream(
     applyControlVisibility()
     markPlayingRow()
     status.text = "Connecting to stream…"
-    playerController?.play(url, headers)
+    // English CC for this title (currentSubtitle, set by the caller
+    // from the title's details). An unusable URL (unknown subtitle
+    // format) clears it so the CC button hides.
+    val subtitleConfig = currentSubtitle?.let { subtitleConfigFor(it) }
+    if (subtitleConfig == null) currentSubtitle = null
+    playerController?.subtitlesEnabled = subtitlesEnabled
+    playerController?.play(url, headers, subtitle = subtitleConfig)
     if (positionMs > 0) playerController?.seekTo(positionMs)
     if (!autoplay && playerController?.wantsPlayback == true) playerController?.togglePlayPause()
     bringPlayerOverlaysToFront()
@@ -629,6 +661,12 @@ internal fun MainActivity.playMovieStream(
     // moves to the play/pause button, since the list is gone.
     updateBrowseVisibility()
     if (isTv || isLandscape) playPauseButton.requestFocus()
+    // Prefetch the next episode's streams while this one plays, so the
+    // Next button starts instantly instead of waiting on the slow
+    // resolve (details + play-info + H5 fallback).
+    if (episodeSeason > 0 && episodeNumber > 0) {
+        prefetchEpisodeStreams(movie.subjectId, episodeSeason, episodeNumber + 1)
+    }
 }
 
 
@@ -646,6 +684,125 @@ internal fun MainActivity.switchMovieQuality(resolution: Int) {
     selectedQuality = resolution
     val position = playerController?.position() ?: 0L
     playMovieStream(movie, stream.url, stream.headers, position, playingEpisodeSeason, playingEpisodeEpisode, playingDubs, playerController?.wantsPlayback == true)
+}
+
+
+/** English subtitle for CC (the user wants English only): the first
+ * subtitle whose language name is English/en. */
+internal fun List<MovieBox.Subtitle>.englishSubtitle(): MovieBox.Subtitle? =
+    firstOrNull {
+        val name = it.name.trim().lowercase()
+        name == "english" || name == "en" || name == "eng" ||
+            name.startsWith("en-") || name.startsWith("english ")
+    }
+
+
+/** CC on/off for the playing title (player CC button). */
+internal fun MainActivity.toggleSubtitles() {
+    if (currentSubtitle == null) return
+    subtitlesEnabled = !subtitlesEnabled
+    playerController?.applySubtitlesEnabled(subtitlesEnabled)
+    updateCCButton()
+    showPlayerControls()
+}
+
+
+/** CC button state: cyan while subtitles are on, white while off.
+ * (No isInitialized guard: the button is created in onCreate with the
+ * rest of the overlay, and this only runs while a movie plays — the
+ * same invariant the Quality/Audio buttons already rely on. A
+ * ::prop.isInitialized check only compiles inside the declaring
+ * class, so it cannot live in this file.) */
+internal fun MainActivity.updateCCButton() {
+    movieCCButton.setTextColor(if (subtitlesEnabled) cyan else Color.WHITE)
+    movieCCButton.contentDescription =
+        if (subtitlesEnabled) "Subtitles on" else "Subtitles off"
+}
+
+
+/** Play the previous/next episode from the player (Prev/Next buttons).
+ * Uses the prefetched streams when ready, otherwise resolves the
+ * episode in the background. */
+internal fun MainActivity.playAdjacentEpisode(delta: Int) {
+    val movie = playingMovie ?: return
+    val season = playingEpisodeSeason
+    val episode = playingEpisodeEpisode
+    if (season <= 0 || episode <= 0) return
+    val target = episode + delta
+    val count = currentSeriesSeasons.firstOrNull { it.number == season }?.episodeCount ?: 0
+    if (target < 1 || (count > 0 && target > count)) {
+        toast(if (delta > 0) "Aakhri episode hai." else "Pehla episode hai.")
+        return
+    }
+    val cached = prefetchedStreams["${movie.subjectId}|$season|$target"]
+    if (cached != null) {
+        playAdjacentStreams(movie, season, target, cached)
+        return
+    }
+    toast("Episode load ho raha hai…")
+    imports.execute {
+        try {
+            val details = currentMovieDetails?.takeIf { it.movie.subjectId == movie.subjectId }
+                ?: movieBox.details(movie.subjectId)
+            val streams = movieBox.episodeStreams(details, season, target)
+            runOnUiThread {
+                if (isDestroyed || playingMovie !== movie || playingEpisodeEpisode != episode) return@runOnUiThread
+                if (streams.isEmpty()) {
+                    toast("Episode nahi mila.")
+                    return@runOnUiThread
+                }
+                playAdjacentStreams(movie, season, target, streams)
+            }
+        } catch (_: IOException) {
+            runOnUiThread { toast("Episode load nahi ho saka.") }
+        }
+    }
+}
+
+
+private fun MainActivity.playAdjacentStreams(
+    movie: MovieBox.Movie,
+    season: Int,
+    target: Int,
+    streams: List<MovieBox.MovieStream>,
+) {
+    if (streams.isEmpty()) return
+    currentMovieStreams = streams
+    val stream = streams.firstOrNull { it.resolution == selectedQuality } ?: streams.first()
+    selectedSeason = season
+    selectedEpisode = target
+    selectedQuality = stream.resolution
+    playMovieStream(
+        movie, stream.url, stream.headers, 0L,
+        episodeSeason = season, episodeNumber = target, dubs = playingDubs,
+    )
+    applyControlVisibility()
+}
+
+
+/** Resolve one episode's streams in the background and cache them, so
+ * the Next button can start it instantly. Only the episode right after
+ * the one playing is prefetched, and only when the season's episode
+ * count is known (no wasted resolve past the last episode). */
+internal fun MainActivity.prefetchEpisodeStreams(subjectId: String, season: Int, episode: Int) {
+    val count = currentSeriesSeasons.firstOrNull { it.number == season }?.episodeCount ?: 0
+    if (count > 0 && episode > count) return
+    val key = "$subjectId|$season|$episode"
+    if (prefetchedStreams.containsKey(key)) return
+    imports.execute {
+        try {
+            val details = currentMovieDetails?.takeIf { it.movie.subjectId == subjectId }
+                ?: movieBox.details(subjectId)
+            val streams = movieBox.episodeStreams(details, season, episode)
+            if (streams.isNotEmpty()) {
+                if (prefetchedStreams.size > 4) prefetchedStreams.clear()
+                prefetchedStreams[key] = streams
+            }
+        } catch (_: IOException) {
+            // Next episode may not exist or failed to resolve — the
+            // Next button resolves it on demand instead.
+        }
+    }
 }
 
 

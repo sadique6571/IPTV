@@ -129,6 +129,13 @@ class MainActivity : Activity() {
     internal var playingDubs: List<MovieBox.Dub> = emptyList()
     internal var audioRequest = 0
     internal lateinit var movieQualityButton: Button
+    internal lateinit var movieCCButton: Button
+    internal lateinit var moviePrevButton: Button
+    internal lateinit var movieNextButton: Button
+    internal var currentSubtitle: MovieBox.Subtitle? = null
+    internal var subtitlesEnabled = true
+    internal val prefetchedStreams =
+        java.util.concurrent.ConcurrentHashMap<String, List<MovieBox.MovieStream>>()
     internal lateinit var remainingLabel: TextView
     internal lateinit var seekRow: LinearLayout
     internal lateinit var seekBar: SeekBar
@@ -304,6 +311,8 @@ class MainActivity : Activity() {
     internal var movieFeedNew = emptyList<MovieBox.Movie>()
     internal var movieFeedRecommended = emptyList<MovieBox.Movie>()
     internal var movieFeedSeries = emptyList<MovieBox.Movie>()
+    internal var movieFeedTrending = emptyList<MovieBox.Movie>()
+    internal var movieFeedPicks = emptyList<MovieBox.Movie>()
     internal var movieFeedLoaded = false
     internal var movieFeedLoading = false
     internal var movieFeedRequest = 0
@@ -808,6 +817,54 @@ class MainActivity : Activity() {
             }
         }
         overlayBar.addView(playPauseButton, overlayParams())
+        // Previous / Next episode (series only — hidden otherwise, see
+        // updatePlayerControls).
+        moviePrevButton = Button(this).apply {
+            text = "◀ Prev"
+            isAllCaps = false
+            contentDescription = "Previous episode"
+            id = View.generateViewId()
+            minimumWidth = 0
+            minimumHeight = 0
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            textSize = if (isTv) 14f else 13f
+            gravity = Gravity.CENTER
+            background = overlayButtonBackground()
+            visibility = View.GONE
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { playAdjacentEpisode(-1) }
+        }
+        overlayBar.addView(moviePrevButton, LinearLayout.LayoutParams(
+            -2, dp(if (isTv) 48 else 44),
+        ).apply {
+            marginStart = dp(3)
+            marginEnd = dp(3)
+        })
+        movieNextButton = Button(this).apply {
+            text = "Next ▶"
+            isAllCaps = false
+            contentDescription = "Next episode"
+            id = View.generateViewId()
+            minimumWidth = 0
+            minimumHeight = 0
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            textSize = if (isTv) 14f else 13f
+            gravity = Gravity.CENTER
+            background = overlayButtonBackground()
+            visibility = View.GONE
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { playAdjacentEpisode(1) }
+        }
+        overlayBar.addView(movieNextButton, LinearLayout.LayoutParams(
+            -2, dp(if (isTv) 48 else 44),
+        ).apply {
+            marginStart = dp(3)
+            marginEnd = dp(3)
+        })
         seekRow = LinearLayout(this).apply {
             visibility = View.GONE
             gravity = Gravity.CENTER_VERTICAL
@@ -894,6 +951,22 @@ class MainActivity : Activity() {
             setOnClickListener { showMovieAudio() }
         }
         overlayBar.addView(movieAudioButton, LinearLayout.LayoutParams(-2, dp(48)))
+        movieCCButton = Button(this).apply {
+            text = "CC"
+            isAllCaps = false
+            contentDescription = "Subtitles (CC)"
+            id = View.generateViewId()
+            minimumWidth = 0
+            minWidth = 0
+            setPadding(dp(12), 0, dp(12), 0)
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            background = overlayButtonBackground()
+            visibility = View.GONE
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { toggleSubtitles() }
+        }
+        overlayBar.addView(movieCCButton, LinearLayout.LayoutParams(-2, dp(48)))
         overlayBar.addView(fullscreenButton, overlayParams())
         screen.addView(overlayBar, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
             marginStart = dp(8)

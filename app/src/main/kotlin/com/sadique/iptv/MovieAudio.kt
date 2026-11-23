@@ -11,6 +11,10 @@ internal fun MainActivity.showMovieAudio() {
     val tracks = playerController?.audioTracks().orEmpty().takeIf { it.size > 1 }.orEmpty()
     val dubs = playingDubs.filter { tracks.isEmpty() || it.subjectId != movie.subjectId }
     val labels = tracks.map { it.label } + dubs.map { it.language.ifBlank { it.label } }
+    if (labels.isEmpty()) {
+        toast("Is video mein aur audio option nahi hai.")
+        return
+    }
     val checked = if (tracks.isEmpty()) dubs.indexOfFirst { it.subjectId == movie.subjectId }
         else tracks.indexOfFirst { it.selected }
     val generation = audioRequest
