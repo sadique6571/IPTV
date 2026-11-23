@@ -256,6 +256,7 @@ class MainActivity : Activity() {
     internal lateinit var movieDetailsDesc: TextView
     internal lateinit var movieDubRow: LinearLayout
     internal lateinit var movieQualityRow: LinearLayout
+    internal lateinit var movieQualityLabel: TextView
     // Series details (v2.0.27): season chips + episode list in the same
     // details pane. Hidden for movies; the quality row is per-episode.
     internal lateinit var movieSeasonLabel: TextView
