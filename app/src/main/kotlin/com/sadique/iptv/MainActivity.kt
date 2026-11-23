@@ -134,8 +134,6 @@ class MainActivity : Activity() {
     internal lateinit var movieNextButton: Button
     internal var currentSubtitle: MovieBox.Subtitle? = null
     internal var subtitlesEnabled = true
-    internal val prefetchedStreams =
-        java.util.concurrent.ConcurrentHashMap<String, List<MovieBox.MovieStream>>()
     internal lateinit var remainingLabel: TextView
     internal lateinit var seekRow: LinearLayout
     internal lateinit var seekBar: SeekBar
