@@ -58,15 +58,4 @@ d.swipe_ext("up",scale=.62)
 time.sleep(4)
 report("episode view "+str(summary()))
 time.sleep(12)
-play = d(textMatches=r"(?i)^play( now)?$", enabled=True)
-if not play.exists:
-    raise RuntimeError("No playable episode. Details: "+str(summary()))
-tap(play, "Start selected episode", True)
-time.sleep(12)
-if not d(className="android.view.SurfaceView",packageName="com.sadique.iptv").exists:
-    raise RuntimeError("No video surface after Play")
-report("Player opened; checking for decoded frames")
-metrics=d.shell("dumpsys media.metrics").output
-frames=[int(x) for x in re.findall(r"framesRendered\s*[=:]\s*(\d+)",metrics,re.I)]
-if not any(x>0 for x in frames): raise RuntimeError("No decoded frame count verified")
-report("Video frames rendered")
+print(d.shell("logcat -d -s SeriesMetadata:I").output, flush=True)

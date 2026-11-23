@@ -167,6 +167,17 @@ internal fun MovieBox.episodeStreams(
             null,
         )
         val playStreams = playInfo.optJSONArray("streams")
+        fun kind(url: String): String = when {
+            url.isBlank() -> "empty"
+            !url.startsWith("https://") && !url.startsWith("http://") -> "not-http"
+            !isDeprecationNoticeUrl(url) -> "candidate"
+            isDeprecationNoticeUrl(url.substringBefore('?').substringAfterLast('/').let { "/" + it }) -> "known-notice"
+            else -> "notice-directory"
+        }
+        android.util.Log.i("SeriesMetadata", "play=" + kind(playStreams?.optJSONObject(0)?.optString("url").orEmpty()))
+        val det = detectors?.optJSONObject(0)
+        android.util.Log.i("SeriesMetadata", "detector download=" + kind(det?.optString("downloadUrl").orEmpty()) +
+            " resource=" + kind(det?.optString("resourceLink").orEmpty()))
         if (playStreams != null) {
             val displayRes = playInfo.optString("displayResolutions", "")
             for (i in 0 until playStreams.length()) {
@@ -195,6 +206,8 @@ internal fun MovieBox.episodeStreams(
                 // The API may ignore the se/ep filter — check client-side.
                 if (!matchesEpisode(item, null, season, episode)) continue
                 val resourceId = idString(item, "resourceId").orEmpty()
+                android.util.Log.i("SeriesMetadata", "detectorIdentityMatch=" +
+                    (detectors?.optJSONObject(0)?.let { sameEpisodeFile(it, item, season, episode) } == true))
                 if (resourceId.isNotBlank() && detectors != null) {
                     for (index in 0 until detectors.length()) {
                         val detector = detectors.optJSONObject(index) ?: continue
