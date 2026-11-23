@@ -251,6 +251,32 @@ internal fun Context.chip(value: String, iconRes: Int = 0, action: () -> Unit) =
 }
 
 
+/** Compact number button for the episode grid (v2.0.4): same glass /
+ * selected styling as chip(), but small — just the episode number
+ * ("1", "2", ...) instead of a full-width "Episode 1" box. */
+internal fun Context.episodeNumberButton(value: String, action: () -> Unit) = Button(this).apply {
+    text = value
+    isAllCaps = false
+    setTextColor(muted)
+    textSize = if (isTvDevice()) 16f else 15f
+    setTypeface(null, Typeface.BOLD)
+    minimumWidth = dp(if (isTvDevice()) 64 else 56)
+    minimumHeight = dp(if (isTvDevice()) 48 else 44)
+    setPadding(dp(10), dp(8), dp(10), dp(8))
+    background = StateListDrawable().apply {
+        addState(intArrayOf(android.R.attr.state_focused), glassShape(12, cyan, 2))
+        addState(intArrayOf(android.R.attr.state_selected), gradientPill(12))
+        addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 12))
+        addState(intArrayOf(), glassShape(12))
+    }
+    setOnFocusChangeListener { _, hasFocus ->
+        refreshFilterText(this)
+        animateFocusScale(this, hasFocus)
+    }
+    setOnClickListener { action() }
+}
+
+
 /** White text on the active (gradient) or focused filter, muted otherwise.
  * A chip with a vector icon keeps the icon the same color as the text;
  * harmless on buttons without a compound drawable. */
