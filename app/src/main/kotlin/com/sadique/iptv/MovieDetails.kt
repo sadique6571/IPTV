@@ -701,7 +701,7 @@ internal fun List<MovieBox.Subtitle>.englishSubtitle(): MovieBox.Subtitle? =
 internal fun MainActivity.toggleSubtitles() {
     if (currentSubtitle == null) return
     subtitlesEnabled = !subtitlesEnabled
-    playerController?.setSubtitlesEnabled(subtitlesEnabled)
+    playerController?.applySubtitlesEnabled(subtitlesEnabled)
     updateCCButton()
     showPlayerControls()
 }
