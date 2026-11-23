@@ -136,6 +136,14 @@ internal fun MovieBox.episodeStreams(
         if (!seen.add(base)) return
         found += stream
     }
+    // Referer for the file requests below (detector/H5). The file CDN
+    // refuses series requests without one (HTTP 429): the app used to
+    // send User-Agent only, while the same phone's browser — same
+    // network — played fine because its <video> request carries the
+    // detail page as Referer (verified live 2026-11-23). Movies
+    // already send STREAM_REFERER and play; play-info streams get it
+    // via the shared parsePlayInfoStream.
+    val fileReferer = seriesFileReferer(details.movie.subjectId, details.detailPath)
     // 1. resourceDetectors — files tagged with this season/episode.
     val detectors = details.detectors
     if (detectors != null) {
@@ -145,7 +153,7 @@ internal fun MovieBox.episodeStreams(
             if (resList != null && resList.length() > 0) {
                 val before = found.size
                 for (j in 0 until resList.length()) {
-                    parseEpisodeDetectorItem(resList.optJSONObject(j), det, season, episode)
+                    parseEpisodeDetectorItem(resList.optJSONObject(j), det, season, episode, fileReferer)
                         ?.let { add(it) }
                 }
                 if (found.size > before) continue
@@ -159,7 +167,7 @@ internal fun MovieBox.episodeStreams(
                     resolution = longValue(det, "resolution").toInt(),
                     codec = det.optString("codecName", ""),
                     sizeBytes = longValue(det, "firstSize"),
-                    headers = mapOf("User-Agent" to USER_AGENT),
+                    headers = mapOf("User-Agent" to USER_AGENT, "Referer" to fileReferer),
                 ),
             )
         }
@@ -206,10 +214,10 @@ internal fun MovieBox.episodeStreams(
                     for (index in 0 until detectors.length()) {
                         val detector = detectors.optJSONObject(index) ?: continue
                         if (!sameEpisodeFile(detector, item, season, episode)) continue
-                        parseEpisodeDetectorItem(detector, item, season, episode)?.let { add(it) }
+                        parseEpisodeDetectorItem(detector, item, season, episode, fileReferer)?.let { add(it) }
                     }
                 }
-                val parsed = parseEpisodeDetectorItem(item, item, season, episode)
+                val parsed = parseEpisodeDetectorItem(item, item, season, episode, fileReferer)
                 if (parsed != null) {
                     add(parsed)
                     continue
@@ -311,6 +319,7 @@ private fun MovieBox.parseEpisodeDetectorItem(
     parent: JSONObject,
     season: Int,
     episode: Int,
+    referer: String,
 ): MovieBox.MovieStream? {
     if (item == null) return null
     if (!matchesEpisode(item, parent, season, episode)) return null
@@ -323,7 +332,7 @@ private fun MovieBox.parseEpisodeDetectorItem(
         codec = item.optString("codecName", item.optString("codec", "")),
         sizeBytes = longValue(item, "size"),
         durationSec = longValue(item, "duration"),
-        headers = mapOf("User-Agent" to USER_AGENT),
+        headers = mapOf("User-Agent" to USER_AGENT, "Referer" to referer),
     )
 }
 
@@ -350,6 +359,19 @@ private fun MovieBox.episodeUrl(row: JSONObject): String? =
     listOf("downloadUrl", "resourceLink", "url").asSequence()
         .map { row.optString(it).trim() }
         .firstOrNull { (it.startsWith("https://") || it.startsWith("http://")) && !isDeprecationNoticeUrl(it) }
+
+/**
+ * Referer for series file requests: the detail page a phone browser
+ * sends when its <video> element fetches the file
+ * (https://themoviebox.xyz/movies/<detailPath>?id=<subjectId>&...).
+ * The file CDN (bcdnxw) refuses series requests without a Referer
+ * (HTTP 429 in every sandbox probe, while the same phone's browser
+ * on the same network plays fine). The H5 play-API call uses the
+ * player-page URL as Referer instead — that one already works, so
+ * this is only for the file requests themselves.
+ */
+private fun seriesFileReferer(subjectId: String, detailPath: String): String =
+    "https://themoviebox.xyz/movies/$detailPath?id=$subjectId&type=/movie/detail&detailSe=&detailEp=&lang=en"
 
 /**
  * Web-player (H5) play endpoint fallback. Unlike the mobile
@@ -406,7 +428,14 @@ private fun MovieBox.h5PlayStreams(
             codec = row.optString("codecName", ""),
             sizeBytes = longValue(row, "size"),
             durationSec = longValue(row, "duration"),
-            headers = mapOf("User-Agent" to USER_AGENT),
+            // The file request needs the detail-page Referer, not just
+            // User-Agent: without it the CDN answers 429 (the `referer`
+            // above is only for the play-API call). Verified live
+            // 2026-11-23: the phone browser plays with this Referer.
+            headers = mapOf(
+                "User-Agent" to USER_AGENT,
+                "Referer" to seriesFileReferer(subjectId, detailPath),
+            ),
         )
     }
     return out
