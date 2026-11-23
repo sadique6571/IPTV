@@ -287,8 +287,9 @@ internal fun MovieBox.episodeStreams(
     // frontend proxying the H5 BFF; if that site goes away, this step
     // just returns nothing and the error below is thrown as before.
     if (found.isEmpty() && details.detailPath.isNotBlank()) {
-        h5PlayStreams(details.movie.subjectId, season, episode, details.detailPath)
-            .forEach { add(it) }
+        for (stream in h5PlayStreams(details.movie.subjectId, season, episode, details.detailPath)) {
+            add(stream)
+        }
     }
     if (found.isEmpty()) {
         if (providerSentNotice) throw IOException("Provider ne S${season} E${episode} ki video ki jagah notice bheja.")
