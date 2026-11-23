@@ -429,15 +429,24 @@ internal fun MainActivity.showSeasonEpisodes(seasonNumber: Int) {
     val perRow = if (isTv) 8 else 5
     buildGrid(perRow)
     if (!isTv) {
-        // Auto-fit (mobile): a narrow phone fits fewer 56dp buttons per
-        // row than 5 — measure the column once laid out and rebuild with
-        // however many actually fit, so the last button is never cut off
-        // at the side. Only shrinks, and only before an episode is picked.
+        // Auto-fit (mobile): measure the REAL rendered button width
+        // once laid out. The button's minimumWidth (56dp) is only a
+        // floor — the rendered button is wider (10dp padding each
+        // side + text), so the v2.0.5 maths assumed a 64dp slot and
+        // counted 5 buttons where only 4 fit, cutting the 5th off
+        // at the side (seen on 2.0.6). Measuring the first button
+        // instead adapts to any device/font size. Only shrinks, and
+        // only before an episode is picked.
         movieEpisodeColumn.post {
             val w = movieEpisodeColumn.width
             if (w > 0 && selectedEpisode == 0) {
-                val fit = (w / (dp(56) + dp(8))).coerceIn(2, 5)
-                if (fit < perRow) buildGrid(fit)
+                val firstRow = movieEpisodeColumn.getChildAt(0) as? LinearLayout
+                val firstBtn = firstRow?.getChildAt(0)
+                val slot = (firstBtn?.measuredWidth ?: 0) + dp(8)
+                if (slot > 0) {
+                    val fit = (w / slot).coerceIn(2, 5)
+                    if (fit < perRow) buildGrid(fit)
+                }
             }
         }
     }
