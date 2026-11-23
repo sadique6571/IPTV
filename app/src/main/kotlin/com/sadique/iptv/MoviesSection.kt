@@ -235,18 +235,8 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         topMargin = dp(8)
         bottomMargin = dp(12)
     })
-    detailsInner.addView(label("Audio", if (isTv) 15 else 13, textColor).apply {
-        setTypeface(null, Typeface.BOLD)
-    })
-    val dubScroll = HorizontalScrollView(this).apply {
-        isHorizontalScrollBarEnabled = false
-        overScrollMode = View.OVER_SCROLL_NEVER
-    }
-    movieDubRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-    dubScroll.addView(movieDubRow)
-    detailsInner.addView(dubScroll, LinearLayout.LayoutParams(-1, -2).apply {
-        bottomMargin = dp(12)
-    })
+    // No Audio row here (v2.0.5): audio/dub selection lives in the
+    // player (Audio button), so the details screen stays clean.
     // Series only (v2.0.27): season chips + episode list. Hidden for
     // movies; the quality row below is per-episode for series.
     movieSeasonLabel = label("Season", if (isTv) 15 else 13, textColor).apply {
