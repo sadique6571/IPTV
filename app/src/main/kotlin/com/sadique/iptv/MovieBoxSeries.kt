@@ -200,7 +200,7 @@ internal fun MovieBox.episodeStreams(
             for (i in 0 until items.length()) {
                 val item = items.optJSONObject(i) ?: continue
                 // The API may ignore the se/ep filter — check client-side.
-                android.util.Log.i("EpisodeCheck","se=${item.optInt("se",-1)} ep=${item.optInt("ep",-1)} episode=${item.optInt("episode",-1)} match=${matchesEpisode(item,null,season,episode)} resourceNotice=${isDeprecationNoticeUrl(item.optString("resourceLink"))} sourceHttp=${item.optString("sourceUrl").startsWith("http")} member=${item.optInt("requireMemberType",-1)}")
+                android.util.Log.i("EpisodeCheck","se=${item.optInt("se",-1)} ep=${item.optInt("ep",-1)} episode=${item.optInt("episode",-1)} match=${matchesEpisode(item,null,season,episode)} resourceNotice=${isDeprecationNoticeUrl(item.optString("resourceLink"))} sourceHttp=${item.optString("sourceUrl").startsWith("http")} sourceKind=${android.net.Uri.parse(item.optString("sourceUrl")).let { uri -> listOf(uri.host, uri.lastPathSegment?.substringAfterLast('.', "")?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,5}")) }, isDeprecationNoticeUrl(item.optString("sourceUrl"))) }} member=${item.optInt("requireMemberType",-1)}")
                 if (!matchesEpisode(item, null, season, episode)) continue
                 val parsed = parseEpisodeDetectorItem(item, item, season, episode)
                 if (parsed != null) {
