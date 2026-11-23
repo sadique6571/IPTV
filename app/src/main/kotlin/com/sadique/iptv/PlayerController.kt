@@ -173,6 +173,30 @@ internal class PlayerController(
         player?.seekTo(positionMs)
     }
 
+    val wantsPlayback get() = player?.playWhenReady == true
+
+    data class AudioChoice(val label: String, val selected: Boolean, val override: TrackSelectionOverride)
+
+    fun audioTracks(): List<AudioChoice> = buildList {
+        for (group in player?.currentTracks?.groups.orEmpty()) {
+            if (group.type != C.TRACK_TYPE_AUDIO) continue
+            for (index in 0 until group.length) {
+                if (!group.isTrackSupported(index)) continue
+                val format = group.getTrackFormat(index)
+                val language = format.language?.takeUnless { it == "und" }
+                    ?.let { java.util.Locale.forLanguageTag(it).displayLanguage }
+                val label = format.label ?: language ?: "Audio ${size + 1}"
+                add(AudioChoice(label, group.isTrackSelected(index), TrackSelectionOverride(group.mediaTrackGroup, index)))
+            }
+        }
+    }
+
+    fun selectAudio(choice: AudioChoice) {
+        val selector = trackSelector ?: return
+        if (audioTracks().none { it.override == choice.override }) return
+        selector.setParameters(selector.buildUponParameters().setOverrideForType(choice.override))
+    }
+
     fun position(): Long = player?.currentPosition ?: 0L
 
     fun duration(): Long {

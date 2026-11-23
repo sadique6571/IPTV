@@ -125,6 +125,9 @@ class MainActivity : Activity() {
     internal lateinit var qualityButton: Button
     // Movie quality switch inside the controls row (movies play
     // fullscreen, where the corner quality button is hidden).
+    internal lateinit var movieAudioButton: Button
+    internal var playingDubs: List<MovieBox.Dub> = emptyList()
+    internal var audioRequest = 0
     internal lateinit var movieQualityButton: Button
     internal lateinit var remainingLabel: TextView
     internal lateinit var seekRow: LinearLayout
@@ -876,6 +879,20 @@ class MainActivity : Activity() {
             marginStart = dp(3)
             marginEnd = dp(3)
         })
+        movieAudioButton = Button(this).apply {
+            text = "Audio"
+            isAllCaps = false
+            contentDescription = "Audio language"
+            id = View.generateViewId()
+            minimumWidth = 0
+            minWidth = 0
+            setPadding(dp(8), 0, dp(8), 0)
+            setTextColor(Color.WHITE)
+            background = overlayButtonBackground()
+            visibility = View.GONE
+            setOnClickListener { showMovieAudio() }
+        }
+        overlayBar.addView(movieAudioButton, LinearLayout.LayoutParams(-2, dp(48)))
         overlayBar.addView(fullscreenButton, overlayParams())
         screen.addView(overlayBar, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
             marginStart = dp(8)
@@ -1388,6 +1405,7 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
+        audioRequest++
         movieResumeRequest++
         mainHandler.removeCallbacks(networkTickRunnable)
         NetworkUsage.reset()
