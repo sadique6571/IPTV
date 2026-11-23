@@ -1,7 +1,7 @@
 name: Verify released IPTV on Android phone
 on:
   push:
-    branches: [verify/audio-switch-phone-48]
+    branches: [verify/audio-track-phone-48]
 permissions:
   contents: read
 jobs:
