@@ -3,7 +3,12 @@ import time
 import uiautomator2 as u2
 
 d = u2.connect()
-d.app_start("com.sadique.iptv", stop=True)
+d.screen_on()
+d.shell("wm dismiss-keyguard")
+d.app_start("com.sadique.iptv", activity=".MainActivity", stop=True)
+time.sleep(4)
+print("PHONE_TEST top", d.app_current(), flush=True)
+print("PHONE_TEST crash",d.shell("logcat -d -b crash -t 35").output[-2300:],flush=True)
 def report(step):
     print("PHONE_TEST", step, flush=True)
 def summary():
@@ -12,7 +17,7 @@ def summary():
     words = [n.get("text","") for n in xml.iter("node") if n.get("package") == "com.sadique.iptv"]
     return [re.sub(r'https?://\S+', '[URL]', w)[:100] for w in words if w and "token" not in w.lower()][-65:]
 def tap(obj, name, scrolling=False):
-    if not obj.wait(timeout=12) and scrolling:
+    if not obj.wait(timeout=35) and scrolling:
         for _ in range(5):
             d.swipe_ext("up", scale=.5)
             if obj.exists: break
