@@ -138,6 +138,7 @@ internal fun MovieBox.episodeStreams(
         for (i in 0 until detectors.length()) {
             val det = detectors.optJSONObject(i) ?: continue
             val resList = det.optJSONArray("resolutionList")
+            android.util.Log.i("EpisodeCheck", "det count=${resList?.length()} childkeys=${resList?.optJSONObject(0)?.keys()?.asSequence()?.toList()}")
             if (resList != null && resList.length() > 0) {
                 val before = found.size
                 for (j in 0 until resList.length()) {
@@ -172,7 +173,9 @@ internal fun MovieBox.episodeStreams(
         if (playStreams != null) {
             val displayRes = playInfo.optString("displayResolutions", "")
             for (i in 0 until playStreams.length()) {
-                parsePlayInfoStream(playStreams.optJSONObject(i), displayRes)?.let { add(it) }
+                val obj = playStreams.optJSONObject(i) ?: continue
+                android.util.Log.i("EpisodeCheck","play urlEmpty=${obj.optString("url").isBlank()} notice=${isDeprecationNoticeUrl(obj.optString("url"))} http=${obj.optString("url").startsWith("http")} cookieEmpty=${obj.optString("signCookie").isBlank()}")
+                parsePlayInfoStream(obj, displayRes)?.let { add(it) }
             }
         }
     } catch (e: IOException) {
@@ -197,6 +200,7 @@ internal fun MovieBox.episodeStreams(
             for (i in 0 until items.length()) {
                 val item = items.optJSONObject(i) ?: continue
                 // The API may ignore the se/ep filter — check client-side.
+                android.util.Log.i("EpisodeCheck","se=${item.optInt("se",-1)} ep=${item.optInt("ep",-1)} episode=${item.optInt("episode",-1)} match=${matchesEpisode(item,null,season,episode)} resourceNotice=${isDeprecationNoticeUrl(item.optString("resourceLink"))} sourceHttp=${item.optString("sourceUrl").startsWith("http")} member=${item.optInt("requireMemberType",-1)}")
                 if (!matchesEpisode(item, null, season, episode)) continue
                 val parsed = parseEpisodeDetectorItem(item, item, season, episode)
                 if (parsed != null) {
