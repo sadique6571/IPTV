@@ -1,15 +1,19 @@
 package com.sadique.iptv
 
 import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
  * MovieBox series support (v2.0.27): seasons, episodes and per-episode
  * streams. Movies resolve one file per title; a series resolves one file
- * per (season, episode) through the same three sources — resourceDetectors
+ * per (season, episode) through the mobile sources — resourceDetectors
  * (se/ep-tagged files), play-info/v2 with se/ep, and the resource list
- * with se/ep — with the same placeholder / CAM filtering as movies.
+ * with se/ep — with the same placeholder / CAM filtering as movies,
+ * plus title-level play-info and the web player's H5 play endpoint as
+ * last-resort fallbacks when the mobile sources return only the notice.
  *
  * The season-info response shape is parsed defensively (several key
  * spellings), and when it yields nothing the seasons are derived from
@@ -271,6 +275,22 @@ internal fun MovieBox.episodeStreams(
             // Still nothing — fall through to the error below.
         }
     }
+    // 5. H5 play endpoint (the web player's resolver) as a last resort:
+    // the mobile play-info/resource endpoints return only the notice
+    // clip for some titles, while the web player's
+    // /wefeed-h5api-bff/subject/play returns the real files (verified
+    // live for The Body [Hindi] S1 E1+E2: 480p + 1080p MP4s). It needs
+    // the player-page URL as Referer, with the title's exact detailPath
+    // slug — a wrong or missing slug returns no streams. Only runs when
+    // every mobile source failed, so it can only turn the error below
+    // into a playable stream. Depends on the vidiomoviebox.xyz web
+    // frontend proxying the H5 BFF; if that site goes away, this step
+    // just returns nothing and the error below is thrown as before.
+    if (found.isEmpty() && details.detailPath.isNotBlank()) {
+        for (stream in h5PlayStreams(details.movie.subjectId, season, episode, details.detailPath)) {
+            add(stream)
+        }
+    }
     if (found.isEmpty()) {
         if (providerSentNotice) throw IOException("Provider ne S${season} E${episode} ki video ki jagah notice bheja.")
         throw IOException("Is episode ke liye koi playable link nahi mila.")
@@ -330,3 +350,64 @@ private fun MovieBox.episodeUrl(row: JSONObject): String? =
     listOf("downloadUrl", "resourceLink", "url").asSequence()
         .map { row.optString(it).trim() }
         .firstOrNull { (it.startsWith("https://") || it.startsWith("http://")) && !isDeprecationNoticeUrl(it) }
+
+/**
+ * Web-player (H5) play endpoint fallback. Unlike the mobile
+ * play-info/v2, this resolves the title's real source (e.g. the
+ * fzmovies upload behind the detector) to direct signed MP4s. No
+ * HMAC signing is needed — the web frontend proxies the H5 BFF —
+ * but the player-page URL must be sent as Referer with the exact
+ * detailPath slug, otherwise the endpoint returns no streams.
+ * Returns an empty list on any failure; never throws.
+ */
+private fun MovieBox.h5PlayStreams(
+    subjectId: String,
+    season: Int,
+    episode: Int,
+    detailPath: String,
+): List<MovieBox.MovieStream> {
+    val url = "https://vidiomoviebox.xyz/wefeed-h5api-bff/subject/play" +
+        "?subjectId=${urlEncode(subjectId)}&se=$season&ep=$episode"
+    val referer = "https://vidiomoviebox.xyz/player/$detailPath"
+    val text = try {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 8000
+            connection.readTimeout = 15000
+            connection.setRequestProperty("User-Agent", USER_AGENT)
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("Referer", referer)
+            if (connection.responseCode !in 200..299) return emptyList()
+            connection.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            connection.disconnect()
+        }
+    } catch (_: IOException) {
+        return emptyList()
+    }
+    val data = try {
+        JSONObject(text).optJSONObject("data")
+    } catch (_: Exception) {
+        null
+    } ?: return emptyList()
+    val streams = data.optJSONArray("streams") ?: return emptyList()
+    val out = mutableListOf<MovieBox.MovieStream>()
+    for (i in 0 until streams.length()) {
+        val row = streams.optJSONObject(i) ?: continue
+        val streamUrl = row.optString("url", "").orEmpty()
+        if (streamUrl.isEmpty() || !streamUrl.startsWith("http")) continue
+        if (isDeprecationNoticeUrl(streamUrl)) continue
+        val resolution = row.optString("resolutions", "")
+            .split(",").firstOrNull()?.trim()?.toIntOrNull() ?: 0
+        out += MovieBox.MovieStream(
+            url = streamUrl,
+            resolution = resolution,
+            codec = row.optString("codecName", ""),
+            sizeBytes = longValue(row, "size"),
+            durationSec = longValue(row, "duration"),
+            headers = mapOf("User-Agent" to USER_AGENT),
+        )
+    }
+    return out
+}
