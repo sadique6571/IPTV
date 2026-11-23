@@ -494,6 +494,24 @@ internal fun MainActivity.loadEpisodeStreams() {
 internal fun MainActivity.showMovieStreams(streams: List<MovieBox.MovieStream>) {
     val resolutions = streams.map { it.resolution }.filter { it > 0 }
         .distinct().sortedDescending()
+    // Series: quality is picked in the player (Quality button), not
+    // on the episode list screen — no quality row here. Best quality
+    // is the default; the in-player dialog can switch it while playing.
+    if (currentMovieDetails?.movie?.isSeries == true) {
+        selectedQuality = resolutions.firstOrNull() ?: 0
+        movieQualityLabel.visibility = View.GONE
+        movieQualityRow.visibility = View.GONE
+        movieDetailsStatus.text = "Stream ready hai — Play dabayein."
+        moviePlayButton.isEnabled = true
+        // If the user hasn't moved off the Fav landing yet, put focus
+        // on Play now that it works.
+        if (movieFavButton.hasFocus()) moviePlayButton.requestFocus()
+        return
+    }
+    // Movies keep the quality chips: restore the row in case a series
+    // hid it.
+    movieQualityLabel.visibility = View.VISIBLE
+    movieQualityRow.visibility = View.VISIBLE
     if (resolutions.isEmpty()) {
         // Streams exist but none reports a resolution — one Auto entry
         // that plays the best (first) stream.
