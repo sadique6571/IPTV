@@ -24,8 +24,8 @@ android {
         applicationId = "com.sadique.iptv"
         minSdk = 23
         targetSdk = 34
-        versionCode = 56
-        versionName = "2.0.8"
+        versionCode = 57
+        versionName = "2.0.9"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

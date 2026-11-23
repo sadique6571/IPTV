@@ -124,7 +124,7 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscree
                 // picking a quality on the details screen.
                 currentMovieStreams = streams
                 selectedQuality = stream.resolution
-                currentSubtitle = details.subtitles.englishSubtitle()
+                currentSubtitle = subtitleForStream(stream, details)
                 closeMovies()
                 playMovieStream(
                     details.movie.copy(title = entry.title),
@@ -597,7 +597,7 @@ internal fun MainActivity.playSelectedMovie() {
     )
     // English CC for this title (null when it has no English subtitle,
     // so a previous title's subtitle never leaks into this one).
-    currentSubtitle = details.subtitles.englishSubtitle()
+    currentSubtitle = subtitleForStream(stream, details)
     val isSeries = details.movie.isSeries
     playMovieStream(
         played, stream.url, stream.headers,
@@ -702,6 +702,17 @@ internal fun List<MovieBox.Subtitle>.englishSubtitle(): MovieBox.Subtitle? =
             name.startsWith("en-") || name.startsWith("english ")
     }
 
+/** Subtitle for the stream about to play: the English caption fetched
+ * for this episode/title at resolve time (first), else the title's
+ * own subtitles (extCaptions). Null when neither has one — the CC
+ * button then hides, as before. */
+internal fun MainActivity.subtitleForStream(
+    stream: MovieBox.MovieStream,
+    details: MovieBox.Details?,
+): MovieBox.Subtitle? =
+    stream.subtitleUrl.takeIf { it.isNotEmpty() }?.let { MovieBox.Subtitle("English", it) }
+        ?: details?.subtitles?.englishSubtitle()
+
 
 /** CC on/off for the playing title (player CC button). */
 internal fun MainActivity.toggleSubtitles() {
@@ -772,6 +783,12 @@ private fun MainActivity.playAdjacentStreams(
     selectedSeason = season
     selectedEpisode = target
     selectedQuality = stream.resolution
+    // Next/Prev episode: its own caption (the details here are the
+    // same title's, when available).
+    currentSubtitle = subtitleForStream(
+        stream,
+        currentMovieDetails?.takeIf { it.movie.subjectId == movie.subjectId },
+    )
     playMovieStream(
         movie, stream.url, stream.headers, 0L,
         episodeSeason = season, episodeNumber = target, dubs = playingDubs,
