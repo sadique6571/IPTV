@@ -191,6 +191,7 @@ internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
     stopMoviesHero()
     val request = ++movieDetailsRequest
     currentMovieDetails = null
+    movieDetailsRendered = false
     currentMovieStreams = emptyList()
     currentPlayTitle = movie.title
     selectedDubId = movie.subjectId
@@ -233,6 +234,7 @@ internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
 
 internal fun MainActivity.showMovieDetails(details: MovieBox.Details) {
     currentMovieDetails = details
+    movieDetailsRendered = true
     currentPlayTitle = details.movie.title
     selectedDubId = details.movie.subjectId
     updateMovieFavButton()
@@ -257,6 +259,7 @@ internal fun MainActivity.showMovieDetails(details: MovieBox.Details) {
  * seasons load first, then the picked episode's streams. */
 internal fun MainActivity.showSeriesDetails(details: MovieBox.Details) {
     currentMovieDetails = details
+    movieDetailsRendered = true
     currentPlayTitle = details.movie.title
     selectedDubId = details.movie.subjectId
     updateMovieFavButton()

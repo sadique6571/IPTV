@@ -290,6 +290,12 @@ class MainActivity : Activity() {
     internal var movieDetailsRequest = 0
     internal var movieStreamsRequest = 0
     internal var currentMovieDetails: MovieBox.Details? = null
+    // True once the details pane has been rendered for
+    // currentMovieDetails (showMovieDetails/showSeriesDetails) — Back
+    // from playback returns to it; false after the reset in
+    // openMovieDetails and for Continue Watching resumes, which never
+    // render the pane.
+    internal var movieDetailsRendered = false
     internal var currentMovieStreams: List<MovieBox.MovieStream> = emptyList()
     internal var currentPlayTitle = ""
     internal var selectedDubId: String? = null
@@ -1532,6 +1538,13 @@ class MainActivity : Activity() {
             // in Continue Watching before the player is released.
             saveMovieProgress(async = false)
             val stoppedChannel = selected
+            // A movie/episode played from its details screen returns
+            // there (episode list for series) instead of Live TV: Play
+            // closed the Movies browser, but the rendered details are
+            // still in memory. Anything else (channel, resume without
+            // rendered details) keeps the old behaviour.
+            val wasMovie = playingMovie != null
+            val details = currentMovieDetails
             stopPlayback()
             selected = null
             playingMovie = null
@@ -1544,7 +1557,11 @@ class MainActivity : Activity() {
             applyControlVisibility()
             markPlayingRow()
             updateBrowseVisibility()
-            focusBrowse(stoppedChannel)
+            if (wasMovie && details != null && movieDetailsRendered) {
+                openMoviesToDetails()
+            } else {
+                focusBrowse(stoppedChannel)
+            }
         }
     }
 
