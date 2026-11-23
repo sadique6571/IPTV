@@ -124,6 +124,38 @@ internal fun MovieBox.moviesByGenre(genre: String): List<MovieBox.Movie> {
     }
 }
 
+/** Trending Now (Netflix-style Top 10 source): the trending endpoint
+ * only, newest trending first. */
+internal fun MovieBox.trending(): List<MovieBox.Movie> {
+    return try {
+        val body = JSONObject().apply { put("page", 1); put("perPage", 20) }.toString()
+        val data = request("POST", "$BASE/subject-api/trending/v2", body)
+        subjectsFrom(data).filter { !it.isSeries }.take(20)
+    } catch (_: IOException) {
+        emptyList()
+    }
+}
+
+/** Top Picks for You: the daily curated picks, then the Discover top
+ * picks. Best-effort — an empty list hides the rail. */
+internal fun MovieBox.curatedPicks(): List<MovieBox.Movie> {
+    val bodies = listOf(
+        "$BASE/subject-api/daily-movie-rec" to JSONObject().toString(),
+        "$BASE/subject-api/top-rec" to
+            JSONObject().apply { put("page", 1); put("perPage", 20) }.toString(),
+    )
+    for ((path, body) in bodies) {
+        try {
+            val data = request("POST", path, body)
+            val list = subjectsFrom(data).filter { !it.isSeries }
+            if (list.isNotEmpty()) return list.take(20)
+        } catch (_: IOException) {
+            continue
+        }
+    }
+    return emptyList()
+}
+
 /** Recommended: trending, then the daily curated picks, then the
  * Discover top picks, then the home feed's trending section. */
 internal fun MovieBox.recommended(): List<MovieBox.Movie> {
