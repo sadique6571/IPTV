@@ -377,6 +377,24 @@ internal fun MainActivity.openMovies() {
 }
 
 
+/** Reopens the Movies browser at the details screen of the title
+ * that was just playing (Back from playback). The details pane is
+ * already rendered — Play was pressed from it — so this only
+ * re-shows the overlay, with the same focus trap as openMovies();
+ * nothing is reloaded. The Now Playing bar stays hidden: nothing
+ * is playing any more. */
+internal fun MainActivity.openMoviesToDetails() {
+    ensureMoviesView()
+    // A channel must not keep playing behind the Movies browser.
+    stopPlayingChannel()
+    moviesOpen = true
+    moviesView.visibility = View.VISIBLE
+    rootView.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+    movieNowPlayingBar.visibility = View.GONE
+    showMoviesDetails()
+}
+
+
 internal fun MainActivity.closeMovies() {
     stopMoviesHero()
     moviesOpen = false
