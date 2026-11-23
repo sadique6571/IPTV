@@ -214,7 +214,13 @@ internal fun MovieBox.episodeStreams(
                 if (!isDeprecationNoticeUrl(link)) continue
                 providerSentNotice = true
                 if (resourceId.isEmpty()) continue
-                recoverResource(
+                // Exact season/episode first; the position endpoint
+                // often returns the recovered file without se/ep tags
+                // (0/0), which the exact check rejects — the same
+                // reason movies (se/ep 0) recover and episodes don't.
+                // resourceId already pins the exact file, so an
+                // untagged recovery is safe to accept.
+                (recoverResource(
                     details.movie.subjectId,
                     resourceId,
                     link,
@@ -223,11 +229,47 @@ internal fun MovieBox.episodeStreams(
                     longValue(item, "size"),
                     season,
                     episode,
-                )?.let { add(it) }
+                ) ?: recoverResource(
+                    details.movie.subjectId,
+                    resourceId,
+                    link,
+                    longValue(item, "resolution").toInt(),
+                    item.optString("codecName", item.optString("codec", "")),
+                    longValue(item, "size"),
+                    0,
+                    0,
+                ))?.let { add(it) }
             }
         }
     } catch (_: IOException) {
         // Same: best-effort fallback.
+    }
+    // 4. Title-level play-info as a last resort, S1 E1 only: some
+    // single-episode / movie-like series attach their only file to
+    // the title instead of the episode, so the se/ep play-info
+    // returns just the notice clip. Only runs when every episode
+    // source failed, so it can only turn the error below into a
+    // playable stream. Restricted to S1 E1 because the title-level
+    // endpoint most plausibly resolves to the first episode.
+    if (found.isEmpty() && season == 1 && episode == 1) {
+        try {
+            val playInfo = request(
+                "GET",
+                "$BASE/subject-api/play-info/v2?subjectId=${urlEncode(details.movie.subjectId)}",
+                null,
+            )
+            val playStreams = playInfo.optJSONArray("streams")
+            if (playStreams != null) {
+                val displayRes = playInfo.optString("displayResolutions", "")
+                for (i in 0 until playStreams.length()) {
+                    val row = playStreams.optJSONObject(i) ?: continue
+                    if (isDeprecationNoticeUrl(row.optString("url"))) providerSentNotice = true
+                    parsePlayInfoStream(row, displayRes)?.let { add(it) }
+                }
+            }
+        } catch (_: IOException) {
+            // Still nothing — fall through to the error below.
+        }
     }
     if (found.isEmpty()) {
         if (providerSentNotice) throw IOException("Provider ne S${season} E${episode} ki video ki jagah notice bheja.")
