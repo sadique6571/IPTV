@@ -1,0 +1,31 @@
+name: Verify released IPTV on Android phone
+on:
+  push:
+    branches: [verify/series-response-48]
+permissions:
+  contents: read
+jobs:
+  phone:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare temporary phone test
+        run: |
+          sudo chmod 666 /dev/kvm
+          python3 -m venv /tmp/phone-test
+          /tmp/phone-test/bin/pip -q install uiautomator2==3.2.10
+          bash gradlew assembleDebug
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          disable-animations: true
+          script: |
+            adb install app/build/outputs/apk/debug/app-debug.apk
+            /tmp/phone-test/bin/python -u .github/mobile_check.py

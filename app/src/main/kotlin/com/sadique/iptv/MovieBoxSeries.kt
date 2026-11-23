@@ -133,6 +133,7 @@ internal fun MovieBox.episodeStreams(
     }
     // 1. resourceDetectors — files tagged with this season/episode.
     val detectors = details.detectors
+    android.util.Log.i("EpisodeCheck","detectors=${detectors?.length()} keys=${detectors?.optJSONObject(0)?.keys()?.asSequence()?.toList()}")
     if (detectors != null) {
         for (i in 0 until detectors.length()) {
             val det = detectors.optJSONObject(i) ?: continue
@@ -166,6 +167,7 @@ internal fun MovieBox.episodeStreams(
             "$BASE/subject-api/play-info/v2?subjectId=${urlEncode(details.movie.subjectId)}&se=$season&ep=$episode",
             null,
         )
+        android.util.Log.i("EpisodeCheck","play keys=${playInfo.keys().asSequence().toList()} first=${playInfo.optJSONArray(\"streams\")?.optJSONObject(0)?.keys()?.asSequence()?.toList()}")
         val playStreams = playInfo.optJSONArray("streams")
         if (playStreams != null) {
             val displayRes = playInfo.optString("displayResolutions", "")
@@ -173,7 +175,8 @@ internal fun MovieBox.episodeStreams(
                 parsePlayInfoStream(playStreams.optJSONObject(i), displayRes)?.let { add(it) }
             }
         }
-    } catch (_: IOException) {
+    } catch (e: IOException) {
+        android.util.Log.i("EpisodeCheck", "request failure type=${e.javaClass.simpleName} status=${Regex(\"(?<![0-9])[45][0-9]{2}(?![0-9])\").find(e.message.orEmpty())?.value}")
         // play-info is a fallback source — detectors may already have files.
     }
     // 3. Resource list with se/ep (+ recovery for placeholder links).
@@ -188,6 +191,7 @@ internal fun MovieBox.episodeStreams(
                 "$BASE/subject-api/resource?subjectId=${urlEncode(details.movie.subjectId)}&se=$season&ep=$episode&page=$page&perPage=20",
                 null,
             )
+            android.util.Log.i("EpisodeCheck","resource keys=${resData.keys().asSequence().toList()} first=${resData.optJSONArray(\"list\")?.optJSONObject(0)?.keys()?.asSequence()?.toList()} count=${resData.optJSONArray(\"list\")?.length()}")
             val items = resData.optJSONArray("list") ?: break
             if (items.length() == 0) break
             for (i in 0 until items.length()) {
@@ -214,7 +218,8 @@ internal fun MovieBox.episodeStreams(
                 )?.let { add(it) }
             }
         }
-    } catch (_: IOException) {
+    } catch (e: IOException) {
+        android.util.Log.i("EpisodeCheck", "request failure type=${e.javaClass.simpleName} status=${Regex(\"(?<![0-9])[45][0-9]{2}(?![0-9])\").find(e.message.orEmpty())?.value}")
         // Same: best-effort fallback.
     }
     if (found.isEmpty()) throw IOException("Is episode ke liye koi playable link nahi mila.")
