@@ -707,9 +707,13 @@ internal fun MainActivity.toggleSubtitles() {
 }
 
 
-/** CC button state: cyan while subtitles are on, white while off. */
+/** CC button state: cyan while subtitles are on, white while off.
+ * (No isInitialized guard: the button is created in onCreate with the
+ * rest of the overlay, and this only runs while a movie plays — the
+ * same invariant the Quality/Audio buttons already rely on. A
+ * ::prop.isInitialized check only compiles inside the declaring
+ * class, so it cannot live in this file.) */
 internal fun MainActivity.updateCCButton() {
-    if (!::movieCCButton.isInitialized) return
     movieCCButton.setTextColor(if (subtitlesEnabled) cyan else Color.WHITE)
     movieCCButton.contentDescription =
         if (subtitlesEnabled) "Subtitles on" else "Subtitles off"
