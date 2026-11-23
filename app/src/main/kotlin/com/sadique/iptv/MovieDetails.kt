@@ -736,6 +736,44 @@ internal fun MainActivity.updateCCButton() {
         if (subtitlesEnabled) "Subtitles on" else "Subtitles off"
 }
 
+/** Subtitle sizes (sp) offered in the CC menu. Medium (20sp) is the
+ * default — the old ExoPlayer default scaled with the view height
+ * and was far too big on TV. */
+internal val subtitleSizeOptions = listOf(16f to "Chhota", 20f to "Medium", 24f to "Bara")
+
+/** The persisted subtitle size (sp) — the CC menu's choice, kept
+ * across restarts. */
+internal var MainActivity.subtitleSizeSp: Float
+    get() = getSharedPreferences("iptv", Context.MODE_PRIVATE)
+        .getFloat("subtitle_size_sp", 20f)
+    set(value) {
+        getSharedPreferences("iptv", Context.MODE_PRIVATE).edit()
+            .putFloat("subtitle_size_sp", value).apply()
+    }
+
+/** CC menu (player CC button): subtitles on/off + subtitle size.
+ * Picking a size applies it at once to the playing subtitles and
+ * remembers it. */
+internal fun MainActivity.showSubtitleStyleDialog() {
+    if (currentSubtitle == null) return
+    val current = subtitleSizeSp
+    val items = mutableListOf(if (subtitlesEnabled) "CC band karein" else "CC chalu karein")
+    items += subtitleSizeOptions.map { (size, label) ->
+        "Size: $label" + if (size == current) " ✓" else ""
+    }
+    AlertDialog.Builder(this).setTitle("Subtitles (CC)")
+        .setItems(items.toTypedArray()) { dialog, which ->
+            if (which == 0) {
+                toggleSubtitles()
+            } else {
+                val size = subtitleSizeOptions[which - 1].first
+                subtitleSizeSp = size
+                playerController?.setSubtitleSize(size)
+            }
+            dialog.dismiss()
+        }.show()
+}
+
 
 /** Play the previous/next episode from the player (Prev/Next buttons).
  * Resolves the episode in the background on demand (no prefetch). */

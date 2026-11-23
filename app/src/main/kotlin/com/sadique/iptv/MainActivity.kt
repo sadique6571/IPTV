@@ -967,7 +967,7 @@ class MainActivity : Activity() {
             background = overlayButtonBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
-            setOnClickListener { toggleSubtitles() }
+            setOnClickListener { showSubtitleStyleDialog() }
         }
         overlayBar.addView(movieCCButton, LinearLayout.LayoutParams(-2, dp(48)))
         overlayBar.addView(fullscreenButton, overlayParams())
@@ -1184,6 +1184,9 @@ class MainActivity : Activity() {
                     if (seekable) startSeekUpdates() else stopSeekUpdates()
                 }
             })
+        // The CC menu's remembered subtitle size (default Medium 20sp) —
+        // the player applies it whenever a PlayerView is created.
+        playerController?.subtitleSizeSp = subtitleSizeSp
         // The Movies overlay sits on top of the Live TV layout in a frame,
         // so opening it never detaches the player view underneath. It
         // builds on first open (ensureMoviesView), not here — building it

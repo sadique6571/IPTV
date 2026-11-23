@@ -1,9 +1,11 @@
 package com.sadique.iptv
 
 import android.content.Context
+import android.graphics.Color
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.TypedValue
 import android.view.Gravity
 import android.widget.FrameLayout
 import androidx.media3.common.C
@@ -22,6 +24,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 
 /**
@@ -138,6 +141,34 @@ internal class PlayerController(
         selector.setParameters(
             selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled).build(),
         )
+    }
+
+    /** Subtitle (CC) size in sp, set from MainActivity (the persisted
+     * choice from the CC menu). Default 20sp — the previous ExoPlayer
+     * default scaled with the view height and was far too big on TV. */
+    var subtitleSizeSp: Float = 20f
+
+    /** Netflix-style subtitles: white text, no black box behind it, a
+     * subtle dark shadow so it stays readable on bright scenes, and
+     * close to the bottom of the picture. Applied whenever a new
+     * PlayerView is created, and whenever the size changes. */
+    fun applySubtitleStyle() {
+        val view = playerView?.subtitleView ?: return
+        view.setStyle(
+            CaptionStyleCompat(
+                Color.WHITE, Color.TRANSPARENT, Color.TRANSPARENT,
+                CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW, Color.BLACK, null,
+            ),
+        )
+        view.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSizeSp)
+        view.setBottomPaddingFraction(0.03f)
+    }
+
+    /** Change the subtitle size live (from the CC menu) and re-apply
+     * the style — the playing subtitles resize at once. */
+    fun setSubtitleSize(sizeSp: Float) {
+        subtitleSizeSp = sizeSp
+        applySubtitleStyle()
     }
 
     fun hasPlayer(): Boolean = player != null
@@ -341,6 +372,10 @@ internal class PlayerController(
             isFocusable = false
         }
         screen.addView(playerView, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
+        // Netflix-style subtitles (no black box, smaller text, close to
+        // the bottom) — applied at every player creation, so a player
+        // rebuild after stop() does not lose the style.
+        applySubtitleStyle()
     }
 
     private fun mediaItemFor(url: String, forceHls: Boolean = false): MediaItem {
