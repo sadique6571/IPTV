@@ -877,7 +877,7 @@ class MainActivity : Activity() {
             // past their text + padding — same cause as the wide
             // chips, see Prev/Next below).
             minWidth = 0
-            setPadding(dp(if (isTv) 3 else 4), dp(if (isTv) 6 else 4), dp(if (isTv) 3 else 4), dp(if (isTv) 6 else 4))
+            setPadding(dp(3), dp(if (isTv) 6 else 4), dp(3), dp(if (isTv) 6 else 4))
             setTextColor(Color.WHITE)
             textSize = if (isTv) 12f else 12f
             gravity = Gravity.CENTER
@@ -893,9 +893,9 @@ class MainActivity : Activity() {
             id = View.generateViewId()
             minimumWidth = 0
             minimumHeight = 0
-            // Demo match (v2.0.16): tight plain text, like "-10" (TV: 3dp sides now).
+            // Demo match (v2.0.16): tight plain text, like "-10" (3dp sides now).
             minWidth = 0
-            setPadding(dp(if (isTv) 3 else 4), dp(if (isTv) 6 else 4), dp(if (isTv) 3 else 4), dp(if (isTv) 6 else 4))
+            setPadding(dp(3), dp(if (isTv) 6 else 4), dp(3), dp(if (isTv) 6 else 4))
             setTextColor(Color.WHITE)
             textSize = if (isTv) 12f else 12f
             gravity = Gravity.CENTER
