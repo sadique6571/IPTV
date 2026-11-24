@@ -348,7 +348,8 @@ class MainActivity : Activity() {
     internal var movieFeedLoaded = false
     internal var movieFeedLoading = false
     internal var movieFeedRequest = 0
-    // Movies home v2 (v2.0.35): Netflix-style tabs + hero + rails.
+    // Movies home v2 (v2.0.35): Netflix-style tabs + rails. (The hero
+    // banner was removed — the user watches via search.)
     internal var moviesTab = MoviesTab.HOME
     internal lateinit var moviesTabRow: LinearLayout
     internal var moviesSeeAll: MoviesSeeAll? = null
@@ -361,19 +362,6 @@ class MainActivity : Activity() {
     // Genres tab quick-search chips (Marvel, DC, … — moved here from
     // the Movies home in v2.0.37): rebuilt per render with the genre row.
     internal lateinit var movieGenreQuickRow: LinearLayout
-    // Hero rotation state (MoviesHero.kt): the featured movies, the
-    // current index, a request counter that drops stale details loads,
-    // and the views the rotation rebinds (null while no hero is shown).
-    internal var heroMovies = emptyList<MovieBox.Movie>()
-    internal var heroIndex = 0
-    internal var heroRequest = 0
-    internal val heroRotateRunnable = Runnable { rotateMoviesHero() }
-    internal var heroTitleView: TextView? = null
-    internal var heroMetaView: TextView? = null
-    internal var heroPosterView: ImageView? = null
-    internal var heroWatchView: Button? = null
-    internal var heroListView: Button? = null
-    internal var heroDotsView: LinearLayout? = null
     // Downloads (mobile only, MoviesDownloads.kt): one active download
     // on its OWN executor — the shared `imports` executor is
     // single-thread, and a 35-minute download would block every
@@ -826,14 +814,22 @@ class MainActivity : Activity() {
         overlayBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = shape(overlayDark, 0x1affffff.toInt(), 24, 1)
+            // Glassy (v2.0.17): neutral black glass pill — 60% black
+            // + white rim — so the video shows through the bar like
+            // it does through the subtitle box. The demo's glass is
+            // neutral, not the app's blue glassShape or the old flat
+            // navy fill, which both read as solid cards over video.
+            background = shape(0x99000000.toInt(), 0x40ffffff.toInt(), 24, 1)
             // Demo match (v2.0.15): slimmer bar — the demo's bar is
             // compact, so less padding leaves more room for the seek
             // bar. TV gets the same slim bar now (was phone-only).
             // v2.0.16: TV vertical padding 8dp — the demo's pill is
             // ~120px tall on a 1920 frame (60dp), and the 40dp disc
             // needs the extra breathing room to match it.
-            setPadding(dp(6), dp(if (isTv) 8 else 4), dp(6), dp(if (isTv) 8 else 4))
+            // v2.0.17: roomier bar — the demo's chips sit with clear
+            // space above and below inside the pill (chips ~40% of
+            // the bar height), so TV 10dp / phone 6dp vertical.
+            setPadding(dp(6), dp(if (isTv) 10 else 6), dp(6), dp(if (isTv) 10 else 6))
             elevation = dp(6).toFloat()
         }
         playPauseButton = overlayButton(R.drawable.ic_play) {
@@ -854,7 +850,11 @@ class MainActivity : Activity() {
             contentDescription = "Fullscreen"
             minimumWidth = 0
             minimumHeight = 0
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            // Demo match (v2.0.17): the demo's fullscreen chip is the
+            // same height as the text chips — the old 40dp box (the
+            // disc's overlayParams) stood taller than the 28dp chips.
+            // 4dp padding leaves the icon 20dp in a 28dp box.
+            setPadding(dp(4), dp(4), dp(4), dp(4))
             background = rowChipBackground()
             setOnClickListener {
                 applyFullScreen(!fullScreen)
@@ -938,7 +938,7 @@ class MainActivity : Activity() {
             setPadding(dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2), dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2))
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
-            textSize = if (isTv) 11f else 11f
+            textSize = if (isTv) 10f else 10f
             gravity = Gravity.CENTER
             background = rowChipBackground()
             visibility = View.GONE
@@ -957,7 +957,7 @@ class MainActivity : Activity() {
             setPadding(dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2), dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2))
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
-            textSize = if (isTv) 11f else 11f
+            textSize = if (isTv) 10f else 10f
             gravity = Gravity.CENTER
             background = rowChipBackground()
             visibility = View.GONE
@@ -1036,7 +1036,7 @@ class MainActivity : Activity() {
             contentDescription = "Quality"
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
-            textSize = if (isTv) 11f else 11f
+            textSize = if (isTv) 10f else 10f
             gravity = Gravity.CENTER
             id = View.generateViewId()
             minimumWidth = 0
@@ -1064,7 +1064,7 @@ class MainActivity : Activity() {
             minWidth = 0
             // Demo match (v2.0.16): TV 4dp sides / 11sp now.
             setPadding(dp(if (isTv) 4 else 4), 0, dp(if (isTv) 4 else 4), 0)
-            textSize = if (isTv) 11f else 11f
+            textSize = if (isTv) 10f else 10f
             setTextColor(Color.WHITE)
             background = rowChipBackground()
             visibility = View.GONE
@@ -1083,7 +1083,7 @@ class MainActivity : Activity() {
             minWidth = 0
             // Demo match (v2.0.16): TV 6dp sides / 11sp now.
             setPadding(dp(if (isTv) 6 else 6), 0, dp(if (isTv) 6 else 6), 0)
-            textSize = if (isTv) 11f else 11f
+            textSize = if (isTv) 10f else 10f
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
             background = rowChipBackground()
@@ -1100,7 +1100,7 @@ class MainActivity : Activity() {
             marginStart = dp(2)
             marginEnd = dp(2)
         })
-        overlayBar.addView(fullscreenButton, overlayParams())
+        overlayBar.addView(fullscreenButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 28 else 28)))
         screen.addView(overlayBar, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
             marginStart = dp(8)
             marginEnd = dp(8)
@@ -1112,9 +1112,14 @@ class MainActivity : Activity() {
         topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            // Glassy (v2.0.17): neutral black glass fading out, like
+            // the demo's scrim shape — the old pure-black 67%
+            // gradient and the blue glass tint both read as a solid
+            // shadow, not glass. Same top opacity, so the title
+            // stays as readable.
             background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0xaa000000.toInt(), 0x00000000),
+                intArrayOf(0x99000000.toInt(), 0x00000000),
             )
             setPadding(dp(16), dp(16), dp(16), dp(28))
             visibility = View.GONE
@@ -1146,7 +1151,9 @@ class MainActivity : Activity() {
         upNextCard = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = shape(overlayDark, 0x1affffff.toInt(), 16, 1)
+            // Neutral black glass like the bottom bar (v2.0.17) —
+            // the old navy fill read as a solid card over video.
+            background = shape(0x99000000.toInt(), 0x40ffffff.toInt(), 16, 1)
             setPadding(dp(10), dp(10), dp(14), dp(10))
             elevation = dp(6).toFloat()
             visibility = View.GONE
@@ -1394,9 +1401,11 @@ class MainActivity : Activity() {
                     if (seekable) startSeekUpdates() else stopSeekUpdates()
                 }
             })
-        // The CC menu's remembered subtitle size (default Medium 20sp) —
-        // the player applies it whenever a PlayerView is created.
+        // The CC menu's remembered subtitle size (default Medium 20sp) and
+        // background (default on, the demo's black box) — the player
+        // applies both whenever a PlayerView is created.
         playerController?.subtitleSizeSp = subtitleSizeSp
+        playerController?.subtitleBackground = subtitleBackground
         // The Movies overlay sits on top of the Live TV layout in a frame,
         // so opening it never detaches the player view underneath. It
         // builds on first open (ensureMoviesView), not here — building it
@@ -1681,9 +1690,6 @@ class MainActivity : Activity() {
                 selected?.let(::play)
             }
         }
-        // The hero rotation pauses while the app is backgrounded (see
-        // rotateMoviesHero) — restart it when the Movies home is showing.
-        if (moviesOpen && moviesTab == MoviesTab.HOME) scheduleMoviesHero()
         startNetworkTicker()
     }
 

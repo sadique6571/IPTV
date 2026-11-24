@@ -396,7 +396,6 @@ internal fun MainActivity.openMoviesToDetails() {
 
 
 internal fun MainActivity.closeMovies() {
-    stopMoviesHero()
     moviesOpen = false
     moviesView.visibility = View.GONE
     // Release the focus trap before focus goes back to the Live TV layout.
@@ -462,7 +461,6 @@ internal fun MainActivity.searchMovies() {
     movieProgress.visibility = View.VISIBLE
     movieStatus.text = "Search ho raha hai…"
     movieResults.removeAllViews()
-    stopMoviesHero()
     imports.execute {
         try {
             val results = movieBox.search(query)

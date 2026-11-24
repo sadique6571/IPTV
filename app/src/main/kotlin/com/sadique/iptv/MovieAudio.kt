@@ -1,6 +1,5 @@
 package com.sadique.iptv
 
-import android.app.AlertDialog
 import java.io.IOException
 
 internal fun MovieBox.Details.audioDubs(): List<MovieBox.Dub> =
@@ -15,25 +14,31 @@ internal fun MainActivity.showMovieAudio() {
         toast("Is video mein aur audio option nahi hai.")
         return
     }
-    val checked = if (tracks.isEmpty()) dubs.indexOfFirst { it.subjectId == movie.subjectId }
-        else tracks.indexOfFirst { it.selected }
     val generation = audioRequest
-    AlertDialog.Builder(this).setTitle("Audio language")
-        .setSingleChoiceItems(labels.toTypedArray(), checked) { dialog, which ->
-            dialog.dismiss()
-            if (generation != audioRequest || playingMovie !== movie) return@setSingleChoiceItems
-            if (which < tracks.size) {
-                audioRequest++
-                playerController?.selectAudio(tracks[which])
-            } else {
-                val dub = dubs[which - tracks.size]
-                if (dub.subjectId != movie.subjectId) switchMovieDub(movie, dub)
-                else audioRequest++
-            }
-        }.show()
+    val sheet = PlayerMenuSheet(this, "Audio")
+    for (track in tracks) {
+        sheet.row(track.label, {
+            playerController?.audioTracks()
+                ?.firstOrNull { it.override == track.override }?.selected == true
+        }) {
+            if (generation != audioRequest || playingMovie !== movie) return@row
+            audioRequest++
+            playerController?.selectAudio(track)
+        }
+    }
+    for (dub in dubs) {
+        sheet.row(dub.language.ifBlank { dub.label }, {
+            tracks.isEmpty() && playingMovie?.subjectId == dub.subjectId
+        }) {
+            if (generation != audioRequest || playingMovie !== movie) return@row
+            if (dub.subjectId != movie.subjectId) switchMovieDub(movie, dub) { sheet.refresh() }
+            else audioRequest++
+        }
+    }
+    sheet.show()
 }
 
-private fun MainActivity.switchMovieDub(movie: MovieBox.Movie, dub: MovieBox.Dub) {
+private fun MainActivity.switchMovieDub(movie: MovieBox.Movie, dub: MovieBox.Dub, onSwitched: (() -> Unit)? = null) {
     val request = ++audioRequest
     val season = playingEpisodeSeason
     val episode = playingEpisodeEpisode
@@ -66,6 +71,7 @@ private fun MainActivity.switchMovieDub(movie: MovieBox.Movie, dub: MovieBox.Dub
             currentMovieStreams = streams
             selectedQuality = stream.resolution
             applyControlVisibility()
+            onSwitched?.invoke()
         }
     }
 }
