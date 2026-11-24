@@ -199,8 +199,11 @@ internal class PlayerController(
     }
 
     /** Change the subtitle background live (from the CC menu) and
-     * re-apply the style — the black box appears/disappears at once. */
-    fun setSubtitleBackground(enabled: Boolean) {
+     * re-apply the style — the black box appears/disappears at once.
+     * Named apply* because a fun setSubtitleBackground would clash
+     * with the var's generated setter (same JVM signature) — the
+     * same reason setSubtitlesEnabled became applySubtitlesEnabled. */
+    fun applySubtitleBackground(enabled: Boolean) {
         subtitleBackground = enabled
         applySubtitleStyle()
     }

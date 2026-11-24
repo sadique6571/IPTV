@@ -1014,7 +1014,7 @@ internal fun MainActivity.showSubtitleStyleDialog() {
     sheet.section("BACKGROUND")
     sheet.row("Black background", { subtitleBackground }) {
         subtitleBackground = !subtitleBackground
-        playerController?.setSubtitleBackground(subtitleBackground)
+        playerController?.applySubtitleBackground(subtitleBackground)
     }
     sheet.show()
 }
