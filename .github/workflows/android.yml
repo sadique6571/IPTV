@@ -31,6 +31,19 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      # Cache Gradle dependencies + wrapper: without this every run
+      # re-downloads hundreds of artifacts from Maven Central — that is
+      # what filled the log with ~140k lines and tripped its 429 rate
+      # limit on main run #165. The key changes when any Gradle file
+      # changes, so a dependency bump still resolves fresh.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
       - name: Prepare Android SDK
         run: |
           sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
@@ -41,7 +54,10 @@ jobs:
           fi
       - name: Run unit tests and Android lint
         run: |
-          if ! bash gradlew :app:testDebugUnitTest :app:lintDebug; then
+          # --quiet: Gradle's default output logs every downloaded file
+          # and every lint warning (tens of thousands of lines). Errors
+          # still print, and the lint-error fallback below still runs.
+          if ! bash gradlew --quiet :app:testDebugUnitTest :app:lintDebug; then
             if [ -f app/build/reports/lint-results-debug.xml ]; then
               python3 - <<'PYLINT'
           import xml.etree.ElementTree as xml
@@ -56,7 +72,7 @@ jobs:
       - name: Build debug APK with Gradle
         run: |
           chmod +x gradlew
-          ./gradlew :app:compactDebugApk --stacktrace
+          ./gradlew --quiet :app:compactDebugApk --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: IPTV-debug
