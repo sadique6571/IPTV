@@ -662,27 +662,38 @@ internal fun MainActivity.playMovieStream(
     playingMovie = movie
     // A blank title leaves the top bar showing only the back arrow.
     // The details API always has the real title ("The Body [Hindi]"
-    // verified live), so fetch it in the background and fill the bar
-    // — and the stored title — when it arrives, whichever path
-    // started playback with a blank title. Playback itself never
-    // waits for this.
-    if (movie.title.isBlank() && movie.subjectId.isNotBlank() && !url.startsWith("file:")) {
-        val titleMovie = movie
-        imports.execute {
-            try {
-                val fetched = movieBox.details(titleMovie.subjectId)
-                runOnUiThread {
-                    if (isDestroyed || playingMovie?.subjectId != titleMovie.subjectId) return@runOnUiThread
-                    val title = fetched.movie.title
-                    if (title.isBlank()) return@runOnUiThread
-                    playingMovie = playingMovie?.copy(title = title)
-                    currentPlayTitle = title
-                    currentMovieDetails = fetched
-                    topTitleLabel.text = topBarTitle()
+    // verified live). Fill it from whatever the app already knows
+    // first (the details screen's title / the stored play title),
+    // then fetch it in the background as a backstop. v2.0.14's fetch
+    // only ran on the single-thread `imports` queue — a stuck task
+    // ahead of it left the bar blank for the whole playback — and it
+    // caught only IOException, so a parse failure also left it blank.
+    // This one runs on its own thread and catches everything.
+    // Playback itself never waits for any of this.
+    if (movie.title.isBlank()) {
+        val known = currentPlayTitle.ifBlank { currentMovieDetails?.movie?.title.orEmpty() }
+        if (known.isNotBlank()) {
+            playingMovie = movie.copy(title = known)
+            currentPlayTitle = known
+            topTitleLabel.text = topBarTitle()
+        } else if (movie.subjectId.isNotBlank() && !url.startsWith("file:")) {
+            val titleMovie = movie
+            Thread {
+                try {
+                    val fetched = movieBox.details(titleMovie.subjectId)
+                    runOnUiThread {
+                        if (isDestroyed || playingMovie?.subjectId != titleMovie.subjectId) return@runOnUiThread
+                        val title = fetched.movie.title
+                        if (title.isBlank()) return@runOnUiThread
+                        playingMovie = playingMovie?.copy(title = title)
+                        currentPlayTitle = title
+                        currentMovieDetails = fetched
+                        topTitleLabel.text = topBarTitle()
+                    }
+                } catch (_: Exception) {
+                    // Title stays blank; playback is unaffected.
                 }
-            } catch (_: IOException) {
-                // Title stays blank; playback is unaffected.
-            }
+            }.apply { name = "title-fetch"; isDaemon = true; start() }
         }
     }
     playingEpisodeSeason = episodeSeason
@@ -691,7 +702,9 @@ internal fun MainActivity.playMovieStream(
     playingMovieHeaders = headers
     movieEnded = false
     hideUpNextCard()
-    setMovieMeta(movie, episodeSeason, episodeNumber)
+    // Use the title-filled copy when the blank-title heal ran above,
+    // so the meta line shows the title too (not just the top bar).
+    setMovieMeta(playingMovie ?: movie, episodeSeason, episodeNumber)
     playPauseButton.setImageResource(R.drawable.ic_pause)
     videoOptions = emptyList()
     selectedVideoIndex = -1
