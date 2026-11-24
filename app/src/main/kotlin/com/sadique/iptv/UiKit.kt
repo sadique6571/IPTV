@@ -527,7 +527,7 @@ internal fun Context.overlayButton(iconRes: Int, action: () -> Unit) = ImageButt
 
 
 internal fun Context.overlayParams() = LinearLayout.LayoutParams(
-    dp(if (isTvDevice()) 48 else 40), dp(if (isTvDevice()) 48 else 40),
+    dp(if (isTvDevice()) 44 else 40), dp(if (isTvDevice()) 44 else 40),
 ).apply {
     marginStart = dp(3)
     marginEnd = dp(3)
