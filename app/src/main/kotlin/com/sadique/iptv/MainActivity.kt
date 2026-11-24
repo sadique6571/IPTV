@@ -832,6 +832,10 @@ class MainActivity : Activity() {
         }
         playPauseButton.id = View.generateViewId()
         playPauseButton.contentDescription = "Play / pause"
+        // Demo UI: white disc with a dark glyph (the demo's pause
+        // button) instead of the transparent pill button.
+        playPauseButton.background = playPauseCircleBackground()
+        playPauseButton.imageTintList = ColorStateList.valueOf(0xff111111.toInt())
         fullscreenIcon = FullscreenIconDrawable(expanded = false)
         fullscreenButton = ImageButton(this).apply {
             setImageDrawable(fullscreenIcon)
@@ -841,15 +845,16 @@ class MainActivity : Activity() {
             minimumWidth = 0
             minimumHeight = 0
             setPadding(dp(10), dp(10), dp(10), dp(10))
-            background = overlayButtonBackground()
+            background = rowChipBackground()
             setOnClickListener {
                 applyFullScreen(!fullScreen)
                 showPlayerControls()
             }
         }
-        // Demo UI: -10s / +10s seek buttons flanking play/pause.
+        // Demo UI: plain "-10" / "+10" text (no box, like the demo),
+        // right after the play/pause disc.
         seekBackButton = Button(this).apply {
-            text = "−10s"
+            text = "-10"
             isAllCaps = false
             contentDescription = "Back 10 seconds"
             id = View.generateViewId()
@@ -857,7 +862,6 @@ class MainActivity : Activity() {
             minimumHeight = 0
             setPadding(dp(12), dp(10), dp(12), dp(10))
             setTextColor(Color.WHITE)
-            setTypeface(null, Typeface.BOLD)
             textSize = if (isTv) 14f else 13f
             gravity = Gravity.CENTER
             background = overlayButtonBackground()
@@ -866,7 +870,7 @@ class MainActivity : Activity() {
             setOnClickListener { seekMovieBy(-10_000) }
         }
         seekForwardButton = Button(this).apply {
-            text = "+10s"
+            text = "+10"
             isAllCaps = false
             contentDescription = "Forward 10 seconds"
             id = View.generateViewId()
@@ -874,7 +878,6 @@ class MainActivity : Activity() {
             minimumHeight = 0
             setPadding(dp(12), dp(10), dp(12), dp(10))
             setTextColor(Color.WHITE)
-            setTypeface(null, Typeface.BOLD)
             textSize = if (isTv) 14f else 13f
             gravity = Gravity.CENTER
             background = overlayButtonBackground()
@@ -882,13 +885,13 @@ class MainActivity : Activity() {
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { seekMovieBy(10_000) }
         }
+        overlayBar.addView(playPauseButton, overlayParams())
         overlayBar.addView(seekBackButton, LinearLayout.LayoutParams(
             -2, dp(if (isTv) 48 else 44),
         ).apply {
             marginStart = dp(3)
             marginEnd = dp(3)
         })
-        overlayBar.addView(playPauseButton, overlayParams())
         overlayBar.addView(seekForwardButton, LinearLayout.LayoutParams(
             -2, dp(if (isTv) 48 else 44),
         ).apply {
@@ -896,9 +899,10 @@ class MainActivity : Activity() {
             marginEnd = dp(3)
         })
         // Previous / Next episode (series only — hidden otherwise, see
-        // updatePlayerControls).
+        // updatePlayerControls). Demo UI: plain "Prev" / "Next" chips
+        // after the seek bar, not before it.
         moviePrevButton = Button(this).apply {
-            text = "◀ Prev"
+            text = "Prev"
             isAllCaps = false
             contentDescription = "Previous episode"
             id = View.generateViewId()
@@ -909,19 +913,13 @@ class MainActivity : Activity() {
             setTypeface(null, Typeface.BOLD)
             textSize = if (isTv) 14f else 13f
             gravity = Gravity.CENTER
-            background = overlayButtonBackground()
+            background = rowChipBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { playAdjacentEpisode(-1) }
         }
-        overlayBar.addView(moviePrevButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 48 else 44),
-        ).apply {
-            marginStart = dp(3)
-            marginEnd = dp(3)
-        })
         movieNextButton = Button(this).apply {
-            text = "Next ▶"
+            text = "Next"
             isAllCaps = false
             contentDescription = "Next episode"
             id = View.generateViewId()
@@ -932,17 +930,11 @@ class MainActivity : Activity() {
             setTypeface(null, Typeface.BOLD)
             textSize = if (isTv) 14f else 13f
             gravity = Gravity.CENTER
-            background = overlayButtonBackground()
+            background = rowChipBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { playAdjacentEpisode(1) }
         }
-        overlayBar.addView(movieNextButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 48 else 44),
-        ).apply {
-            marginStart = dp(3)
-            marginEnd = dp(3)
-        })
         seekRow = LinearLayout(this).apply {
             visibility = View.GONE
             gravity = Gravity.CENTER_VERTICAL
@@ -958,7 +950,7 @@ class MainActivity : Activity() {
             // A taller seek bar is easier to drag by touch.
             if (!isTv) minimumHeight = dp(48)
             progressTintList = ColorStateList.valueOf(netflixRed)
-            // Custom round thumb (white dot + cyan ring); the tint is
+            // Custom round thumb (white dot + red ring); the tint is
             // cleared so it does not wash out the ring.
             thumbTintList = null
             thumb = seekThumb()
@@ -986,12 +978,26 @@ class MainActivity : Activity() {
                 }
             })
         }
-        seekLabel = label("0:00", 13, Color.WHITE)
-        remainingLabel = label("−0:00", 13, Color.WHITE)
-        seekRow.addView(seekLabel)
+        // Demo UI: one combined time readout right of the bar
+        // ("24:31 / 1:58:00"); the old remaining-time label is hidden.
+        seekLabel = label("0:00 / 0:00", 13, Color.WHITE)
+        remainingLabel = label("−0:00", 13, Color.WHITE).apply { visibility = View.GONE }
         seekRow.addView(seekBar, LinearLayout.LayoutParams(0, dp(48), 1f))
+        seekRow.addView(seekLabel)
         seekRow.addView(remainingLabel)
         overlayBar.addView(seekRow, LinearLayout.LayoutParams(0, -2, 1f))
+        overlayBar.addView(moviePrevButton, LinearLayout.LayoutParams(
+            -2, dp(if (isTv) 48 else 44),
+        ).apply {
+            marginStart = dp(3)
+            marginEnd = dp(3)
+        })
+        overlayBar.addView(movieNextButton, LinearLayout.LayoutParams(
+            -2, dp(if (isTv) 48 else 44),
+        ).apply {
+            marginStart = dp(3)
+            marginEnd = dp(3)
+        })
         movieQualityButton = Button(this).apply {
             text = "Quality"
             isAllCaps = false
@@ -1004,7 +1010,7 @@ class MainActivity : Activity() {
             minimumWidth = 0
             minimumHeight = 0
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = overlayButtonBackground()
+            background = rowChipBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { showQualityDialog() }
@@ -1024,7 +1030,7 @@ class MainActivity : Activity() {
             minWidth = 0
             setPadding(dp(8), 0, dp(8), 0)
             setTextColor(Color.WHITE)
-            background = overlayButtonBackground()
+            background = rowChipBackground()
             visibility = View.GONE
             setOnClickListener { showMovieAudio() }
         }
@@ -1039,7 +1045,7 @@ class MainActivity : Activity() {
             setPadding(dp(12), 0, dp(12), 0)
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
-            background = overlayButtonBackground()
+            background = rowChipBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { showSubtitleStyleDialog() }
@@ -1052,13 +1058,16 @@ class MainActivity : Activity() {
             bottomMargin = dp(8)
         })
         // Demo UI: top title bar — Back + playing title
-        // ("The Body • S1:E1"). Shows/hides with the bottom controls.
+        // ("The Body • S1:E1") on a full-width top scrim, like the
+        // demo (no pill). Shows/hides with the bottom controls.
         topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = shape(overlayDark, 0x1affffff.toInt(), 24, 1)
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            elevation = dp(6).toFloat()
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0xaa000000.toInt(), 0x00000000),
+            )
+            setPadding(dp(16), dp(16), dp(16), dp(28))
             visibility = View.GONE
         }
         topBackButton = Button(this).apply {
@@ -1085,10 +1094,7 @@ class MainActivity : Activity() {
         }
         topBar.addView(topBackButton)
         topBar.addView(topTitleLabel)
-        screen.addView(topBar, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
-            topMargin = dp(16)
-            marginStart = dp(16)
-        })
+        screen.addView(topBar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         // Demo UI: Up Next card — appears in the last 20s of a series
         // episode; auto-plays the next episode after a 10s countdown.
         // Tapping it plays the next episode at once.
@@ -1672,6 +1678,37 @@ class MainActivity : Activity() {
     }
 
     @Deprecated("Use the system back gesture callback on newer Android versions")
+    /** Back while something plays: stop it and return to the movie's
+     * details screen when one was rendered, else to Live TV. */
+    private fun backFromMoviePlayback() {
+        saveMovieProgress(async = false)
+        val stoppedChannel = selected
+        // A movie/episode played from its details screen returns
+        // there (episode list for series) instead of Live TV: Play
+        // closed the Movies browser, but the rendered details are
+        // still in memory. Anything else (channel, resume without
+        // rendered details) keeps the old behaviour.
+        val wasMovie = playingMovie != null
+        val details = currentMovieDetails
+        stopPlayback()
+        selected = null
+        playingMovie = null
+        playingMovieUrl = null
+        playingMovieHeaders = emptyMap()
+        movieEnded = false
+        playPauseButton.setImageResource(R.drawable.ic_play)
+        setChannelMeta(null)
+        status.text = ""
+        applyControlVisibility()
+        markPlayingRow()
+        updateBrowseVisibility()
+        if (wasMovie && details != null && movieDetailsRendered) {
+            openMoviesToDetails()
+        } else {
+            focusBrowse(stoppedChannel)
+        }
+    }
+
     override fun onBackPressed() {
         if (moviesOpen) {
             if (moviesDetailsPane.visibility == View.VISIBLE) {
@@ -1684,7 +1721,17 @@ class MainActivity : Activity() {
                 closeMovies()
             }
         } else if (fullScreen) {
-            applyFullScreen(false)
+            // Mobile: one Back from a fullscreen movie returns to its
+            // details screen. Exiting fullscreen alone only shows the
+            // channels list (the Movies browser is closed while a
+            // movie plays), so the user would need a second Back.
+            // TV keeps the two-step behaviour.
+            if (!isTv && playingMovie != null && currentMovieDetails != null && movieDetailsRendered) {
+                applyFullScreen(false)
+                backFromMoviePlayback()
+            } else {
+                applyFullScreen(false)
+            }
         } else if (query.isNotEmpty()) {
             // Back from a search restores the full list (task 2) — the user
             // is never stuck on a filtered (or empty) result.
@@ -1698,32 +1745,7 @@ class MainActivity : Activity() {
         } else {
             // Back while something plays stops it — save the movie's place
             // in Continue Watching before the player is released.
-            saveMovieProgress(async = false)
-            val stoppedChannel = selected
-            // A movie/episode played from its details screen returns
-            // there (episode list for series) instead of Live TV: Play
-            // closed the Movies browser, but the rendered details are
-            // still in memory. Anything else (channel, resume without
-            // rendered details) keeps the old behaviour.
-            val wasMovie = playingMovie != null
-            val details = currentMovieDetails
-            stopPlayback()
-            selected = null
-            playingMovie = null
-            playingMovieUrl = null
-            playingMovieHeaders = emptyMap()
-            movieEnded = false
-            playPauseButton.setImageResource(R.drawable.ic_play)
-            setChannelMeta(null)
-            status.text = ""
-            applyControlVisibility()
-            markPlayingRow()
-            updateBrowseVisibility()
-            if (wasMovie && details != null && movieDetailsRendered) {
-                openMoviesToDetails()
-            } else {
-                focusBrowse(stoppedChannel)
-            }
+            backFromMoviePlayback()
         }
     }
 
