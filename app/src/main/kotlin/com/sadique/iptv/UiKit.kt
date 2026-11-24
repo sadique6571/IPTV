@@ -297,12 +297,13 @@ internal fun animateFocusScale(view: View, focused: Boolean) {
 
 
 /** Round seek thumb: a plain solid white dot, like the demo (the old
- * red ring read as a donut at small sizes). Sized for touch on
- * phones and smaller on TV. */
+ * red ring read as a donut at small sizes). 12dp — the 20dp dot read
+ * as a big white ball next to the demo's small dot. The thumb is
+ * only visual; the whole seek bar is the touch target. */
 internal fun Context.seekThumb() = GradientDrawable().apply {
     shape = GradientDrawable.OVAL
     setColor(Color.WHITE)
-    setSize(dp(if (isTvDevice()) 16 else 20), dp(if (isTvDevice()) 16 else 20))
+    setSize(dp(12), dp(12))
 }
 
 
@@ -526,7 +527,7 @@ internal fun Context.overlayButton(iconRes: Int, action: () -> Unit) = ImageButt
 
 
 internal fun Context.overlayParams() = LinearLayout.LayoutParams(
-    dp(if (isTvDevice()) 48 else 44), dp(if (isTvDevice()) 48 else 44),
+    dp(if (isTvDevice()) 48 else 40), dp(if (isTvDevice()) 48 else 40),
 ).apply {
     marginStart = dp(3)
     marginEnd = dp(3)

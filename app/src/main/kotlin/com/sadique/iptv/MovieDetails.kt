@@ -124,6 +124,12 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscree
             runOnUiThread {
                 if (isDestroyed || request != movieResumeRequest) return@runOnUiThread
                 movieProgress.visibility = View.GONE
+                // The resume fetched the details — keep them. A fresh
+                // app start has no currentMovieDetails/currentPlayTitle,
+                // so without this the top-bar title fallbacks were
+                // stale after a Continue Watching resume.
+                currentMovieDetails = details
+                currentPlayTitle = details.movie.title
                 // firstOrNull, never first(): an empty stream list used
                 // to throw on the UI thread and crash the app.
                 val stream = streams.firstOrNull { it.resolution == entry.quality }
@@ -654,6 +660,31 @@ internal fun MainActivity.playMovieStream(
     stopWeb()
     selected = null
     playingMovie = movie
+    // A blank title leaves the top bar showing only the back arrow.
+    // The details API always has the real title ("The Body [Hindi]"
+    // verified live), so fetch it in the background and fill the bar
+    // — and the stored title — when it arrives, whichever path
+    // started playback with a blank title. Playback itself never
+    // waits for this.
+    if (movie.title.isBlank() && movie.subjectId.isNotBlank() && !url.startsWith("file:")) {
+        val titleMovie = movie
+        imports.execute {
+            try {
+                val fetched = movieBox.details(titleMovie.subjectId)
+                runOnUiThread {
+                    if (isDestroyed || playingMovie?.subjectId != titleMovie.subjectId) return@runOnUiThread
+                    val title = fetched.movie.title
+                    if (title.isBlank()) return@runOnUiThread
+                    playingMovie = playingMovie?.copy(title = title)
+                    currentPlayTitle = title
+                    currentMovieDetails = fetched
+                    topTitleLabel.text = topBarTitle()
+                }
+            } catch (_: IOException) {
+                // Title stays blank; playback is unaffected.
+            }
+        }
+    }
     playingEpisodeSeason = episodeSeason
     playingEpisodeEpisode = episodeNumber
     playingMovieUrl = url
