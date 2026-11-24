@@ -1,11 +1,12 @@
 package com.sadique.iptv
 
+import android.view.View
 import java.io.IOException
 
 internal fun MovieBox.Details.audioDubs(): List<MovieBox.Dub> =
     (dubs + MovieBox.Dub(movie.subjectId, "Original", movie.title)).distinctBy { it.subjectId }
 
-internal fun MainActivity.showMovieAudio() {
+internal fun MainActivity.showMovieAudio(anchor: View) {
     val movie = playingMovie ?: return
     val tracks = playerController?.audioTracks().orEmpty().takeIf { it.size > 1 }.orEmpty()
     val dubs = playingDubs.filter { tracks.isEmpty() || it.subjectId != movie.subjectId }
@@ -15,9 +16,9 @@ internal fun MainActivity.showMovieAudio() {
         return
     }
     val generation = audioRequest
-    val sheet = PlayerMenuSheet(this, "Audio")
+    val popup = PlayerPopupMenu(this, anchor)
     for (track in tracks) {
-        sheet.row(track.label, {
+        popup.row(track.label, {
             playerController?.audioTracks()
                 ?.firstOrNull { it.override == track.override }?.selected == true
         }) {
@@ -27,15 +28,15 @@ internal fun MainActivity.showMovieAudio() {
         }
     }
     for (dub in dubs) {
-        sheet.row(dub.language.ifBlank { dub.label }, {
+        popup.row(dub.language.ifBlank { dub.label }, {
             tracks.isEmpty() && playingMovie?.subjectId == dub.subjectId
         }) {
             if (generation != audioRequest || playingMovie !== movie) return@row
-            if (dub.subjectId != movie.subjectId) switchMovieDub(movie, dub) { sheet.refresh() }
+            if (dub.subjectId != movie.subjectId) switchMovieDub(movie, dub) { popup.refresh() }
             else audioRequest++
         }
     }
-    sheet.show()
+    popup.show()
 }
 
 private fun MainActivity.switchMovieDub(movie: MovieBox.Movie, dub: MovieBox.Dub, onSwitched: (() -> Unit)? = null) {

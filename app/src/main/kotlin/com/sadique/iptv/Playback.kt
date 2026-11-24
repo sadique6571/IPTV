@@ -333,7 +333,7 @@ internal fun MainActivity.setQualityText(label: String) {
 }
 
 
-internal fun MainActivity.showQualityDialog() {
+internal fun MainActivity.showQualityPopup(anchor: View) {
     // Movies with single-file streams (one MP4 per quality) report a
     // single track, so track switching has nothing to pick — switch
     // the stream URL instead, resuming at the current position.
@@ -341,30 +341,30 @@ internal fun MainActivity.showQualityDialog() {
         val resolutions = currentMovieStreams.map { it.resolution }
             .filter { it > 0 }.distinct().sortedDescending()
         if (resolutions.size >= 2) {
-            val sheet = PlayerMenuSheet(this, "Quality")
+            val popup = PlayerPopupMenu(this, anchor)
             for (resolution in resolutions) {
-                sheet.row("${resolution}p", { selectedQuality == resolution }) {
+                popup.row("${resolution}p", { selectedQuality == resolution }) {
                     switchMovieQuality(resolution)
                 }
             }
-            sheet.show()
+            popup.show()
             return
         }
     }
-    val sheet = PlayerMenuSheet(this, "Quality")
-    sheet.row("Auto", { selectedVideoIndex !in videoOptions.indices }) {
+    val popup = PlayerPopupMenu(this, anchor)
+    popup.row("Auto", { selectedVideoIndex !in videoOptions.indices }) {
         playerController?.selectTrack(null)
         selectedVideoIndex = -1
         setQualityText("Quality")
     }
     for ((index, option) in videoOptions.withIndex()) {
-        sheet.row(option.label, { selectedVideoIndex == index }) {
+        popup.row(option.label, { selectedVideoIndex == index }) {
             playerController?.selectTrack(option)
             selectedVideoIndex = index
             setQualityText(option.label)
         }
     }
-    sheet.show()
+    popup.show()
 }
 
 

@@ -1019,13 +1019,13 @@ class MainActivity : Activity() {
         seekRow.addView(remainingLabel)
         overlayBar.addView(seekRow, LinearLayout.LayoutParams(0, -2, 1f))
         overlayBar.addView(moviePrevButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 28 else 28),
+            -2, dp(24),
         ).apply {
             marginStart = dp(2)
             marginEnd = dp(2)
         })
         overlayBar.addView(movieNextButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 28 else 28),
+            -2, dp(24),
         ).apply {
             marginStart = dp(2)
             marginEnd = dp(2)
@@ -1049,7 +1049,7 @@ class MainActivity : Activity() {
             background = rowChipBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
-            setOnClickListener { showQualityDialog() }
+            setOnClickListener { showQualityPopup(it) }
         }
         movieAudioButton = Button(this).apply {
             text = "Audio"
@@ -1068,9 +1068,9 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             background = rowChipBackground()
             visibility = View.GONE
-            setOnClickListener { showMovieAudio() }
+            setOnClickListener { showMovieAudio(it) }
         }
-        overlayBar.addView(movieAudioButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 28 else 28)))
+        overlayBar.addView(movieAudioButton, LinearLayout.LayoutParams(-2, dp(24)))
         movieCCButton = Button(this).apply {
             text = "CC"
             isAllCaps = false
@@ -1089,18 +1089,18 @@ class MainActivity : Activity() {
             background = rowChipBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
-            setOnClickListener { showSubtitleStyleDialog() }
+            setOnClickListener { showSubtitlePopup(it) }
         }
-        overlayBar.addView(movieCCButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 28 else 28)))
+        overlayBar.addView(movieCCButton, LinearLayout.LayoutParams(-2, dp(24)))
         // Demo order: Prev, Next, Audio, CC, Quality, fullscreen —
         // Quality sits last (before fullscreen), like the demo.
         overlayBar.addView(movieQualityButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 28 else 28),
+            -2, dp(24),
         ).apply {
             marginStart = dp(2)
             marginEnd = dp(2)
         })
-        overlayBar.addView(fullscreenButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 28 else 28)))
+        overlayBar.addView(fullscreenButton, LinearLayout.LayoutParams(-2, dp(24)))
         screen.addView(overlayBar, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
             marginStart = dp(8)
             marginEnd = dp(8)
@@ -1249,7 +1249,7 @@ class MainActivity : Activity() {
             }
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
-            setOnClickListener { showQualityDialog() }
+            setOnClickListener { showQualityPopup(it) }
         }
         screen.addView(qualityButton, FrameLayout.LayoutParams(
             -2, -2, Gravity.BOTTOM or Gravity.END,

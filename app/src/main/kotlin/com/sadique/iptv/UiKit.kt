@@ -77,6 +77,10 @@ internal val textColor = 0xfff2f6ff.toInt()
 internal val muted = 0xff9aa7d6.toInt()
 internal val muted2 = 0xffa6b6ce.toInt()
 internal val cyan = 0xff22d9ee.toInt()
+/** Muted teal for the CC chip while subtitles are on (demo UI):
+ * the demo's CC chip is deep teal (31,143,142) with white text,
+ * not bright cyan with dark text. */
+internal val teal = 0xff1f8f8e.toInt()
 internal val netflixRed = 0xffe50914.toInt()
 internal val blue = 0xff3d7bff.toInt()
 internal val magenta = 0xffe45cff.toInt()
@@ -490,14 +494,14 @@ internal fun Context.overlayButtonBackground() = StateListDrawable().apply {
     addState(intArrayOf(), shape(Color.TRANSPARENT, Color.TRANSPARENT, 24, 0))
 }
 
-/** Small neutral-black glass chip for the on-video row buttons
- * (demo UI): a distinct little box at rest, cyan ring on D-pad
- * focus. The demo's chips are neutral dark glass, not the old
- * navy/grey. */
+/** Small frosted-grey glass chip for the on-video row buttons
+ * (demo UI): the demo's chips are grey pills — lighter than the
+ * dark bar, so they read as grey in any scene — with soft 6dp
+ * corners, not near-pill round. Cyan ring on D-pad focus. */
 internal fun Context.rowChipBackground() = StateListDrawable().apply {
-    addState(intArrayOf(android.R.attr.state_focused), shape(0xcc000000.toInt(), cyan, 10, 2))
-    addState(intArrayOf(android.R.attr.state_pressed), shape(0x99000000.toInt(), cyan, 10, 1))
-    addState(intArrayOf(), shape(0x80000000.toInt(), 0x40ffffff.toInt(), 10, 1))
+    addState(intArrayOf(android.R.attr.state_focused), shape(0xcc000000.toInt(), cyan, 6, 2))
+    addState(intArrayOf(android.R.attr.state_pressed), shape(0x99000000.toInt(), cyan, 6, 1))
+    addState(intArrayOf(), shape(0xe63a3a3e.toInt(), 0x26ffffff.toInt(), 6, 1))
 }
 
 /** White disc for the play/pause button (demo UI): the demo's pause
