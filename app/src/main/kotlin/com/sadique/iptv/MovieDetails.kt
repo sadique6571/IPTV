@@ -732,7 +732,15 @@ internal fun MainActivity.toggleSubtitles() {
  * ::prop.isInitialized check only compiles inside the declaring
  * class, so it cannot live in this file.) */
 internal fun MainActivity.updateCCButton() {
-    movieCCButton.setTextColor(if (subtitlesEnabled) cyan else Color.WHITE)
+    // Demo UI: the CC chip is filled cyan (dark text) while subtitles
+    // are on, a plain dark chip while off.
+    if (subtitlesEnabled) {
+        movieCCButton.background = shape(cyan, cyan, 10, 0)
+        movieCCButton.setTextColor(0xff111111.toInt())
+    } else {
+        movieCCButton.background = rowChipBackground()
+        movieCCButton.setTextColor(Color.WHITE)
+    }
     movieCCButton.contentDescription =
         if (subtitlesEnabled) "Subtitles on" else "Subtitles off"
 }
@@ -870,9 +878,9 @@ internal fun MainActivity.restoreMoviePlayback(saved: Bundle?) {
 
 
 internal fun MainActivity.updateMovieTimes(position: Long, duration: Long) {
-    seekLabel.text = formatTime(position.coerceAtLeast(0L))
-    // Demo UI: total length, not time remaining ("24:31 / 1:58:00").
-    remainingLabel.text = formatTime(duration.coerceAtLeast(0L))
+    // Demo UI: one combined readout right of the bar
+    // ("24:31 / 1:58:00"); the remaining-time label is hidden.
+    seekLabel.text = "${formatTime(position.coerceAtLeast(0L))} / ${formatTime(duration.coerceAtLeast(0L))}"
 }
 
 /** Demo UI (v2.0.11): title for the top player bar — "The Body •
