@@ -829,7 +829,7 @@ class MainActivity : Activity() {
             // v2.0.17: roomier bar — the demo's chips sit with clear
             // space above and below inside the pill (chips ~40% of
             // the bar height), so TV 10dp / phone 6dp vertical.
-            setPadding(dp(6), dp(if (isTv) 10 else 6), dp(6), dp(if (isTv) 10 else 6))
+            setPadding(dp(6), dp(if (isTv) 10 else 9), dp(6), dp(if (isTv) 10 else 9))
             elevation = dp(6).toFloat()
         }
         playPauseButton = overlayButton(R.drawable.ic_play) {
@@ -877,7 +877,7 @@ class MainActivity : Activity() {
             // past their text + padding — same cause as the wide
             // chips, see Prev/Next below).
             minWidth = 0
-            setPadding(dp(3), dp(if (isTv) 6 else 4), dp(3), dp(if (isTv) 6 else 4))
+            setPadding(dp(6), dp(if (isTv) 6 else 4), dp(6), dp(if (isTv) 6 else 4))
             setTextColor(Color.WHITE)
             textSize = if (isTv) 12f else 12f
             gravity = Gravity.CENTER
@@ -895,7 +895,7 @@ class MainActivity : Activity() {
             minimumHeight = 0
             // Demo match (v2.0.16): tight plain text, like "-10" (3dp sides now).
             minWidth = 0
-            setPadding(dp(3), dp(if (isTv) 6 else 4), dp(3), dp(if (isTv) 6 else 4))
+            setPadding(dp(6), dp(if (isTv) 6 else 4), dp(6), dp(if (isTv) 6 else 4))
             setTextColor(Color.WHITE)
             textSize = if (isTv) 12f else 12f
             gravity = Gravity.CENTER
@@ -904,7 +904,7 @@ class MainActivity : Activity() {
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { seekMovieBy(10_000) }
         }
-        overlayBar.addView(playPauseButton, overlayParams())
+        overlayBar.addView(playPauseButton, LinearLayout.LayoutParams(dp(if (isTv) 40 else 34), dp(if (isTv) 40 else 34)))
         overlayBar.addView(seekBackButton, LinearLayout.LayoutParams(
             -2, dp(if (isTv) 28 else 28),
         ).apply {
@@ -935,7 +935,7 @@ class MainActivity : Activity() {
             // their widths match the demo, Prev/Next/Quality never
             // did. 6dp sides + 11sp + minWidth = 0 on TV now.
             minWidth = 0
-            setPadding(dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2), dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2))
+            setPadding(dp(10), dp(if (isTv) 6 else 2), dp(10), dp(if (isTv) 6 else 2))
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
             textSize = if (isTv) 10f else 10f
@@ -954,7 +954,7 @@ class MainActivity : Activity() {
             minimumHeight = 0
             // Demo match (v2.0.16): tighter chip, like Prev (TV: 6dp / 11sp / minWidth = 0 now).
             minWidth = 0
-            setPadding(dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2), dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2))
+            setPadding(dp(10), dp(if (isTv) 6 else 2), dp(10), dp(if (isTv) 6 else 2))
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
             textSize = if (isTv) 10f else 10f
@@ -1019,13 +1019,13 @@ class MainActivity : Activity() {
         seekRow.addView(remainingLabel)
         overlayBar.addView(seekRow, LinearLayout.LayoutParams(0, -2, 1f))
         overlayBar.addView(moviePrevButton, LinearLayout.LayoutParams(
-            -2, dp(24),
+            -2, dp(if (isTv) 24 else 20),
         ).apply {
             marginStart = dp(2)
             marginEnd = dp(2)
         })
         overlayBar.addView(movieNextButton, LinearLayout.LayoutParams(
-            -2, dp(24),
+            -2, dp(if (isTv) 24 else 20),
         ).apply {
             marginStart = dp(2)
             marginEnd = dp(2)
@@ -1045,7 +1045,7 @@ class MainActivity : Activity() {
             // Prev — the theme's 64dp min-width was inflating it),
             // TV 6dp sides / 11sp now.
             minWidth = 0
-            setPadding(dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2), dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2))
+            setPadding(dp(10), dp(if (isTv) 6 else 2), dp(10), dp(if (isTv) 6 else 2))
             background = rowChipBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
@@ -1063,14 +1063,17 @@ class MainActivity : Activity() {
             minimumHeight = 0
             minWidth = 0
             // Demo match (v2.0.16): TV 4dp sides / 11sp now.
-            setPadding(dp(if (isTv) 4 else 4), 0, dp(if (isTv) 4 else 4), 0)
+            setPadding(dp(10), 0, dp(10), 0)
             textSize = if (isTv) 10f else 10f
             setTextColor(Color.WHITE)
             background = rowChipBackground()
             visibility = View.GONE
             setOnClickListener { showMovieAudio(it) }
         }
-        overlayBar.addView(movieAudioButton, LinearLayout.LayoutParams(-2, dp(24)))
+        overlayBar.addView(movieAudioButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 24 else 20)).apply {
+            marginStart = dp(2)
+            marginEnd = dp(2)
+        })
         movieCCButton = Button(this).apply {
             text = "CC"
             isAllCaps = false
@@ -1082,7 +1085,7 @@ class MainActivity : Activity() {
             minimumHeight = 0
             minWidth = 0
             // Demo match (v2.0.16): TV 6dp sides / 11sp now.
-            setPadding(dp(if (isTv) 6 else 6), 0, dp(if (isTv) 6 else 6), 0)
+            setPadding(dp(10), 0, dp(10), 0)
             textSize = if (isTv) 10f else 10f
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
@@ -1091,16 +1094,22 @@ class MainActivity : Activity() {
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { showSubtitlePopup(it) }
         }
-        overlayBar.addView(movieCCButton, LinearLayout.LayoutParams(-2, dp(24)))
+        overlayBar.addView(movieCCButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 24 else 20)).apply {
+            marginStart = dp(2)
+            marginEnd = dp(2)
+        })
         // Demo order: Prev, Next, Audio, CC, Quality, fullscreen —
         // Quality sits last (before fullscreen), like the demo.
         overlayBar.addView(movieQualityButton, LinearLayout.LayoutParams(
-            -2, dp(24),
+            -2, dp(if (isTv) 24 else 20),
         ).apply {
             marginStart = dp(2)
             marginEnd = dp(2)
         })
-        overlayBar.addView(fullscreenButton, LinearLayout.LayoutParams(-2, dp(24)))
+        overlayBar.addView(fullscreenButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 24 else 20)).apply {
+            marginStart = dp(2)
+            marginEnd = dp(2)
+        })
         screen.addView(overlayBar, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
             marginStart = dp(8)
             marginEnd = dp(8)
@@ -1976,12 +1985,12 @@ class MainActivity : Activity() {
             val size = minOf(b.width(), b.height()).toFloat()
             if (size <= 0f) return
             val cy = b.centerY().toFloat()
-            val tipX = b.left + size * 0.16f
-            val tailX = b.right - size * 0.12f
-            val head = size * 0.34f
+            val tipX = b.left + size * 0.10f
+            val tailX = b.right - size * 0.05f
+            val head = size * 0.30f
             canvas.drawLine(tipX, cy, tailX, cy, paint)
-            canvas.drawLine(tipX, cy, tipX + head, cy - head * 0.62f, paint)
-            canvas.drawLine(tipX, cy, tipX + head, cy + head * 0.62f, paint)
+            canvas.drawLine(tipX, cy, tipX + head, cy - head, paint)
+            canvas.drawLine(tipX, cy, tipX + head, cy + head, paint)
         }
 
         override fun setAlpha(alpha: Int) {
@@ -1994,9 +2003,9 @@ class MainActivity : Activity() {
 
         override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 
-        override fun getIntrinsicWidth(): Int = dp(26)
+        override fun getIntrinsicWidth(): Int = dp(30)
 
-        override fun getIntrinsicHeight(): Int = dp(26)
+        override fun getIntrinsicHeight(): Int = dp(30)
     }
 
     companion object {
