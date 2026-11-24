@@ -148,6 +148,18 @@ internal class PlayerController(
      * default scaled with the view height and was far too big on TV. */
     var subtitleSizeSp: Float = 20f
 
+    /** Whether the player controls are currently visible. While they
+     * are, the bottom bar covers the lower part of the picture, so
+     * subtitles lift above it (like Netflix); when the controls hide,
+     * they drop back to 3% from the bottom edge. */
+    private var subtitleControlsVisible = false
+
+    fun setSubtitleControlsVisible(visible: Boolean) {
+        if (subtitleControlsVisible == visible) return
+        subtitleControlsVisible = visible
+        applySubtitleStyle()
+    }
+
     /** Netflix-style subtitles: white text, no black box behind it, a
      * subtle dark shadow so it stays readable on bright scenes, and
      * close to the bottom of the picture. Applied whenever a new
@@ -161,7 +173,10 @@ internal class PlayerController(
             ),
         )
         view.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSizeSp)
-        view.setBottomPaddingFraction(0.03f)
+        // 20% clears the ~60dp bottom bar on phones and TVs alike
+        // (the bar is ~17% of a phone-landscape height, ~11% of a
+        // TV's); 3% is the resting position with controls hidden.
+        view.setBottomPaddingFraction(if (subtitleControlsVisible) 0.20f else 0.03f)
     }
 
     /** Change the subtitle size live (from the CC menu) and re-apply
