@@ -148,6 +148,11 @@ internal class PlayerController(
      * default scaled with the view height and was far too big on TV. */
     var subtitleSizeSp: Float = 20f
 
+    /** Subtitle (CC) background: the black box behind the text, like
+     * the demo mockup (default on). Off restores the PR #13 text-only
+     * look (transparent background + drop shadow). */
+    var subtitleBackground: Boolean = true
+
     /** Whether the player controls are currently visible. While they
      * are, the bottom bar covers the lower part of the picture, so
      * subtitles lift above it (like Netflix); when the controls hide,
@@ -160,16 +165,23 @@ internal class PlayerController(
         applySubtitleStyle()
     }
 
-    /** Netflix-style subtitles: white text, no black box behind it, a
-     * subtle dark shadow so it stays readable on bright scenes, and
-     * close to the bottom of the picture. Applied whenever a new
-     * PlayerView is created, and whenever the size changes. */
+    /** Subtitles like the demo mockup: white text on a
+     * semi-transparent black box, close to the bottom of the picture.
+     * With the box off, the old text-only look (transparent
+     * background + drop shadow) keeps the text readable. Applied
+     * whenever a new PlayerView is created, and whenever the size or
+     * background changes. */
     fun applySubtitleStyle() {
         val view = playerView?.subtitleView ?: return
+        val backgroundOn = subtitleBackground
         view.setStyle(
             CaptionStyleCompat(
-                Color.WHITE, Color.TRANSPARENT, Color.TRANSPARENT,
-                CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW, Color.BLACK, null,
+                Color.WHITE,
+                if (backgroundOn) 0x99000000.toInt() else Color.TRANSPARENT,
+                Color.TRANSPARENT,
+                if (backgroundOn) CaptionStyleCompat.EDGE_TYPE_NONE
+                else CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW,
+                Color.BLACK, null,
             ),
         )
         view.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSizeSp)
@@ -183,6 +195,13 @@ internal class PlayerController(
      * the style — the playing subtitles resize at once. */
     fun setSubtitleSize(sizeSp: Float) {
         subtitleSizeSp = sizeSp
+        applySubtitleStyle()
+    }
+
+    /** Change the subtitle background live (from the CC menu) and
+     * re-apply the style — the black box appears/disappears at once. */
+    fun setSubtitleBackground(enabled: Boolean) {
+        subtitleBackground = enabled
         applySubtitleStyle()
     }
 

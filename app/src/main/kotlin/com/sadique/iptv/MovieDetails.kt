@@ -2,6 +2,7 @@ package com.sadique.iptv
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.Dialog
 import android.app.UiModeManager
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -211,9 +212,6 @@ internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
     movieResumeRequest++
     movieStreamsRequest++
     movieSeasonsRequest++
-    // The details pane covers the home — stop the hero rotation so it
-    // stops firing details lookups for a hidden banner.
-    stopMoviesHero()
     val request = ++movieDetailsRequest
     currentMovieDetails = null
     movieDetailsRendered = false
@@ -852,27 +850,173 @@ internal var MainActivity.subtitleSizeSp: Float
             .putFloat("subtitle_size_sp", value).apply()
     }
 
-/** CC menu (player CC button): subtitles on/off + subtitle size.
- * Picking a size applies it at once to the playing subtitles and
- * remembers it. */
+/** The persisted subtitle background (black box behind the text) —
+ * the demo look, on by default. Off is the PR #13 text-only look. */
+internal var MainActivity.subtitleBackground: Boolean
+    get() = getSharedPreferences("iptv", Context.MODE_PRIVATE)
+        .getBoolean("subtitle_background", true)
+    set(value) {
+        getSharedPreferences("iptv", Context.MODE_PRIVATE).edit()
+            .putBoolean("subtitle_background", value).apply()
+    }
+
+/** Bottom-sheet shell shared by the player menus — CC, Quality,
+ * Audio (Netflix/YouTube style): navy gradient card, title + close,
+ * option rows with a cyan checkmark, tap applies live and the sheet
+ * stays open. Identical on TV and phone — the old AlertDialog lists
+ * are gone from all three menus. */
+internal class PlayerMenuSheet(private val activity: MainActivity, title: String) {
+    private val dialog = Dialog(activity)
+    private val checks = mutableListOf<Pair<TextView, () -> Boolean>>()
+    private var firstRow: View? = null
+    private val sheet = activity.column().apply {
+        background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(0xff0a1245.toInt(), 0xff2a1b6b.toInt()),
+        ).apply {
+            cornerRadii = floatArrayOf(
+                activity.dp(24).toFloat(), activity.dp(24).toFloat(),
+                activity.dp(24).toFloat(), activity.dp(24).toFloat(),
+                0f, 0f, 0f, 0f,
+            )
+            setStroke(activity.dp(1), 0x6696acff.toInt())
+        }
+        setPadding(activity.dp(20), activity.dp(16), activity.dp(20), activity.dp(20))
+    }
+
+    init {
+        val header = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(activity.label(title, if (activity.isTv) 20 else 18, Color.WHITE).apply {
+            setTypeface(null, Typeface.BOLD)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(Button(activity).apply {
+            text = "✕"
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            minimumWidth = 0
+            minimumHeight = 0
+            setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8))
+            background = activity.overlayButtonBackground()
+            setOnClickListener { dialog.dismiss() }
+        }, LinearLayout.LayoutParams(-2, -2))
+        sheet.addView(header, LinearLayout.LayoutParams(-1, -2))
+    }
+
+    /** Extra content under the header (e.g. the CC live preview). */
+    fun addView(view: View, params: LinearLayout.LayoutParams) {
+        sheet.addView(view, params)
+    }
+
+    /** A section heading (small caps, muted). */
+    fun section(text: String) {
+        sheet.addView(activity.label(text, 12, muted2).apply {
+            setTypeface(null, Typeface.BOLD)
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = activity.dp(16) })
+    }
+
+    /** One option row: label on the left, cyan checkmark on the
+     * right while [checked] holds. Tap applies [onTap] live, then
+     * refreshes every checkmark; the sheet stays open. */
+    fun row(text: String, checked: () -> Boolean, onTap: () -> Unit) {
+        val check = activity.label("✓", 18, cyan).apply {
+            visibility = if (checked()) View.VISIBLE else View.GONE
+        }
+        checks += check to checked
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            setPadding(activity.dp(6), activity.dp(12), activity.dp(6), activity.dp(12))
+            setOnFocusChangeListener { _, hasFocus ->
+                animateFocusScale(this, hasFocus)
+                background = if (hasFocus) GradientDrawable().apply {
+                    setColor(0x2affffff.toInt())
+                    cornerRadius = activity.dp(10).toFloat()
+                } else null
+            }
+            addView(activity.label(text, 16, Color.WHITE), LinearLayout.LayoutParams(0, -2, 1f))
+            addView(check, LinearLayout.LayoutParams(-2, -2))
+            setOnClickListener { onTap(); refresh() }
+            if (firstRow == null) firstRow = this
+        }
+        sheet.addView(row, LinearLayout.LayoutParams(-1, -2))
+    }
+
+    /** Extra refresh work a menu needs (e.g. the CC preview restyle). */
+    var onRefresh: (() -> Unit)? = null
+
+    /** Re-evaluates every checkmark (and [onRefresh]). */
+    fun refresh() {
+        for ((view, isChecked) in checks) {
+            view.visibility = if (isChecked()) View.VISIBLE else View.GONE
+        }
+        onRefresh?.invoke()
+    }
+
+    fun dismiss() = dialog.dismiss()
+
+    fun show() {
+        refresh()
+        dialog.setContentView(sheet)
+        dialog.setCancelable(true)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.window?.let { window ->
+            window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            window.setLayout(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+            )
+            window.setGravity(Gravity.BOTTOM)
+        }
+        dialog.show()
+        if (activity.isTv) firstRow?.post { firstRow?.requestFocus() }
+    }
+}
+
+/** CC menu (player CC button): a Netflix/YouTube-style bottom
+ * sheet — language, size and background, all applied live while the
+ * sheet stays open, with a preview of the subtitle style. */
 internal fun MainActivity.showSubtitleStyleDialog() {
     if (currentSubtitle == null) return
-    val current = subtitleSizeSp
-    val items = mutableListOf(if (subtitlesEnabled) "CC band karein" else "CC chalu karein")
-    items += subtitleSizeOptions.map { (size, label) ->
-        "Size: $label" + if (size == current) " ✓" else ""
+    val sheet = PlayerMenuSheet(this, "Subtitles")
+    lateinit var preview: TextView
+    sheet.onRefresh = {
+        preview.textSize = subtitleSizeSp
+        preview.background = if (subtitleBackground) GradientDrawable().apply {
+            setColor(0x99000000.toInt())
+            cornerRadius = dp(4).toFloat()
+        } else null
     }
-    AlertDialog.Builder(this).setTitle("Subtitles (CC)")
-        .setItems(items.toTypedArray()) { dialog, which ->
-            if (which == 0) {
-                toggleSubtitles()
-            } else {
-                val size = subtitleSizeOptions[which - 1].first
-                subtitleSizeSp = size
-                playerController?.setSubtitleSize(size)
-            }
-            dialog.dismiss()
-        }.show()
+    // Live preview of the subtitle style (the demo's line).
+    preview = label("Tum yahan kya kar rahe ho?", 16, Color.WHITE).apply {
+        gravity = Gravity.CENTER
+        setPadding(dp(10), dp(8), dp(10), dp(8))
+    }
+    sheet.addView(preview, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+    sheet.section("LANGUAGE")
+    sheet.row("English", { subtitlesEnabled }) {
+        if (!subtitlesEnabled) toggleSubtitles()
+    }
+    sheet.row("Off", { !subtitlesEnabled }) {
+        if (subtitlesEnabled) toggleSubtitles()
+    }
+    sheet.section("SIZE")
+    for ((size, sizeLabel) in subtitleSizeOptions) {
+        sheet.row(sizeLabel, { subtitleSizeSp == size }) {
+            subtitleSizeSp = size
+            playerController?.setSubtitleSize(size)
+        }
+    }
+    sheet.section("BACKGROUND")
+    sheet.row("Black background", { subtitleBackground }) {
+        subtitleBackground = !subtitleBackground
+        playerController?.setSubtitleBackground(subtitleBackground)
+    }
+    sheet.show()
 }
 
 

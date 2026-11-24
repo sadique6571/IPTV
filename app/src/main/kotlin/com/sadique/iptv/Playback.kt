@@ -1,7 +1,6 @@
 package com.sadique.iptv
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.app.UiModeManager
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -342,30 +341,30 @@ internal fun MainActivity.showQualityDialog() {
         val resolutions = currentMovieStreams.map { it.resolution }
             .filter { it > 0 }.distinct().sortedDescending()
         if (resolutions.size >= 2) {
-            val checked = resolutions.indexOf(selectedQuality).coerceAtLeast(0)
-            AlertDialog.Builder(this).setTitle("Quality")
-                .setSingleChoiceItems(resolutions.map { "${it}p" }.toTypedArray(), checked) { dialog, which ->
-                    switchMovieQuality(resolutions[which])
-                    dialog.dismiss()
-                }.show()
+            val sheet = PlayerMenuSheet(this, "Quality")
+            for (resolution in resolutions) {
+                sheet.row("${resolution}p", { selectedQuality == resolution }) {
+                    switchMovieQuality(resolution)
+                }
+            }
+            sheet.show()
             return
         }
     }
-    val items = mutableListOf("Auto")
-    items += videoOptions.map { it.label }
-    val checked = if (selectedVideoIndex in videoOptions.indices) selectedVideoIndex + 1 else 0
-    AlertDialog.Builder(this).setTitle("Quality")
-        .setSingleChoiceItems(items.toTypedArray(), checked) { dialog, which ->
-            if (which == 0) {
-                playerController?.selectTrack(null)
-                setQualityText("Quality")
-            } else {
-                val option = videoOptions[which - 1]
-                playerController?.selectTrack(option)
-                setQualityText(option.label)
-            }
-            dialog.dismiss()
-        }.show()
+    val sheet = PlayerMenuSheet(this, "Quality")
+    sheet.row("Auto", { selectedVideoIndex !in videoOptions.indices }) {
+        playerController?.selectTrack(null)
+        selectedVideoIndex = -1
+        setQualityText("Quality")
+    }
+    for ((index, option) in videoOptions.withIndex()) {
+        sheet.row(option.label, { selectedVideoIndex == index }) {
+            playerController?.selectTrack(option)
+            selectedVideoIndex = index
+            setQualityText(option.label)
+        }
+    }
+    sheet.show()
 }
 
 
@@ -698,12 +697,19 @@ internal fun MainActivity.setChannelMeta(channel: Channel?) {
 /** PlayerView/WebView are added to [screen] after the overlays were built;
  * re-raise the border, meta chip, seek row, seek indicator, overlay
  * controls, corner buttons and number popup above them. Called at the
- * end of [play] and after adding a WebView. */
+ * end of [play] and after adding a WebView. v2.0.17: topBar and
+ * upNextCard were missing from this list, so the PlayerView (added on
+ * top at play time) covered them — the top bar's title showed only
+ * "Th" (the bit sticking out in the pillarbox margin) and its scrim
+ * was invisible over the video, while the bottom bar (raised here)
+ * showed fine. */
 internal fun MainActivity.bringPlayerOverlaysToFront() {
     screenBorder.bringToFront()
     metaChip.bringToFront()
     seekIndicator.bringToFront()
     overlayBar.bringToFront()
+    topBar.bringToFront()
+    upNextCard.bringToFront()
     favButton.bringToFront()
     qualityButton.bringToFront()
     numberOverlay.bringToFront()
