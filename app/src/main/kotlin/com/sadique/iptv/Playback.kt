@@ -214,6 +214,10 @@ internal fun MainActivity.applyControlVisibility() {
     // bottom controls) and the -10s/+10s seek buttons (seekable
     // movies only).
     topTitleLabel.text = topBarTitle()
+    // v2.0.16: heal a blank title at display time — the play-time
+    // fill misses whatever blanks it after play start on TV, so the
+    // bar re-fetches whenever it is drawn without a title.
+    if (movie && topTitleLabel.text.isBlank()) fetchTopBarTitle(playingMovie?.subjectId.orEmpty())
     topBar.visibility = if (movie && !hideForInactivity) View.VISIBLE else View.GONE
     // Subtitles lift above the bottom bar while the controls show,
     // and drop back when they hide (movies only — channels have no
