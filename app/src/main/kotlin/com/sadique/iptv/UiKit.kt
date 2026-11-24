@@ -296,12 +296,12 @@ internal fun animateFocusScale(view: View, focused: Boolean) {
 }
 
 
-/** Round seek thumb: white dot with a Netflix-red ring (demo UI),
- * sized for touch on phones and smaller on TV. */
+/** Round seek thumb: a plain solid white dot, like the demo (the old
+ * red ring read as a donut at small sizes). Sized for touch on
+ * phones and smaller on TV. */
 internal fun Context.seekThumb() = GradientDrawable().apply {
     shape = GradientDrawable.OVAL
     setColor(Color.WHITE)
-    setStroke(dp(2), netflixRed)
     setSize(dp(if (isTvDevice()) 16 else 20), dp(if (isTvDevice()) 16 else 20))
 }
 
