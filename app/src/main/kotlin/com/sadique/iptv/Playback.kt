@@ -215,13 +215,20 @@ internal fun MainActivity.applyControlVisibility() {
     // movies only).
     topTitleLabel.text = topBarTitle()
     topBar.visibility = if (movie && !hideForInactivity) View.VISIBLE else View.GONE
+    // Subtitles lift above the bottom bar while the controls show,
+    // and drop back when they hide (movies only — channels have no
+    // subtitles, and their bar is hidden anyway).
+    playerController?.setSubtitleControlsVisible(
+        overlayBar.visibility == View.VISIBLE && movie,
+    )
     val seekCluster = movie && seekable
     seekBackButton.visibility = if (seekCluster) View.VISIBLE else View.GONE
     seekForwardButton.visibility = if (seekCluster) View.VISIBLE else View.GONE
     // D-pad chain across the visible row buttons, in visual order.
+    // Demo order: Prev, Next, Audio, CC, Quality, fullscreen.
     val rowButtons = listOf(
-        moviePrevButton, movieNextButton, movieQualityButton,
-        movieAudioButton, movieCCButton, fullscreenButton,
+        moviePrevButton, movieNextButton, movieAudioButton,
+        movieCCButton, movieQualityButton, fullscreenButton,
     ).filter { it.visibility == View.VISIBLE }
     for (i in rowButtons.indices) {
         val button = rowButtons[i]
@@ -295,6 +302,7 @@ internal fun MainActivity.hidePlayerControls() {
     controlsVisible = false
     overlayBar.visibility = View.GONE
     topBar.visibility = View.GONE
+    playerController?.setSubtitleControlsVisible(false)
 }
 
 
