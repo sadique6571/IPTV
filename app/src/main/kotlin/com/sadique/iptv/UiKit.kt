@@ -527,10 +527,13 @@ internal fun Context.overlayButton(iconRes: Int, action: () -> Unit) = ImageButt
 
 
 internal fun Context.overlayParams() = LinearLayout.LayoutParams(
-    dp(if (isTvDevice()) 44 else 40), dp(if (isTvDevice()) 44 else 40),
+    // Demo match (v2.0.16, sized for a 1920x1080 TV at xhdpi): the
+    // demo's disc is ~79px across, i.e. 40dp — the old 44dp disc
+    // read bigger than the demo's next to its slimmer chips.
+    dp(40), dp(40),
 ).apply {
-    marginStart = dp(3)
-    marginEnd = dp(3)
+    marginStart = dp(2)
+    marginEnd = dp(2)
 }
 
 

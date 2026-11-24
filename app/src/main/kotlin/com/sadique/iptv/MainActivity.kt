@@ -150,7 +150,7 @@ class MainActivity : Activity() {
     // Demo player UI (v2.0.11): top title bar, -10s/+10s seek buttons,
     // and the Up Next auto-play card for series episodes.
     internal lateinit var topBar: LinearLayout
-    internal lateinit var topBackButton: Button
+    internal lateinit var topBackButton: ImageButton
     internal lateinit var topTitleLabel: TextView
     internal lateinit var seekBackButton: Button
     internal lateinit var seekForwardButton: Button
@@ -323,6 +323,10 @@ class MainActivity : Activity() {
     internal var movieDetailsRendered = false
     internal var currentMovieStreams: List<MovieBox.MovieStream> = emptyList()
     internal var currentPlayTitle = ""
+    // v2.0.16: which subject the top-bar title fetch already ran for.
+    // The fetch is one-shot per subject, so a controls toggle never
+    // starts a duplicate — see fetchTopBarTitle().
+    internal var titleFetchSubject = ""
     internal var selectedDubId: String? = null
     internal var selectedQuality = 0
     // Series state (v2.0.27): the season/episode picked in details, the
@@ -826,7 +830,10 @@ class MainActivity : Activity() {
             // Demo match (v2.0.15): slimmer bar — the demo's bar is
             // compact, so less padding leaves more room for the seek
             // bar. TV gets the same slim bar now (was phone-only).
-            setPadding(dp(6), dp(4), dp(6), dp(4))
+            // v2.0.16: TV vertical padding 8dp — the demo's pill is
+            // ~120px tall on a 1920 frame (60dp), and the 40dp disc
+            // needs the extra breathing room to match it.
+            setPadding(dp(6), dp(if (isTv) 8 else 4), dp(6), dp(if (isTv) 8 else 4))
             elevation = dp(6).toFloat()
         }
         playPauseButton = overlayButton(R.drawable.ic_play) {
@@ -863,12 +870,16 @@ class MainActivity : Activity() {
             id = View.generateViewId()
             minimumWidth = 0
             minimumHeight = 0
-            // Demo match (v2.0.15): tight plain text — the old 12dp side
-            // padding left a wide empty gap between "-10" and "+10",
-            // and pushed the seek bar short (TV: 6dp sides now, was 12dp).
-            setPadding(dp(if (isTv) 6 else 4), dp(if (isTv) 6 else 4), dp(if (isTv) 6 else 4), dp(if (isTv) 6 else 4))
+            // Demo match (v2.0.16, 1920x1080 TV): the demo's -10/+10
+            // sit ~55dp apart centre-to-centre; the old 6dp sides
+            // left them ~92dp apart. 3dp sides + 12sp + minWidth = 0
+            // (the Button theme's 64dp min-width was inflating them
+            // past their text + padding — same cause as the wide
+            // chips, see Prev/Next below).
+            minWidth = 0
+            setPadding(dp(3), dp(if (isTv) 6 else 4), dp(3), dp(if (isTv) 6 else 4))
             setTextColor(Color.WHITE)
-            textSize = if (isTv) 13f else 12f
+            textSize = if (isTv) 12f else 12f
             gravity = Gravity.CENTER
             background = overlayButtonBackground()
             visibility = View.GONE
@@ -882,10 +893,11 @@ class MainActivity : Activity() {
             id = View.generateViewId()
             minimumWidth = 0
             minimumHeight = 0
-            // Demo match (v2.0.15): tight plain text, like "-10" (TV: 6dp sides now).
-            setPadding(dp(if (isTv) 6 else 4), dp(if (isTv) 6 else 4), dp(if (isTv) 6 else 4), dp(if (isTv) 6 else 4))
+            // Demo match (v2.0.16): tight plain text, like "-10" (3dp sides now).
+            minWidth = 0
+            setPadding(dp(3), dp(if (isTv) 6 else 4), dp(3), dp(if (isTv) 6 else 4))
             setTextColor(Color.WHITE)
-            textSize = if (isTv) 13f else 12f
+            textSize = if (isTv) 12f else 12f
             gravity = Gravity.CENTER
             background = overlayButtonBackground()
             visibility = View.GONE
@@ -894,16 +906,16 @@ class MainActivity : Activity() {
         }
         overlayBar.addView(playPauseButton, overlayParams())
         overlayBar.addView(seekBackButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 36 else 28),
+            -2, dp(if (isTv) 28 else 28),
         ).apply {
-            marginStart = dp(2)
-            marginEnd = dp(2)
+            marginStart = dp(1)
+            marginEnd = dp(1)
         })
         overlayBar.addView(seekForwardButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 36 else 28),
+            -2, dp(if (isTv) 28 else 28),
         ).apply {
-            marginStart = dp(2)
-            marginEnd = dp(2)
+            marginStart = dp(1)
+            marginEnd = dp(1)
         })
         // Previous / Next episode (series only — hidden otherwise, see
         // updatePlayerControls). Demo UI: plain "Prev" / "Next" chips
@@ -915,13 +927,18 @@ class MainActivity : Activity() {
             id = View.generateViewId()
             minimumWidth = 0
             minimumHeight = 0
-            // Demo match (v2.0.15): tighter chip — 6dp sides, 2dp top/
-            // bottom, 11sp on phones, so the chips stop crowding the
-            // seek bar out (TV: 8dp / 6dp / 13sp now, was 12dp / 10dp / 14sp).
-            setPadding(dp(if (isTv) 8 else 6), dp(if (isTv) 6 else 2), dp(if (isTv) 8 else 6), dp(if (isTv) 6 else 2))
+            // Demo match (v2.0.16, 1920x1080 TV): the demo's Prev chip
+            // is ~79px wide (~40dp) on a 1920 frame; the app's was
+            // ~182px. The cause was the Button theme's 64dp min-width:
+            // minimumWidth = 0 alone does not clear TextView's
+            // minWidth — Audio/CC got minWidth = 0 in v2.0.15 and
+            // their widths match the demo, Prev/Next/Quality never
+            // did. 6dp sides + 11sp + minWidth = 0 on TV now.
+            minWidth = 0
+            setPadding(dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2), dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2))
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
-            textSize = if (isTv) 13f else 11f
+            textSize = if (isTv) 11f else 11f
             gravity = Gravity.CENTER
             background = rowChipBackground()
             visibility = View.GONE
@@ -935,11 +952,12 @@ class MainActivity : Activity() {
             id = View.generateViewId()
             minimumWidth = 0
             minimumHeight = 0
-            // Demo match (v2.0.15): tighter chip, like Prev (TV: 8dp / 6dp / 13sp now).
-            setPadding(dp(if (isTv) 8 else 6), dp(if (isTv) 6 else 2), dp(if (isTv) 8 else 6), dp(if (isTv) 6 else 2))
+            // Demo match (v2.0.16): tighter chip, like Prev (TV: 6dp / 11sp / minWidth = 0 now).
+            minWidth = 0
+            setPadding(dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2), dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2))
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
-            textSize = if (isTv) 13f else 11f
+            textSize = if (isTv) 11f else 11f
             gravity = Gravity.CENTER
             background = rowChipBackground()
             visibility = View.GONE
@@ -1001,13 +1019,13 @@ class MainActivity : Activity() {
         seekRow.addView(remainingLabel)
         overlayBar.addView(seekRow, LinearLayout.LayoutParams(0, -2, 1f))
         overlayBar.addView(moviePrevButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 36 else 28),
+            -2, dp(if (isTv) 28 else 28),
         ).apply {
             marginStart = dp(2)
             marginEnd = dp(2)
         })
         overlayBar.addView(movieNextButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 36 else 28),
+            -2, dp(if (isTv) 28 else 28),
         ).apply {
             marginStart = dp(2)
             marginEnd = dp(2)
@@ -1018,13 +1036,16 @@ class MainActivity : Activity() {
             contentDescription = "Quality"
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
-            textSize = if (isTv) 13f else 11f
+            textSize = if (isTv) 11f else 11f
             gravity = Gravity.CENTER
             id = View.generateViewId()
             minimumWidth = 0
             minimumHeight = 0
-            // Demo match (v2.0.15): tighter chip, like Prev/Next (TV: 8dp / 6dp / 13sp now).
-            setPadding(dp(if (isTv) 8 else 6), dp(if (isTv) 6 else 2), dp(if (isTv) 8 else 6), dp(if (isTv) 6 else 2))
+            // Demo match (v2.0.16): minWidth = 0 like Audio/CC (see
+            // Prev — the theme's 64dp min-width was inflating it),
+            // TV 6dp sides / 11sp now.
+            minWidth = 0
+            setPadding(dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2), dp(if (isTv) 6 else 6), dp(if (isTv) 6 else 2))
             background = rowChipBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
@@ -1041,14 +1062,15 @@ class MainActivity : Activity() {
             // button min-height could keep this chip tall on phones.
             minimumHeight = 0
             minWidth = 0
-            setPadding(dp(if (isTv) 6 else 4), 0, dp(if (isTv) 6 else 4), 0)
-            textSize = if (isTv) 13f else 11f
+            // Demo match (v2.0.16): TV 4dp sides / 11sp now.
+            setPadding(dp(if (isTv) 4 else 4), 0, dp(if (isTv) 4 else 4), 0)
+            textSize = if (isTv) 11f else 11f
             setTextColor(Color.WHITE)
             background = rowChipBackground()
             visibility = View.GONE
             setOnClickListener { showMovieAudio() }
         }
-        overlayBar.addView(movieAudioButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 36 else 28)))
+        overlayBar.addView(movieAudioButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 28 else 28)))
         movieCCButton = Button(this).apply {
             text = "CC"
             isAllCaps = false
@@ -1059,8 +1081,9 @@ class MainActivity : Activity() {
             // either — same 48dp default risk as Audio (see above).
             minimumHeight = 0
             minWidth = 0
-            setPadding(dp(if (isTv) 8 else 6), 0, dp(if (isTv) 8 else 6), 0)
-            textSize = if (isTv) 13f else 11f
+            // Demo match (v2.0.16): TV 6dp sides / 11sp now.
+            setPadding(dp(if (isTv) 6 else 6), 0, dp(if (isTv) 6 else 6), 0)
+            textSize = if (isTv) 11f else 11f
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
             background = rowChipBackground()
@@ -1068,11 +1091,11 @@ class MainActivity : Activity() {
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { showSubtitleStyleDialog() }
         }
-        overlayBar.addView(movieCCButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 36 else 28)))
+        overlayBar.addView(movieCCButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 28 else 28)))
         // Demo order: Prev, Next, Audio, CC, Quality, fullscreen —
         // Quality sits last (before fullscreen), like the demo.
         overlayBar.addView(movieQualityButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 36 else 28),
+            -2, dp(if (isTv) 28 else 28),
         ).apply {
             marginStart = dp(2)
             marginEnd = dp(2)
@@ -1096,18 +1119,14 @@ class MainActivity : Activity() {
             setPadding(dp(16), dp(16), dp(16), dp(28))
             visibility = View.GONE
         }
-        topBackButton = Button(this).apply {
-            text = "←"
-            isAllCaps = false
+        topBackButton = ImageButton(this).apply {
+            setImageDrawable(BackArrowDrawable())
             contentDescription = "Back"
             id = View.generateViewId()
             minimumWidth = 0
             minimumHeight = 0
-            setTextColor(Color.WHITE)
-            setTypeface(null, Typeface.BOLD)
-            textSize = if (isTv) 20f else 18f
-            gravity = Gravity.CENTER
-            setPadding(dp(12), dp(6), dp(12), dp(6))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(dp(6), dp(6), dp(6), dp(6))
             background = overlayButtonBackground()
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { onBackPressed() }
@@ -1930,6 +1949,48 @@ class MainActivity : Activity() {
         override fun getIntrinsicWidth(): Int = dp(28)
 
         override fun getIntrinsicHeight(): Int = dp(28)
+    }
+
+    /** Demo-style back arrow, drawn in code (no vector asset needed):
+     * a long thin shaft with a chevron head, like the demo's top-bar
+     * back arrow. The old text "←" Button read as a small thin mark
+     * next to the demo's proper arrow (measured ~29x19px on a 1920
+     * TV frame vs the demo's ~48x44px). */
+    private inner class BackArrowDrawable : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = dp(2).toFloat()
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+
+        override fun draw(canvas: Canvas) {
+            val b = bounds
+            val size = minOf(b.width(), b.height()).toFloat()
+            if (size <= 0f) return
+            val cy = b.centerY().toFloat()
+            val tipX = b.left + size * 0.16f
+            val tailX = b.right - size * 0.12f
+            val head = size * 0.34f
+            canvas.drawLine(tipX, cy, tailX, cy, paint)
+            canvas.drawLine(tipX, cy, tipX + head, cy - head * 0.62f, paint)
+            canvas.drawLine(tipX, cy, tipX + head, cy + head * 0.62f, paint)
+        }
+
+        override fun setAlpha(alpha: Int) {
+            paint.alpha = alpha
+        }
+
+        override fun setColorFilter(colorFilter: ColorFilter?) {
+            paint.colorFilter = colorFilter
+        }
+
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+
+        override fun getIntrinsicWidth(): Int = dp(26)
+
+        override fun getIntrinsicHeight(): Int = dp(26)
     }
 
     companion object {

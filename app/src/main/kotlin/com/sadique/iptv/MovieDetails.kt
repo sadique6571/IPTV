@@ -677,23 +677,7 @@ internal fun MainActivity.playMovieStream(
             currentPlayTitle = known
             topTitleLabel.text = topBarTitle()
         } else if (movie.subjectId.isNotBlank() && !url.startsWith("file:")) {
-            val titleMovie = movie
-            Thread {
-                try {
-                    val fetched = movieBox.details(titleMovie.subjectId)
-                    runOnUiThread {
-                        if (isDestroyed || playingMovie?.subjectId != titleMovie.subjectId) return@runOnUiThread
-                        val title = fetched.movie.title
-                        if (title.isBlank()) return@runOnUiThread
-                        playingMovie = playingMovie?.copy(title = title)
-                        currentPlayTitle = title
-                        currentMovieDetails = fetched
-                        topTitleLabel.text = topBarTitle()
-                    }
-                } catch (_: Exception) {
-                    // Title stays blank; playback is unaffected.
-                }
-            }.apply { name = "title-fetch"; isDaemon = true; start() }
+            fetchTopBarTitle(movie.subjectId)
         }
     }
     playingEpisodeSeason = episodeSeason
@@ -737,6 +721,51 @@ internal fun MainActivity.playMovieStream(
     // while this one plays doubled requests to the file server and
     // helped trip its 429 rate limit. Next now resolves on demand
     // in playAdjacentEpisode, which already worked as the fallback.
+}
+
+
+/** One-shot background title fetch for the top bar (v2.0.16).
+ * The play-time fill in [playMovieStream] only runs when the title
+ * is blank at play start — three versions still showed a bare back
+ * arrow on TV, so the title must be getting blanked (or the fetch
+ * discarded) after play start, on a path the play-time code never
+ * sees. This helper is also called from [applyControlVisibility]
+ * whenever the bar is drawn with a blank title, so the title heals
+ * at display time no matter which path blanked it. One attempt per
+ * subject (guarded by [titleFetchSubject]); a failed or discarded
+ * attempt clears the guard so the next controls toggle retries.
+ * Playback never waits for any of this. */
+internal fun MainActivity.fetchTopBarTitle(subjectId: String) {
+    if (subjectId.isBlank() || subjectId == titleFetchSubject) return
+    if (playingMovieUrl?.startsWith("file:") == true) return
+    titleFetchSubject = subjectId
+    Thread {
+        try {
+            val fetched = movieBox.details(subjectId)
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                if (playingMovie?.subjectId != subjectId) {
+                    // Another title took over mid-fetch; let its own
+                    // heal run instead of stamping a stale title.
+                    titleFetchSubject = ""
+                    return@runOnUiThread
+                }
+                val title = fetched.movie.title
+                if (title.isBlank()) {
+                    titleFetchSubject = ""
+                    return@runOnUiThread
+                }
+                playingMovie = playingMovie?.copy(title = title)
+                currentPlayTitle = title
+                currentMovieDetails = fetched
+                topTitleLabel.text = topBarTitle()
+            }
+        } catch (_: Exception) {
+            // Title stays blank; playback is unaffected. Clear the
+            // guard so a later controls toggle retries once more.
+            titleFetchSubject = ""
+        }
+    }.apply { name = "title-fetch"; isDaemon = true; start() }
 }
 
 
