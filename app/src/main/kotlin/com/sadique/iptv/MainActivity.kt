@@ -860,9 +860,9 @@ class MainActivity : Activity() {
             id = View.generateViewId()
             minimumWidth = 0
             minimumHeight = 0
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(12), dp(if (isTv) 10 else 4), dp(12), dp(if (isTv) 10 else 4))
             setTextColor(Color.WHITE)
-            textSize = if (isTv) 14f else 13f
+            textSize = if (isTv) 14f else 12f
             gravity = Gravity.CENTER
             background = overlayButtonBackground()
             visibility = View.GONE
@@ -876,9 +876,9 @@ class MainActivity : Activity() {
             id = View.generateViewId()
             minimumWidth = 0
             minimumHeight = 0
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(12), dp(if (isTv) 10 else 4), dp(12), dp(if (isTv) 10 else 4))
             setTextColor(Color.WHITE)
-            textSize = if (isTv) 14f else 13f
+            textSize = if (isTv) 14f else 12f
             gravity = Gravity.CENTER
             background = overlayButtonBackground()
             visibility = View.GONE
@@ -887,13 +887,13 @@ class MainActivity : Activity() {
         }
         overlayBar.addView(playPauseButton, overlayParams())
         overlayBar.addView(seekBackButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 48 else 44),
+            -2, dp(if (isTv) 48 else 32),
         ).apply {
             marginStart = dp(3)
             marginEnd = dp(3)
         })
         overlayBar.addView(seekForwardButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 48 else 44),
+            -2, dp(if (isTv) 48 else 32),
         ).apply {
             marginStart = dp(3)
             marginEnd = dp(3)
@@ -908,10 +908,10 @@ class MainActivity : Activity() {
             id = View.generateViewId()
             minimumWidth = 0
             minimumHeight = 0
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(12), dp(if (isTv) 10 else 4), dp(12), dp(if (isTv) 10 else 4))
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
-            textSize = if (isTv) 14f else 13f
+            textSize = if (isTv) 14f else 12f
             gravity = Gravity.CENTER
             background = rowChipBackground()
             visibility = View.GONE
@@ -925,10 +925,10 @@ class MainActivity : Activity() {
             id = View.generateViewId()
             minimumWidth = 0
             minimumHeight = 0
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(12), dp(if (isTv) 10 else 4), dp(12), dp(if (isTv) 10 else 4))
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
-            textSize = if (isTv) 14f else 13f
+            textSize = if (isTv) 14f else 12f
             gravity = Gravity.CENTER
             background = rowChipBackground()
             visibility = View.GONE
@@ -948,7 +948,7 @@ class MainActivity : Activity() {
                 progressTintList = ColorStateList.valueOf(if (hasFocus) Color.WHITE else netflixRed)
             }
             // A taller seek bar is easier to drag by touch.
-            if (!isTv) minimumHeight = dp(48)
+            if (!isTv) minimumHeight = dp(36)
             progressTintList = ColorStateList.valueOf(netflixRed)
             // Custom round thumb (solid white dot, like the demo); the
             // tint is cleared so it does not wash out the white.
@@ -982,18 +982,18 @@ class MainActivity : Activity() {
         // ("24:31 / 1:58:00"); the old remaining-time label is hidden.
         seekLabel = label("0:00 / 0:00", 13, Color.WHITE)
         remainingLabel = label("−0:00", 13, Color.WHITE).apply { visibility = View.GONE }
-        seekRow.addView(seekBar, LinearLayout.LayoutParams(0, dp(48), 1f))
+        seekRow.addView(seekBar, LinearLayout.LayoutParams(0, dp(if (isTv) 48 else 36), 1f))
         seekRow.addView(seekLabel)
         seekRow.addView(remainingLabel)
         overlayBar.addView(seekRow, LinearLayout.LayoutParams(0, -2, 1f))
         overlayBar.addView(moviePrevButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 48 else 44),
+            -2, dp(if (isTv) 48 else 32),
         ).apply {
             marginStart = dp(3)
             marginEnd = dp(3)
         })
         overlayBar.addView(movieNextButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 48 else 44),
+            -2, dp(if (isTv) 48 else 32),
         ).apply {
             marginStart = dp(3)
             marginEnd = dp(3)
@@ -1004,23 +1004,17 @@ class MainActivity : Activity() {
             contentDescription = "Quality"
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
-            textSize = if (isTv) 14f else 13f
+            textSize = if (isTv) 14f else 12f
             gravity = Gravity.CENTER
             id = View.generateViewId()
             minimumWidth = 0
             minimumHeight = 0
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(12), dp(if (isTv) 10 else 4), dp(12), dp(if (isTv) 10 else 4))
             background = rowChipBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { showQualityDialog() }
         }
-        overlayBar.addView(movieQualityButton, LinearLayout.LayoutParams(
-            -2, dp(if (isTv) 48 else 44),
-        ).apply {
-            marginStart = dp(3)
-            marginEnd = dp(3)
-        })
         movieAudioButton = Button(this).apply {
             text = "Audio"
             isAllCaps = false
@@ -1029,12 +1023,13 @@ class MainActivity : Activity() {
             minimumWidth = 0
             minWidth = 0
             setPadding(dp(8), 0, dp(8), 0)
+            textSize = if (isTv) 14f else 12f
             setTextColor(Color.WHITE)
             background = rowChipBackground()
             visibility = View.GONE
             setOnClickListener { showMovieAudio() }
         }
-        overlayBar.addView(movieAudioButton, LinearLayout.LayoutParams(-2, dp(48)))
+        overlayBar.addView(movieAudioButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 48 else 32)))
         movieCCButton = Button(this).apply {
             text = "CC"
             isAllCaps = false
@@ -1043,6 +1038,7 @@ class MainActivity : Activity() {
             minimumWidth = 0
             minWidth = 0
             setPadding(dp(12), 0, dp(12), 0)
+            textSize = if (isTv) 14f else 12f
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
             background = rowChipBackground()
@@ -1050,7 +1046,15 @@ class MainActivity : Activity() {
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { showSubtitleStyleDialog() }
         }
-        overlayBar.addView(movieCCButton, LinearLayout.LayoutParams(-2, dp(48)))
+        overlayBar.addView(movieCCButton, LinearLayout.LayoutParams(-2, dp(if (isTv) 48 else 32)))
+        // Demo order: Prev, Next, Audio, CC, Quality, fullscreen —
+        // Quality sits last (before fullscreen), like the demo.
+        overlayBar.addView(movieQualityButton, LinearLayout.LayoutParams(
+            -2, dp(if (isTv) 48 else 32),
+        ).apply {
+            marginStart = dp(3)
+            marginEnd = dp(3)
+        })
         overlayBar.addView(fullscreenButton, overlayParams())
         screen.addView(overlayBar, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
             marginStart = dp(8)
