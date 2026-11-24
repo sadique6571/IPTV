@@ -950,8 +950,8 @@ class MainActivity : Activity() {
             // A taller seek bar is easier to drag by touch.
             if (!isTv) minimumHeight = dp(48)
             progressTintList = ColorStateList.valueOf(netflixRed)
-            // Custom round thumb (white dot + red ring); the tint is
-            // cleared so it does not wash out the ring.
+            // Custom round thumb (solid white dot, like the demo); the
+            // tint is cleared so it does not wash out the white.
             thumbTintList = null
             thumb = seekThumb()
             progressBackgroundTintList = ColorStateList.valueOf(0x38ffffff.toInt())
@@ -1844,7 +1844,12 @@ class MainActivity : Activity() {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             style = Paint.Style.STROKE
-            strokeWidth = dp(3).toFloat()
+            // Demo UI: thin corner brackets with a wide clear gap in
+            // the middle (like the demo's expand icon). The old thick
+            // stroke (3dp) + long arms (0.32) left only a hairline
+            // gap, so at real size the round caps merged and the icon
+            // read as a plus/hash instead of four corners.
+            strokeWidth = dp(2).toFloat()
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
@@ -1853,8 +1858,8 @@ class MainActivity : Activity() {
             val b = bounds
             val size = minOf(b.width(), b.height()).toFloat()
             if (size <= 0f) return
-            val arm = size * 0.32f
-            val gap = size * 0.10f
+            val arm = size * 0.20f
+            val gap = size * 0.14f
             val left = b.left + gap
             val top = b.top + gap
             val right = b.right - gap
