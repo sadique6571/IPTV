@@ -188,13 +188,11 @@ internal fun MainActivity.applyControlVisibility() {
     }
     val showMovieQuality = movie && (videoOptions.size >= 2 || streamResolutions.size >= 2)
     movieQualityButton.visibility = if (showMovieQuality) View.VISIBLE else View.GONE
+    // Demo UI: the chip always reads "Quality" (the demo's label).
+    // The current quality stays visible as the checked item in the
+    // Quality menu, so showing "1080p" here only broke the demo match.
     if (showMovieQuality) {
-        movieQualityButton.text = when {
-            videoOptions.size >= 2 && selectedVideoIndex in videoOptions.indices ->
-                videoOptions[selectedVideoIndex].label
-            selectedQuality > 0 -> "${selectedQuality}p"
-            else -> "Quality"
-        }
+        movieQualityButton.text = "Quality"
     }
     // Audio is always offered while a movie/series plays (like Quality):
     // the dialog lists the audio tracks + dubs that exist.
