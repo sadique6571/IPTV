@@ -107,6 +107,20 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscree
             } else {
                 movieBox.streams(details)
             }
+            // Series resume: also load the seasons (best-effort — a
+            // failure here must not break the resume) so Prev/Next
+            // and Up Next know the episode count, like after Play
+            // from the details screen. Without this, Next stayed
+            // hidden after a Continue Watching resume.
+            val seasons = if (entry.isSeries) {
+                try {
+                    movieBox.seasons(details.movie.subjectId)
+                } catch (_: IOException) {
+                    emptyList()
+                }
+            } else {
+                emptyList()
+            }
             runOnUiThread {
                 if (isDestroyed || request != movieResumeRequest) return@runOnUiThread
                 movieProgress.visibility = View.GONE
@@ -123,11 +137,16 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscree
                 // switcher offers these after a resume, same as after
                 // picking a quality on the details screen.
                 currentMovieStreams = streams
+                if (entry.isSeries) currentSeriesSeasons = seasons
                 selectedQuality = stream.resolution
                 currentSubtitle = subtitleForStream(stream, details)
                 closeMovies()
                 playMovieStream(
-                    details.movie.copy(title = entry.title),
+                    // Stored Continue Watching titles can be blank
+                    // (old entries); the details title is right here,
+                    // so prefer it — a blank title left the top bar
+                    // showing only the back arrow, no title.
+                    details.movie.copy(title = entry.title.ifBlank { details.movie.title }),
                     stream.url, stream.headers, entry.positionMs,
                     episodeSeason = if (entry.isSeries) entry.season else 0,
                     episodeNumber = if (entry.isSeries) entry.episode else 0,
@@ -887,10 +906,16 @@ internal fun MainActivity.updateMovieTimes(position: Long, duration: Long) {
  * S1:E1" for a series episode, the plain title for a movie. */
 internal fun MainActivity.topBarTitle(): String {
     val movie = playingMovie ?: return ""
-    return if (playingEpisodeSeason > 0 && playingEpisodeEpisode > 0) {
-        "${movie.title} • S${playingEpisodeSeason}:E${playingEpisodeEpisode}"
+    // The playing title can be blank on resume paths (a stored
+    // Continue Watching entry without a title); fall back to the
+    // title the details screen loaded, so the bar never shows a
+    // lonely back arrow with no title.
+    val title = movie.title.ifBlank { currentPlayTitle }
+        .ifBlank { currentMovieDetails?.movie?.title.orEmpty() }
+    return if (playingEpisodeSeason > 0 && playingEpisodeEpisode > 0 && title.isNotBlank()) {
+        "$title • S${playingEpisodeSeason}:E${playingEpisodeEpisode}"
     } else {
-        movie.title
+        title
     }
 }
 
