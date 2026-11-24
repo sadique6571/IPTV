@@ -131,6 +131,7 @@ internal fun MainActivity.play(channel: Channel) {
 internal fun MainActivity.firstOverlayControlId(): Int {
     if (overlayBar.visibility == View.VISIBLE) {
         return when {
+            seekBackButton.visibility == View.VISIBLE -> seekBackButton.id
             playPauseButton.visibility == View.VISIBLE -> playPauseButton.id
             else -> fullscreenButton.id
         }
@@ -208,6 +209,14 @@ internal fun MainActivity.applyControlVisibility() {
     val showCC = movie && currentSubtitle != null
     movieCCButton.visibility = if (showCC) View.VISIBLE else View.GONE
     if (showCC) updateCCButton()
+    // Demo UI: top title bar (movies only, same show/hide as the
+    // bottom controls) and the -10s/+10s seek buttons (seekable
+    // movies only).
+    topTitleLabel.text = topBarTitle()
+    topBar.visibility = if (movie && !hideForInactivity) View.VISIBLE else View.GONE
+    val seekCluster = movie && seekable
+    seekBackButton.visibility = if (seekCluster) View.VISIBLE else View.GONE
+    seekForwardButton.visibility = if (seekCluster) View.VISIBLE else View.GONE
     // D-pad chain across the visible row buttons, in visual order.
     val rowButtons = listOf(
         moviePrevButton, movieNextButton, movieQualityButton,
@@ -216,17 +225,53 @@ internal fun MainActivity.applyControlVisibility() {
     for (i in rowButtons.indices) {
         val button = rowButtons[i]
         button.nextFocusLeftId = if (i == 0) {
-            if (movie) playPauseButton.id else View.NO_ID
+            if (movie) {
+                if (seekCluster) seekForwardButton.id else playPauseButton.id
+            } else {
+                View.NO_ID
+            }
         } else {
             rowButtons[i - 1].id
         }
         button.nextFocusRightId = if (i == rowButtons.lastIndex) View.NO_ID else rowButtons[i + 1].id
         button.nextFocusUpId = seekTarget
     }
+    // Demo UI: the -10s/+10s cluster sits between play/pause and the
+    // row buttons; the top bar sits above the seek bar.
+    seekBackButton.nextFocusRightId = playPauseButton.id
+    seekBackButton.nextFocusLeftId = View.NO_ID
+    seekBackButton.nextFocusUpId = seekTarget
+    seekForwardButton.nextFocusLeftId = playPauseButton.id
+    seekForwardButton.nextFocusRightId =
+        if (rowButtons.isNotEmpty()) rowButtons.first().id else View.NO_ID
+    seekForwardButton.nextFocusUpId = seekTarget
+    playPauseButton.nextFocusLeftId = if (seekCluster) seekBackButton.id else View.NO_ID
     playPauseButton.nextFocusRightId =
-        if (movie && rowButtons.isNotEmpty()) rowButtons.first().id else View.NO_ID
+        if (seekCluster) {
+            seekForwardButton.id
+        } else if (movie && rowButtons.isNotEmpty()) {
+            rowButtons.first().id
+        } else {
+            View.NO_ID
+        }
     playPauseButton.nextFocusUpId = seekTarget
     seekBar.nextFocusDownId = playPauseButton.id
+    seekBar.nextFocusUpId = if (movie) topBackButton.id else View.NO_ID
+    topBackButton.nextFocusDownId =
+        if (movie && seekable) seekBar.id else if (movie) playPauseButton.id else View.NO_ID
+    topBackButton.nextFocusLeftId = View.NO_ID
+    topBackButton.nextFocusRightId = View.NO_ID
+    topBackButton.nextFocusUpId = View.NO_ID
+    // Up Next card (when visible) sits above the row's right end.
+    if (upNextCard.visibility == View.VISIBLE) {
+        fullscreenButton.nextFocusUpId = upNextCard.id
+        upNextCard.nextFocusDownId = fullscreenButton.id
+        upNextCard.nextFocusLeftId = View.NO_ID
+        upNextCard.nextFocusRightId = View.NO_ID
+        upNextCard.nextFocusUpId = View.NO_ID
+    } else {
+        fullscreenButton.nextFocusUpId = seekTarget
+    }
     syncRowFocusTargets()
 }
 
@@ -248,6 +293,7 @@ internal fun MainActivity.hidePlayerControls() {
     if ((isTv && playingMovie == null) || scrubbing || selected?.web == true) return
     controlsVisible = false
     overlayBar.visibility = View.GONE
+    topBar.visibility = View.GONE
 }
 
 
@@ -602,6 +648,7 @@ internal fun MainActivity.stopPlayback() {
     stopWeb()
     playerController?.stop()
     buffering.visibility = View.GONE
+    hideUpNextCard()
     stopSeekUpdates()
 }
 

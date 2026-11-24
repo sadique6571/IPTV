@@ -147,6 +147,31 @@ class MainActivity : Activity() {
     internal val seekIndicatorHideRunnable = Runnable { seekIndicator.visibility = View.GONE }
     internal lateinit var playPauseButton: ImageButton
     internal lateinit var fullscreenButton: ImageButton
+    // Demo player UI (v2.0.11): top title bar, -10s/+10s seek buttons,
+    // and the Up Next auto-play card for series episodes.
+    internal lateinit var topBar: LinearLayout
+    internal lateinit var topBackButton: Button
+    internal lateinit var topTitleLabel: TextView
+    internal lateinit var seekBackButton: Button
+    internal lateinit var seekForwardButton: Button
+    internal lateinit var upNextCard: LinearLayout
+    internal lateinit var upNextThumb: ImageView
+    internal lateinit var upNextTitle: TextView
+    internal lateinit var upNextCountdown: TextView
+    internal var upNextShownFor: String? = null
+    internal var upNextCountdownValue: Int = 0
+    internal val upNextTickRunnable = object : Runnable {
+        override fun run() {
+            upNextCountdownValue--
+            if (upNextCountdownValue <= 0) {
+                hideUpNextCard()
+                playAdjacentEpisode(1)
+            } else {
+                upNextCountdown.text = "Auto-plays in ${upNextCountdownValue}s"
+                mainHandler.postDelayed(this, 1000)
+            }
+        }
+    }
     private lateinit var fullscreenIcon: FullscreenIconDrawable
     internal lateinit var catalogTitle: TextView
     // Shown under the catalog title while a search query is active: the
@@ -375,6 +400,9 @@ class MainActivity : Activity() {
                     seekBar.max = (duration / 1000).toInt()
                     seekBar.progress = (position / 1000).toInt()
                     updateMovieTimes(position, duration)
+                    // Up Next: the last 20s of a series episode offer
+                    // the next episode with a 10s auto-play countdown.
+                    checkUpNext(position, duration)
                 }
                 // Save the playing movie's position every ~10 seconds so
                 // Continue Watching stays fresh without touching the player
@@ -819,7 +847,54 @@ class MainActivity : Activity() {
                 showPlayerControls()
             }
         }
+        // Demo UI: -10s / +10s seek buttons flanking play/pause.
+        seekBackButton = Button(this).apply {
+            text = "−10s"
+            isAllCaps = false
+            contentDescription = "Back 10 seconds"
+            id = View.generateViewId()
+            minimumWidth = 0
+            minimumHeight = 0
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            textSize = if (isTv) 14f else 13f
+            gravity = Gravity.CENTER
+            background = overlayButtonBackground()
+            visibility = View.GONE
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { seekMovieBy(-10_000) }
+        }
+        seekForwardButton = Button(this).apply {
+            text = "+10s"
+            isAllCaps = false
+            contentDescription = "Forward 10 seconds"
+            id = View.generateViewId()
+            minimumWidth = 0
+            minimumHeight = 0
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            textSize = if (isTv) 14f else 13f
+            gravity = Gravity.CENTER
+            background = overlayButtonBackground()
+            visibility = View.GONE
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { seekMovieBy(10_000) }
+        }
+        overlayBar.addView(seekBackButton, LinearLayout.LayoutParams(
+            -2, dp(if (isTv) 48 else 44),
+        ).apply {
+            marginStart = dp(3)
+            marginEnd = dp(3)
+        })
         overlayBar.addView(playPauseButton, overlayParams())
+        overlayBar.addView(seekForwardButton, LinearLayout.LayoutParams(
+            -2, dp(if (isTv) 48 else 44),
+        ).apply {
+            marginStart = dp(3)
+            marginEnd = dp(3)
+        })
         // Previous / Next episode (series only — hidden otherwise, see
         // updatePlayerControls).
         moviePrevButton = Button(this).apply {
@@ -878,11 +953,11 @@ class MainActivity : Activity() {
             setOnFocusChangeListener { _, hasFocus ->
                 // D-pad focus must be visible on TV: the bar brightens.
                 animateFocusScale(this, hasFocus)
-                progressTintList = ColorStateList.valueOf(if (hasFocus) Color.WHITE else cyan)
+                progressTintList = ColorStateList.valueOf(if (hasFocus) Color.WHITE else netflixRed)
             }
             // A taller seek bar is easier to drag by touch.
             if (!isTv) minimumHeight = dp(48)
-            progressTintList = ColorStateList.valueOf(cyan)
+            progressTintList = ColorStateList.valueOf(netflixRed)
             // Custom round thumb (white dot + cyan ring); the tint is
             // cleared so it does not wash out the ring.
             thumbTintList = null
@@ -975,6 +1050,81 @@ class MainActivity : Activity() {
             marginStart = dp(8)
             marginEnd = dp(8)
             bottomMargin = dp(8)
+        })
+        // Demo UI: top title bar — Back + playing title
+        // ("The Body • S1:E1"). Shows/hides with the bottom controls.
+        topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = shape(overlayDark, 0x1affffff.toInt(), 24, 1)
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            elevation = dp(6).toFloat()
+            visibility = View.GONE
+        }
+        topBackButton = Button(this).apply {
+            text = "←"
+            isAllCaps = false
+            contentDescription = "Back"
+            id = View.generateViewId()
+            minimumWidth = 0
+            minimumHeight = 0
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            textSize = if (isTv) 20f else 18f
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            background = overlayButtonBackground()
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener { onBackPressed() }
+        }
+        topTitleLabel = label("", if (isTv) 18 else 16, Color.WHITE).apply {
+            setTypeface(null, Typeface.BOLD)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(dp(8), 0, dp(8), 0)
+        }
+        topBar.addView(topBackButton)
+        topBar.addView(topTitleLabel)
+        screen.addView(topBar, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+            topMargin = dp(16)
+            marginStart = dp(16)
+        })
+        // Demo UI: Up Next card — appears in the last 20s of a series
+        // episode; auto-plays the next episode after a 10s countdown.
+        // Tapping it plays the next episode at once.
+        upNextCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = shape(overlayDark, 0x1affffff.toInt(), 16, 1)
+            setPadding(dp(10), dp(10), dp(14), dp(10))
+            elevation = dp(6).toFloat()
+            visibility = View.GONE
+            isFocusable = true
+            id = View.generateViewId()
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener {
+                hideUpNextCard()
+                playAdjacentEpisode(1)
+            }
+        }
+        upNextThumb = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(0xff1a1a1a.toInt())
+        }
+        upNextCard.addView(upNextThumb, LinearLayout.LayoutParams(dp(56), dp(84)))
+        val upNextText = column().apply { setPadding(dp(10), 0, 0, 0) }
+        upNextTitle = label("", if (isTv) 16 else 15, Color.WHITE).apply {
+            setTypeface(null, Typeface.BOLD)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        upNextCountdown = label("", if (isTv) 14 else 13, 0xffcccccc.toInt())
+        upNextText.addView(upNextTitle)
+        upNextText.addView(upNextCountdown)
+        upNextCard.addView(upNextText)
+        screen.addView(upNextCard, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
+            marginEnd = dp(8)
+            bottomMargin = dp(72)
         })
         // YouTube-style +-10s seek indicator: a pill on the video showing
         // "-10s" / "+10s" on the side that was double-tapped (or the
@@ -1137,6 +1287,15 @@ class MainActivity : Activity() {
                 }
                 override fun onEnded() {
                     if (isDestroyed) return
+                    // Up Next was counting down and the episode ended
+                    // before it fired (e.g. a seek into the last
+                    // seconds): go to the next episode instead of the
+                    // ended screen.
+                    if (upNextShownFor != null) {
+                        hideUpNextCard()
+                        playAdjacentEpisode(1)
+                        return
+                    }
                     status.text = "Playback ended."
                     // A finished movie leaves Continue Watching by itself.
                     val movie = playingMovie

@@ -77,6 +77,7 @@ internal val textColor = 0xfff2f6ff.toInt()
 internal val muted = 0xff9aa7d6.toInt()
 internal val muted2 = 0xffa6b6ce.toInt()
 internal val cyan = 0xff22d9ee.toInt()
+internal val netflixRed = 0xffe50914.toInt()
 internal val blue = 0xff3d7bff.toInt()
 internal val magenta = 0xffe45cff.toInt()
 internal val purple = 0xff8b5cff.toInt()
@@ -295,12 +296,12 @@ internal fun animateFocusScale(view: View, focused: Boolean) {
 }
 
 
-/** Round seek thumb: white dot with a cyan ring (YouTube-style), sized
- * for touch on phones and smaller on TV. */
+/** Round seek thumb: white dot with a Netflix-red ring (demo UI),
+ * sized for touch on phones and smaller on TV. */
 internal fun Context.seekThumb() = GradientDrawable().apply {
     shape = GradientDrawable.OVAL
     setColor(Color.WHITE)
-    setStroke(dp(2), cyan)
+    setStroke(dp(2), netflixRed)
     setSize(dp(if (isTvDevice()) 16 else 20), dp(if (isTvDevice()) 16 else 20))
 }
 

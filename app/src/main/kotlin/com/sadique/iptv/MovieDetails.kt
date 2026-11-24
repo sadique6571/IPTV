@@ -640,6 +640,7 @@ internal fun MainActivity.playMovieStream(
     playingMovieUrl = url
     playingMovieHeaders = headers
     movieEnded = false
+    hideUpNextCard()
     setMovieMeta(movie, episodeSeason, episodeNumber)
     playPauseButton.setImageResource(R.drawable.ic_pause)
     videoOptions = emptyList()
@@ -870,7 +871,66 @@ internal fun MainActivity.restoreMoviePlayback(saved: Bundle?) {
 
 internal fun MainActivity.updateMovieTimes(position: Long, duration: Long) {
     seekLabel.text = formatTime(position.coerceAtLeast(0L))
-    remainingLabel.text = "−" + formatTime((duration - position).coerceAtLeast(0L))
+    // Demo UI: total length, not time remaining ("24:31 / 1:58:00").
+    remainingLabel.text = formatTime(duration.coerceAtLeast(0L))
+}
+
+/** Demo UI (v2.0.11): title for the top player bar — "The Body •
+ * S1:E1" for a series episode, the plain title for a movie. */
+internal fun MainActivity.topBarTitle(): String {
+    val movie = playingMovie ?: return ""
+    return if (playingEpisodeSeason > 0 && playingEpisodeEpisode > 0) {
+        "${movie.title} • S${playingEpisodeSeason}:E${playingEpisodeEpisode}"
+    } else {
+        movie.title
+    }
+}
+
+/** Demo UI: does the playing series episode have a next one? The
+ * count must be known — after a Continue Watching resume the
+ * seasons are not loaded yet, and then Up Next stays hidden, just
+ * like the Prev/Next buttons. */
+internal fun MainActivity.hasNextEpisode(): Boolean {
+    if (playingMovie == null || playingEpisodeSeason <= 0 || playingEpisodeEpisode <= 0) return false
+    val count = currentSeriesSeasons.firstOrNull { it.number == playingEpisodeSeason }?.episodeCount ?: 0
+    return count > 0 && playingEpisodeEpisode < count
+}
+
+private fun MainActivity.upNextKey() =
+    "${playingMovie?.subjectId}:${playingEpisodeSeason}:${playingEpisodeEpisode}"
+
+/** The Up Next trigger, called from the 500ms seek ticker: in the
+ * last 20s of a series episode the card appears with a 10s
+ * auto-play countdown. Seeking away from the end hides it again. */
+internal fun MainActivity.checkUpNext(position: Long, duration: Long) {
+    val remaining = duration - position
+    if (remaining > 25_000 || !hasNextEpisode()) {
+        hideUpNextCard()
+        return
+    }
+    if (remaining <= 0 || remaining > 20_000) return
+    if (upNextShownFor == upNextKey()) return
+    showUpNextCard()
+}
+
+internal fun MainActivity.showUpNextCard() {
+    val movie = playingMovie ?: return
+    val next = playingEpisodeEpisode + 1
+    upNextTitle.text = "Up Next: S${playingEpisodeSeason}:E$next"
+    upNextCountdownValue = 10
+    upNextCountdown.text = "Auto-plays in 10s"
+    upNextShownFor = upNextKey()
+    LogoLoader.load(this, movie.posterUrl, upNextThumb, maxDimension = 192)
+    upNextCard.visibility = View.VISIBLE
+    applyControlVisibility()
+    mainHandler.removeCallbacks(upNextTickRunnable)
+    mainHandler.postDelayed(upNextTickRunnable, 1000)
+}
+
+internal fun MainActivity.hideUpNextCard() {
+    mainHandler.removeCallbacks(upNextTickRunnable)
+    upNextShownFor = null
+    upNextCard.visibility = View.GONE
 }
 
 internal fun MainActivity.resumeSavedPlayback(
