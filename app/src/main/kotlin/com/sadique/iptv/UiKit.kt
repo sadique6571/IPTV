@@ -485,6 +485,33 @@ internal fun Context.overlayButtonBackground() = StateListDrawable().apply {
     addState(intArrayOf(), shape(Color.TRANSPARENT, Color.TRANSPARENT, 24, 0))
 }
 
+/** Small dark chip for the on-video row buttons (demo UI): a distinct
+ * little box at rest, cyan ring on D-pad focus. */
+internal fun Context.rowChipBackground() = StateListDrawable().apply {
+    addState(intArrayOf(android.R.attr.state_focused), shape(0xcc16224f.toInt(), cyan, 10, 2))
+    addState(intArrayOf(android.R.attr.state_pressed), shape(0xcc2a3a86.toInt(), cyan, 10, 1))
+    addState(intArrayOf(), shape(0x55222222.toInt(), 0x22ffffff.toInt(), 10, 1))
+}
+
+/** White disc for the play/pause button (demo UI): the demo's pause
+ * button is a white circle with a dark glyph. Cyan ring on focus. */
+internal fun Context.playPauseCircleBackground(): StateListDrawable {
+    val rest = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(Color.WHITE)
+    }
+    val focused = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(Color.WHITE)
+        setStroke(dp(2), cyan)
+    }
+    return StateListDrawable().apply {
+        addState(intArrayOf(android.R.attr.state_focused), focused)
+        addState(intArrayOf(android.R.attr.state_pressed), focused)
+        addState(intArrayOf(), rest)
+    }
+}
+
 
 internal fun Context.overlayButton(iconRes: Int, action: () -> Unit) = ImageButton(this).apply {
     setImageResource(iconRes)

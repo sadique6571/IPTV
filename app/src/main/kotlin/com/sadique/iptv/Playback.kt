@@ -131,8 +131,8 @@ internal fun MainActivity.play(channel: Channel) {
 internal fun MainActivity.firstOverlayControlId(): Int {
     if (overlayBar.visibility == View.VISIBLE) {
         return when {
-            seekBackButton.visibility == View.VISIBLE -> seekBackButton.id
             playPauseButton.visibility == View.VISIBLE -> playPauseButton.id
+            seekBackButton.visibility == View.VISIBLE -> seekBackButton.id
             else -> fullscreenButton.id
         }
     }
@@ -159,7 +159,10 @@ internal fun MainActivity.applyControlVisibility() {
     val hideForInactivity = !controlsVisible && (playingMovie != null || !isTv)
     overlayBar.visibility = if (channelPlaying || hideForInactivity) View.GONE else View.VISIBLE
     val somethingPlaying = selected != null || playingMovie != null
-    metaChip.visibility = if (fullScreen || !somethingPlaying) View.GONE else View.VISIBLE
+    // Demo UI: the top title bar now carries the movie title, so the
+    // name chip stays hidden while a movie plays (channels only).
+    metaChip.visibility =
+        if (fullScreen || !somethingPlaying || playingMovie != null) View.GONE else View.VISIBLE
     playPauseButton.visibility = if (webChannel) View.GONE else View.VISIBLE
     val showQuality = channelPlaying && !fullScreen && !webChannel && videoOptions.size >= 2
     qualityButton.visibility = if (showQuality) View.VISIBLE else View.GONE
