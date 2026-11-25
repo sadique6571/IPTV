@@ -1756,12 +1756,23 @@ class MainActivity : Activity() {
             // Chips move into chipsRow; seekRow becomes the top row.
             overlayBar.orientation = LinearLayout.VERTICAL
             overlayBar.removeView(seekRow)
-            for (chip in listOf(
+            val chips = listOf(
                 playPauseButton, movieStopButton, seekBackButton, seekForwardButton,
                 moviePrevButton, movieNextButton, movieAudioButton,
                 movieCCButton, movieQualityButton, fullscreenButton,
-            )) {
+            )
+            for ((index, chip) in chips.withIndex()) {
                 overlayBar.removeView(chip)
+                if (index > 0) {
+                    // Spacer (v2.0.26): spreads the chips evenly across
+                    // the full width — the gaps grow, the buttons stay
+                    // the same size. A GONE chip takes no space, so the
+                    // visible chips still spread evenly. (Fullscreen
+                    // keeps the single row — untouched.)
+                    chipsRow.addView(View(this).apply {
+                        layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+                    })
+                }
                 chipsRow.addView(chip)
             }
             overlayBar.addView(seekRow, LinearLayout.LayoutParams(-1, -2))
@@ -1878,11 +1889,15 @@ class MainActivity : Activity() {
             playerPane.layoutParams = LinearLayout.LayoutParams(miniPlayerW, -1)
             libraryPane.layoutParams = LinearLayout.LayoutParams(-1, -1)
             screen.layoutParams = LinearLayout.LayoutParams(-1, miniPlayerW * 9 / 16)
+            // v2.0.26: the 16:9 screen sat flush under the header with
+            // a wide empty strip below it — centre it in the pane.
+            playerPane.gravity = Gravity.CENTER_VERTICAL
         } else if (miniPlayer) {
             splitPane.gravity = Gravity.START
             playerPane.layoutParams = LinearLayout.LayoutParams(-1, -2)
             libraryPane.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
             screen.layoutParams = LinearLayout.LayoutParams(-1, miniPlayerHeight())
+            playerPane.gravity = Gravity.TOP
         } else if (!sideBySide) {
             splitPane.gravity = Gravity.START
             playerPane.layoutParams = LinearLayout.LayoutParams(-1, -2)
@@ -1890,11 +1905,13 @@ class MainActivity : Activity() {
             val playerWidthPx = resources.displayMetrics.widthPixels - 2 * rootPaddingPx
             val playerHeight = (playerWidthPx * 9 / 16).coerceAtMost(dp(320))
             screen.layoutParams = LinearLayout.LayoutParams(-1, playerHeight)
+            playerPane.gravity = Gravity.TOP
         } else {
             splitPane.gravity = Gravity.START
             playerPane.layoutParams = LinearLayout.LayoutParams(0, -1, 1f)
             libraryPane.layoutParams = LinearLayout.LayoutParams(dp(libraryWidthDp), -1)
             screen.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+            playerPane.gravity = Gravity.TOP
         }
         // Pane padding: docked (0) in mini-player mode, else the normal
         // windowed/fullscreen rule — mirrors updateFullscreenUi, which
