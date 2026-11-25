@@ -253,15 +253,21 @@ class MainActivity : Activity() {
     // Pakistani entertainment channels pinned to the top of the All /
     // General lists in the user's own order — 1-5 are his picks, the
     // rest by popularity. Names must match the M3U exactly.
-    private val pinnedPkOrder = listOf(
-        "Green Entertainment", "Hum TV", "ARY Digital", "Geo Entertainment", "Aan TV", "MUN TV",
-        "Express Entertainment", "Hum Sitaray", "A Plus", "TV One", "PTV Home",
-        "Play Entertainment", "Bol Entertainment HD", "Apna Channel", "8XM",
-        "aurLife HD", "LTN Family", "M Entertainment", "PTV Global",
-        "InPlus Pakistan", "Falak TV", "JooMusic", "Discover Pakistan",
-        "Paigham Television",
+    // The user's own order for the Pakistani entertainment head of
+    // the list (2026-11-25): Green 1, Hum 2, ARY 3, Aan 4, MUN 5,
+    // Geo 6, Express 7, then the rest. This is an ORDER inside the
+    // PK-entertainment tier, not a pin — no channel is pinned, and
+    // nothing jumps out of its own tier. Paigham is NOT here: it is
+    // Islamic, so it sits in the Islamic block.
+    internal val pkEntTopOrder = listOf(
+        "Green Entertainment", "Hum TV", "ARY Digital", "Aan TV", "MUN TV",
+        "Geo Entertainment", "Express Entertainment", "Hum Sitaray", "A Plus",
+        "TV One", "PTV Home", "Play Entertainment", "Bol Entertainment HD",
+        "Apna Channel", "8XM", "aurLife HD", "LTN Family", "M Entertainment",
+        "PTV Global", "InPlus Pakistan", "Falak TV", "JooMusic",
+        "Discover Pakistan", "ARUJ TV", "ARY Musik", "Jalwa TV",
     )
-    internal val pinnedPkRank = pinnedPkOrder.withIndex().associate { it.value to it.index }
+    internal val pkEntTopRank = pkEntTopOrder.withIndex().associate { it.value to it.index }
     internal var videoOptions = emptyList<PlayerController.VideoOption>()
     internal var selectedVideoIndex = -1
     internal var seekable = false
@@ -692,10 +698,12 @@ class MainActivity : Activity() {
             ellipsize = TextUtils.TruncateAt.END
         }
         searchClearRow.addView(searchClearLabel, LinearLayout.LayoutParams(0, -2, 1f))
-        searchClearRow.addView(button("Saaf karein", R.drawable.ic_close) { clearSearch() },
-            LinearLayout.LayoutParams(-2, -2).apply {
-                marginStart = dp(8)
-            })
+        // v2.0.28: big and bold — the old wrap-content button was small.
+        searchClearRow.addView(button("Saaf karein", R.drawable.ic_close) { clearSearch() }.apply {
+            setTypeface(null, Typeface.BOLD)
+        }, LinearLayout.LayoutParams(-2, dp(if (isTv) 56 else 52)).apply {
+            marginStart = dp(8)
+        })
         left.addView(searchClearRow, LinearLayout.LayoutParams(-1, -2).apply {
             bottomMargin = dp(4)
         })
@@ -713,44 +721,36 @@ class MainActivity : Activity() {
             // Touch: the action buttons live under the list (the narrow
             // top bar has no room for them). On TV they are round buttons
             // in the TopBar instead, so the list gets the full height.
-            val actions = LinearLayout(this)
-            left.addView(actions, LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(8)
-            })
+            // Library footer (v2.0.28): big, wide, full-width buttons
+            // stacked — the old two-across rows were too narrow.
+            val footerH = dp(if (isTv) 56 else 52)
             // Search lives in the inline field above the list now
             // (v2.0.37) — no dialog button.
-            actions.addView(button("Playlists") { showPlaylists() },
-                LinearLayout.LayoutParams(0, -2, 1f))
-            // Library footer: two tidy rows of equal buttons instead of stacked
-            // full-width ones. The Import dialog still offers a direct stream
-            // URL — only the label is shorter.
-            val libraryActions = LinearLayout(this)
-            left.addView(libraryActions, LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(6)
-            })
-            libraryActions.addView(button("Import M3U") { choosePlaylist() },
-                LinearLayout.LayoutParams(0, -2, 1f).apply {
-                    marginEnd = dp(4)
+            left.addView(button("Playlists") { showPlaylists() },
+                LinearLayout.LayoutParams(-1, footerH).apply {
+                    topMargin = dp(8)
                 })
-            libraryActions.addView(button("Xtream") { askXtream() },
-                LinearLayout.LayoutParams(0, -2, 1f).apply {
-                    marginStart = dp(4)
+            // The Import dialog still offers a direct stream URL —
+            // only the label is shorter.
+            left.addView(button("Import M3U") { choosePlaylist() },
+                LinearLayout.LayoutParams(-1, footerH).apply {
+                    topMargin = dp(6)
+                })
+            left.addView(button("Xtream") { askXtream() },
+                LinearLayout.LayoutParams(-1, footerH).apply {
+                    topMargin = dp(6)
                 })
             // Manual update check (UpdateChecker): compares the installed build
             // with the latest GitHub release and offers to install it.
             // Touch devices have no categories pane, so Movies gets a footer
             // button next to Update (on TV it is a category item instead).
-            val updateRow = LinearLayout(this)
-            left.addView(updateRow, LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(6)
-            })
-            updateRow.addView(button("Update", R.drawable.ic_upload) { checkForUpdateManually() },
-                LinearLayout.LayoutParams(0, -2, 1f).apply {
-                    marginEnd = dp(4)
+            left.addView(button("Update", R.drawable.ic_upload) { checkForUpdateManually() },
+                LinearLayout.LayoutParams(-1, footerH).apply {
+                    topMargin = dp(6)
                 })
-            updateRow.addView(button("Movies", R.drawable.ic_movie) { openMovies() },
-                LinearLayout.LayoutParams(0, -2, 1f).apply {
-                    marginStart = dp(4)
+            left.addView(button("Movies", R.drawable.ic_movie) { openMovies() },
+                LinearLayout.LayoutParams(-1, footerH).apply {
+                    topMargin = dp(6)
                 })
         }
         // Player card (Qwen PlayerCard): 16:9, 24dp rounded corners, 1dp
@@ -1814,10 +1814,15 @@ class MainActivity : Activity() {
      * Watching is hidden, so Home is empty iff there are no
      * favorites — the empty middle then belongs to the player, up
      * to the sidebar. Any content (another tab, search results, a
-     * See All list, the details pane) restores the 55/45 split. */
+     * See All list) restores the 55/45 split.
+     * v2.0.28: the DETAILS pane is a narrow side panel too (264dp),
+     * like the Live TV sidebar — the side panel and the player are
+     * the same in every section, so the player is wide while the
+     * details sit in a narrow column. The details are a single
+     * column (title, meta, quality, Play/Fav/Back), so they fit. */
     private fun isMiniPlayerWide(): Boolean {
         if (!isMiniPlayer() || !isTv) return false
-        if (moviesDetailsPane.visibility == View.VISIBLE) return false
+        if (moviesDetailsPane.visibility == View.VISIBLE) return true
         if (moviesSeeAll != null || movieResultsAreSearch) return false
         if (moviesTab != MoviesTab.HOME) return false
         return movieStore.favoritesList().isEmpty()

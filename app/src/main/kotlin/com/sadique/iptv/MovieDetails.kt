@@ -267,7 +267,11 @@ internal fun MainActivity.showMovieDetails(details: MovieBox.Details) {
     if (details.genres.isNotEmpty()) metaParts += details.genres.take(3).joinToString(", ")
     movieDetailsMeta.text = metaParts.joinToString(" · ")
     val descParts = mutableListOf<String>()
-    if (details.description.isNotEmpty()) descParts += details.description
+    // MovieBox returns the title as the description when there is no
+    // real synopsis — showing it again under the title is redundant.
+    if (details.description.isNotEmpty() &&
+        !details.description.trim().equals(details.movie.title.trim(), ignoreCase = true)
+    ) descParts += details.description
     if (details.director.isNotEmpty()) descParts += "Director: ${details.director}"
     if (details.stars.isNotEmpty()) descParts += "Cast: ${details.stars}"
     movieDetailsDesc.text = descParts.joinToString("\n\n")
@@ -292,7 +296,11 @@ internal fun MainActivity.showSeriesDetails(details: MovieBox.Details) {
     metaParts += "Series"
     movieDetailsMeta.text = metaParts.joinToString(" · ")
     val descParts = mutableListOf<String>()
-    if (details.description.isNotEmpty()) descParts += details.description
+    // MovieBox returns the title as the description when there is no
+    // real synopsis — showing it again under the title is redundant.
+    if (details.description.isNotEmpty() &&
+        !details.description.trim().equals(details.movie.title.trim(), ignoreCase = true)
+    ) descParts += details.description
     if (details.director.isNotEmpty()) descParts += "Director: ${details.director}"
     if (details.stars.isNotEmpty()) descParts += "Cast: ${details.stars}"
     movieDetailsDesc.text = descParts.joinToString("\n\n")
@@ -595,7 +603,8 @@ internal fun MainActivity.showMovieStreams(streams: List<MovieBox.MovieStream>) 
     }
     val best = streams.first()
     val sizeText = if (best.sizeBytes > 0) " · ${formatSize(best.sizeBytes)}" else ""
-    movieDetailsStatus.text = "${resolutions.size} qualities available$sizeText — Play dabayein."
+    val qualityWord = if (resolutions.size == 1) "quality" else "qualities"
+    movieDetailsStatus.text = "${resolutions.size} $qualityWord available$sizeText — Play dabayein."
     moviePlayButton.isEnabled = true
     // If the user hasn't moved off the Fav landing yet, put focus
     // on Play now that it works.

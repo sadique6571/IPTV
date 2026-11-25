@@ -27,8 +27,11 @@ internal fun MainActivity.buildMoviesRail(title: String, movies: List<MovieBox.M
         gravity = Gravity.CENTER_VERTICAL
     }
     header.addView(sectionLabel(title), LinearLayout.LayoutParams(0, -2, 1f))
-    val seeAll = button("See All", R.drawable.ic_chevron_right, iconEnd = true) { showMoviesSeeAll(title, movies) }
-    header.addView(seeAll)
+    // v2.0.28: big and bold — the old wrap-content button was small.
+    val seeAll = button("See All", R.drawable.ic_chevron_right, iconEnd = true) { showMoviesSeeAll(title, movies) }.apply {
+        setTypeface(null, Typeface.BOLD)
+    }
+    header.addView(seeAll, LinearLayout.LayoutParams(-2, dp(if (isTv) 56 else 52)))
     rail.addView(header)
     val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
     // Only the cards visible at first load eagerly — the rest of the
@@ -40,9 +43,13 @@ internal fun MainActivity.buildMoviesRail(title: String, movies: List<MovieBox.M
             marginEnd = dp(12)
         })
     }
-    // End stops: LEFT past the first card / RIGHT past the last must
-    // not wander off the rail.
-    row.getChildAt(0)?.nextFocusLeftId = View.NO_ID
+    // End stops: LEFT past the first card reaches the sidebar
+    // navigation (v2.0.28 — it was NO_ID, so only the first rail's
+    // first card got a way back, via linkMoviesTabFocus; the other
+    // rails' first cards relied on geometry across the scroller and
+    // the pointer went nowhere). RIGHT past the last card stays.
+    row.getChildAt(0)?.nextFocusLeftId =
+        if (isTv) firstMoviesTabChipId() else View.NO_ID
     if (row.childCount > 0) {
         row.getChildAt(row.childCount - 1)?.nextFocusRightId = View.NO_ID
     }

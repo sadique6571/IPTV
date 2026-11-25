@@ -197,14 +197,15 @@ internal fun MainActivity.showUpdateDialog(update: UpdateChecker.Update) {
             addState(intArrayOf(), glassShape(25))
         }
     }
+    // v2.0.28: big, wide, full-width buttons stacked — the old
+    // side-by-side wrap-content pair was too small.
     val buttons = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.END
+        orientation = LinearLayout.VERTICAL
     }
-    buttons.addView(laterButton, LinearLayout.LayoutParams(-2, -2).apply {
-        marginEnd = dp(12)
+    buttons.addView(downloadButton, LinearLayout.LayoutParams(-1, dp(if (isTv) 56 else 52)))
+    buttons.addView(laterButton, LinearLayout.LayoutParams(-1, dp(if (isTv) 56 else 52)).apply {
+        topMargin = dp(8)
     })
-    buttons.addView(downloadButton)
     layout.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(18)
     })

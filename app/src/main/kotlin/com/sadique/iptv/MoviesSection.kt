@@ -271,23 +271,24 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     detailsInner.addView(moviePlayButton, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(12)
     })
-    // Secondary actions in one compact row under Play (instead of four
-    // stacked full-width buttons): Favorite / Download / Back share the
-    // width. Download stays mobile-only.
-    val actionsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+    // Secondary actions stacked full-width under Play (v2.0.28):
+    // big, wide, full-screen like Play — the old compact row shared
+    // the width, so in the narrow side panel (264dp) "Favorite" no
+    // longer fit. Download stays mobile-only.
+    val actionsRow = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     movieFavButton = button("Favorite", R.drawable.ic_favorite_outline) { toggleFavoriteMovie() }
-    actionsRow.addView(movieFavButton, LinearLayout.LayoutParams(0, dp(if (isTv) 56 else 52), 1f).apply {
-        marginEnd = dp(8)
-    })
+    actionsRow.addView(movieFavButton, LinearLayout.LayoutParams(-1, dp(if (isTv) 56 else 52)))
     // Download (v2.0.35, mobile only — the user did not approve TV
     // downloads): saves the movie file so it plays without internet.
     movieDownloadButton = button("Download", R.drawable.ic_download) { startMovieDownload() }
     movieDownloadButton.visibility = if (isTv) View.GONE else View.VISIBLE
-    actionsRow.addView(movieDownloadButton, LinearLayout.LayoutParams(0, dp(if (isTv) 56 else 52), 1f).apply {
-        marginEnd = dp(8)
+    actionsRow.addView(movieDownloadButton, LinearLayout.LayoutParams(-1, dp(if (isTv) 56 else 52)).apply {
+        topMargin = dp(8)
     })
     actionsRow.addView(button("Back", R.drawable.ic_arrow_back) { showMoviesList() },
-        LinearLayout.LayoutParams(0, dp(if (isTv) 56 else 52), 1f))
+        LinearLayout.LayoutParams(-1, dp(if (isTv) 56 else 52)).apply {
+            topMargin = dp(8)
+        })
     detailsInner.addView(actionsRow, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(8)
     })
@@ -446,6 +447,13 @@ internal fun MainActivity.searchMovies() {
     movieProgress.visibility = View.VISIBLE
     movieStatus.text = "Search ho raha hai…"
     movieResults.removeAllViews()
+    // The focused view (a quick chip, the search field) was just
+    // removed with the results — without a landing the D-pad pointer
+    // is lost until results arrive, and forever on an empty search.
+    // Park focus on the search field: it is always there, and DOWN
+    // from it reaches the tabs. showMovieResults moves focus to the
+    // first row when results arrive.
+    movieSearchInput.requestFocus()
     imports.execute {
         try {
             val results = movieBox.search(query)
@@ -500,6 +508,10 @@ internal fun MainActivity.showMovieResults(movies: List<MovieBox.Movie>) {
 internal fun MainActivity.linkMovieRowActions(rows: List<View>) {
     for (i in rows.indices) {
         val row = rows[i] as? LinearLayout ?: continue
+        // LEFT from any row reaches the sidebar navigation (v2.0.28):
+        // geometry alone is unreliable across the scroller boundary,
+        // so rows past the first had no way back to the tabs.
+        if (isTv) row.nextFocusLeftId = firstMoviesTabChipId()
         val action = (0 until row.childCount).mapNotNull { row.getChildAt(it) }
             .firstOrNull { it.tag == "rowAction" } ?: continue
         if (i > 0) action.nextFocusUpId = rows[i - 1].id

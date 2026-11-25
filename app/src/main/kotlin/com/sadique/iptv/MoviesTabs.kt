@@ -176,6 +176,8 @@ internal fun MainActivity.renderMoviesGenres() {
     movieGenreQuickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
     for (term in listOf("Marvel", "DC", "Bollywood", "Punjabi", "Action", "Comedy")) {
         val quickChip = chip(term) { quickSearchMovie(term) }
+        quickChip.id = View.generateViewId()
+        if (isTv) quickChip.nextFocusLeftId = firstMoviesTabChipId()
         movieGenreQuickRow.addView(quickChip, LinearLayout.LayoutParams(-2, -2).apply {
             marginEnd = dp(8)
         })
@@ -188,6 +190,23 @@ internal fun MainActivity.renderMoviesGenres() {
     movieResults.addView(quickScroll, LinearLayout.LayoutParams(-1, -2).apply {
         bottomMargin = dp(8)
     })
+    // Wire the vertical chain NOW, not only after the genre results
+    // load (v2.0.28): the quick chips had no ids, so the genre
+    // chips' DOWN link was NO_ID and D-pad DOWN relied on geometry
+    // across the scrollers — the pointer went nowhere. Genre chips
+    // go DOWN to the first quick chip; quick chips go UP to the
+    // selected genre chip.
+    val firstQuickId = movieGenreQuickRow.getChildAt(0)?.id ?: View.NO_ID
+    val selectedGenreChip = (0 until movieGenreRow.childCount)
+        .mapNotNull { movieGenreRow.getChildAt(it) as? Button }
+        .firstOrNull { it.isSelected }
+    for (i in 0 until movieGenreRow.childCount) {
+        movieGenreRow.getChildAt(i)?.nextFocusDownId = firstQuickId
+    }
+    for (i in 0 until movieGenreQuickRow.childCount) {
+        movieGenreQuickRow.getChildAt(i)?.nextFocusUpId =
+            selectedGenreChip?.id ?: View.NO_ID
+    }
     movieGenreResults = column()
     movieResults.addView(movieGenreResults, LinearLayout.LayoutParams(-1, -2))
     loadMoviesGenre(moviesGenre)
