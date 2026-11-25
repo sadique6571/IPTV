@@ -100,7 +100,7 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        backButton = button("Live TV", R.drawable.ic_arrow_back) { closeMovies() }
+        backButton = button("Live TV", R.drawable.ic_arrow_back) { closeMovies(stopMovie = true) }
         backButton.id = View.generateViewId()
         header.addView(backButton,
             LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(12) })
@@ -126,7 +126,12 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         ellipsize = TextUtils.TruncateAt.END
     }
     movieNowPlayingBar.addView(movieNowPlayingLabel, LinearLayout.LayoutParams(0, -2, 1f))
-    movieNowPlayingBar.addView(button("Player", R.drawable.ic_play) { closeMovies() },
+    movieNowPlayingBar.addView(button("Player", R.drawable.ic_play) {
+        // Mini player: the movie is playing in the small player above —
+        // go back to fullscreen (the browser closes, the movie keeps playing).
+        closeMovies()
+        if (playingMovie != null) applyFullScreen(true)
+    },
         LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
     view.addView(movieNowPlayingBar, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(10)
@@ -374,15 +379,19 @@ internal fun MainActivity.openMovies() {
         movieNowPlayingBar.visibility = View.GONE
     }
     showMoviesList()
+    // Mini player: a movie playing windowed puts the small player on
+    // top and this browser below it.
+    updateMiniPlayerLayout()
 }
 
 
 /** Reopens the Movies browser at the details screen of the title
- * that was just playing (Back from playback). The details pane is
- * already rendered — Play was pressed from it — so this only
- * re-shows the overlay, with the same focus trap as openMovies();
- * nothing is reloaded. The Now Playing bar stays hidden: nothing
- * is playing any more. */
+ * that was just playing (Back from playback, or Back from fullscreen
+ * into the mini player). The details pane is already rendered — Play
+ * was pressed from it — so this only re-shows the overlay, with the
+ * same focus trap as openMovies(); nothing is reloaded. The Now
+ * Playing bar shows while a movie plays (mini player): its Player
+ * button is the way back to fullscreen. */
 internal fun MainActivity.openMoviesToDetails() {
     ensureMoviesView()
     // A channel must not keep playing behind the Movies browser.
@@ -390,18 +399,34 @@ internal fun MainActivity.openMoviesToDetails() {
     moviesOpen = true
     moviesView.visibility = View.VISIBLE
     rootView.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-    movieNowPlayingBar.visibility = View.GONE
+    // Now-playing bar: in mini-player mode the movie is playing above
+    // the browser — the bar's Player button is the way back to fullscreen.
+    val movie = playingMovie
+    if (movie != null) {
+        movieNowPlayingLabel.text = "▶ Abhi chal rahi hai: ${movie.title}"
+        movieNowPlayingBar.visibility = View.VISIBLE
+    } else {
+        movieNowPlayingBar.visibility = View.GONE
+    }
     showMoviesDetails()
+    updateMiniPlayerLayout()
 }
 
 
-internal fun MainActivity.closeMovies() {
+internal fun MainActivity.closeMovies(stopMovie: Boolean = false) {
+    if (stopMovie && playingMovie != null) {
+        // Leaving the Movies section while a movie plays in the mini
+        // player stops it — otherwise it would keep playing in the
+        // channels screen's small player.
+        stopCurrentPlayback()
+    }
     moviesOpen = false
     moviesView.visibility = View.GONE
     // Release the focus trap before focus goes back to the Live TV layout.
     rootView.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
     // A movie keeps playing underneath when the browser is closed.
     focusBrowse()
+    updateMiniPlayerLayout()
 }
 
 

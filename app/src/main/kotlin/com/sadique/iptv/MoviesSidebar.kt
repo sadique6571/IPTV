@@ -106,7 +106,7 @@ internal fun MainActivity.buildMoviesSidebar(): LinearLayout {
     // Live TV way back at the bottom (the spacer pushes it down).
     val spacer = View(this)
     sidebar.addView(spacer, LinearLayout.LayoutParams(-1, 0, 1f))
-    val liveTvButton = button("Live TV", R.drawable.ic_arrow_back) { closeMovies() }
+    val liveTvButton = button("Live TV", R.drawable.ic_arrow_back) { closeMovies(stopMovie = true) }
     liveTvButton.id = View.generateViewId()
     sidebar.addView(liveTvButton, LinearLayout.LayoutParams(-1, -2).apply {
         marginStart = dp(8)
