@@ -145,6 +145,7 @@ class MainActivity : Activity() {
     internal lateinit var movieCCButton: Button
     internal lateinit var moviePrevButton: Button
     internal lateinit var movieNextButton: Button
+    internal lateinit var movieStopButton: Button
     internal var currentSubtitle: MovieBox.Subtitle? = null
     internal var subtitlesEnabled = true
     internal lateinit var remainingLabel: TextView
@@ -904,6 +905,32 @@ class MainActivity : Activity() {
                 showPlayerControls()
             }
         }
+        // Stop (v2.0.25): the player had no way to stop a movie at
+        // all — Back only stopped it from the Movies list top level.
+        // Stopping re-renders the list, so Continue Watching comes
+        // back right away. Styled like Prev/Next (frosted chip).
+        movieStopButton = Button(this).apply {
+            text = "Stop"
+            isAllCaps = false
+            contentDescription = "Stop movie"
+            id = View.generateViewId()
+            minimumWidth = 0
+            minimumHeight = 0
+            minWidth = 0
+            includeFontPadding = false
+            setPadding(dp(10), dp(if (isTv) 6 else 2), dp(10), dp(if (isTv) 6 else 2))
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            textSize = if (isTv) 10f else 10f
+            gravity = Gravity.CENTER
+            background = rowChipBackground()
+            visibility = View.GONE
+            setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+            setOnClickListener {
+                stopCurrentPlayback()
+                if (moviesOpen) showMoviesList()
+            }
+        }
         // Demo UI: plain "-10" / "+10" text (no box, like the demo),
         // right after the play/pause disc.
         seekBackButton = Button(this).apply {
@@ -948,6 +975,12 @@ class MainActivity : Activity() {
             setOnClickListener { seekMovieBy(10_000) }
         }
         overlayBar.addView(playPauseButton, LinearLayout.LayoutParams(dp(if (isTv) 40 else 34), dp(if (isTv) 40 else 34)))
+        overlayBar.addView(movieStopButton, LinearLayout.LayoutParams(
+            -2, dp(if (isTv) 24 else 20),
+        ).apply {
+            marginStart = dp(2)
+            marginEnd = dp(2)
+        })
         overlayBar.addView(seekBackButton, LinearLayout.LayoutParams(
             -2, dp(if (isTv) 28 else 28),
         ).apply {
@@ -1724,7 +1757,7 @@ class MainActivity : Activity() {
             overlayBar.orientation = LinearLayout.VERTICAL
             overlayBar.removeView(seekRow)
             for (chip in listOf(
-                playPauseButton, seekBackButton, seekForwardButton,
+                playPauseButton, movieStopButton, seekBackButton, seekForwardButton,
                 moviePrevButton, movieNextButton, movieAudioButton,
                 movieCCButton, movieQualityButton, fullscreenButton,
             )) {
@@ -1742,6 +1775,7 @@ class MainActivity : Activity() {
             chipsRow.removeAllViews()
             overlayBar.orientation = LinearLayout.HORIZONTAL
             overlayBar.addView(playPauseButton)
+            overlayBar.addView(movieStopButton)
             overlayBar.addView(seekBackButton)
             overlayBar.addView(seekForwardButton)
             overlayBar.addView(seekRow, LinearLayout.LayoutParams(0, -2, 1f))
@@ -1764,6 +1798,20 @@ class MainActivity : Activity() {
     internal fun isMiniPlayer(): Boolean =
         playingMovie != null && moviesOpen && !fullScreen
 
+    /** v2.0.25: the mini player goes wide when the Movies browser
+     * has nothing to show. On the Home tab in mini mode Continue
+     * Watching is hidden, so Home is empty iff there are no
+     * favorites — the empty middle then belongs to the player, up
+     * to the sidebar. Any content (another tab, search results, a
+     * See All list, the details pane) restores the 55/45 split. */
+    private fun isMiniPlayerWide(): Boolean {
+        if (!isMiniPlayer() || !isTv) return false
+        if (moviesDetailsPane.visibility == View.VISIBLE) return false
+        if (moviesSeeAll != null || movieResultsAreSearch) return false
+        if (moviesTab != MoviesTab.HOME) return false
+        return movieStore.favoritesList().isEmpty()
+    }
+
     /** Square or rounded player corners. Fullscreen and the mini
      * player are square (docked, edge to edge); windowed Live TV
      * keeps the 24dp card rounding. */
@@ -1778,10 +1826,23 @@ class MainActivity : Activity() {
 
     internal fun updateMiniPlayerLayout() {
         val miniPlayer = isMiniPlayer()
-        // Mini-player bar + subtitle lift (v2.0.24): two-row bar on TV
-        // side-by-side, and subtitles lift higher over the short player.
+        // Mini-player bar + subtitle lift: two-row bar on TV
+        // side-by-side (v2.0.24). The lift (v2.0.25) is computed from
+        // the real bar height over the real 16:9 screen height — the
+        // fixed 38% floated the subtitle mid-video, because it was
+        // measured against the tall letterboxed screen.
         setMiniPlayerBar(miniPlayer && isTv)
-        playerController?.miniPlayerMode = miniPlayer
+        val availW = resources.displayMetrics.widthPixels - 2 * rootPaddingPx
+        val tvPlayerW = (availW * 0.45).toInt()
+        val miniWide = isMiniPlayerWide()
+        val miniPlayerW = if (miniWide) availW - dp(264) else tvPlayerW
+        val density = resources.displayMetrics.density
+        val liftFraction = when {
+            !miniPlayer -> 0.20f
+            isTv -> ((76 + 8 + 12) / (miniPlayerW * 9 / 16 / density)).coerceIn(0.20f, 0.45f)
+            else -> ((52 + 8 + 12) / (miniPlayerHeight() / density)).coerceIn(0.20f, 0.45f)
+        }
+        playerController?.subtitleLiftFraction = liftFraction
         playerController?.applySubtitleStyle()
         val sideBySide = isTv || isLandscape
         // TV mini player: side-by-side like Live TV (movies left,
@@ -1802,17 +1863,21 @@ class MainActivity : Activity() {
         val libraryWidthDp = if (isTv) 260 else 300
         // TV side-by-side split: the player takes 45% of the pane
         // width, the Movies browser the other 55% (enough for the
-        // 300dp sidebar + a 3-4 poster grid on the 1920 TV).
-        val availW = resources.displayMetrics.widthPixels - 2 * rootPaddingPx
-        val tvPlayerW = (availW * 0.45).toInt()
+        // 300dp sidebar + a 3-4 poster grid on the 1920 TV). Wide
+        // mini player (v2.0.25): when the browser has nothing to
+        // show, the player takes the empty middle too — up to the
+        // 264dp sidebar (200dp + the browser's 32dp side padding).
+        // The screen is 16:9 of the player width (v2.0.25): the old
+        // full-height screen letterboxed the video, which is also
+        // why the subtitles floated mid-picture.
         if (miniPlayer && isTv) {
             // Player: fixed right pane. splitPane gravity END pushes
             // the single fixed-width child to the right (the library
             // pane is GONE underneath the browser overlay).
             splitPane.gravity = Gravity.END
-            playerPane.layoutParams = LinearLayout.LayoutParams(tvPlayerW, -1)
+            playerPane.layoutParams = LinearLayout.LayoutParams(miniPlayerW, -1)
             libraryPane.layoutParams = LinearLayout.LayoutParams(-1, -1)
-            screen.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+            screen.layoutParams = LinearLayout.LayoutParams(-1, miniPlayerW * 9 / 16)
         } else if (miniPlayer) {
             splitPane.gravity = Gravity.START
             playerPane.layoutParams = LinearLayout.LayoutParams(-1, -2)
@@ -1872,7 +1937,9 @@ class MainActivity : Activity() {
             val rootTopPad = dp(if (isTv) 10 else 8)
             val rootBottomPad = dp(if (isTv) 12 else 8)
             if (miniPlayer && isTv) {
-                moviesView.layoutParams = FrameLayout.LayoutParams(availW - tvPlayerW, -1).apply {
+                moviesView.layoutParams = FrameLayout.LayoutParams(
+                    if (miniWide) dp(264) else availW - tvPlayerW, -1,
+                ).apply {
                     gravity = Gravity.START
                     topMargin = rootTopPad + headerH
                     leftMargin = rootPaddingPx

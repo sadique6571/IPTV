@@ -153,11 +153,15 @@ internal class PlayerController(
      * look (transparent background + drop shadow). */
     var subtitleBackground: Boolean = true
 
-    /** Mini-player mode (v2.0.24): the small player is short, so the
-     * lift that clears the fullscreen bar (20%) leaves the subtitle
-     * on the mini player's two-row bar — 38% clears it. Set from
-     * updateMiniPlayerLayout, before applySubtitleStyle. */
-    var miniPlayerMode = false
+    /** Subtitle lift while the controls show (v2.0.25): the fraction
+     * of the PlayerView height the subtitle's bottom edge sits above
+     * the bottom. 20% clears the fullscreen bar; the mini player is
+     * shorter with a two-row bar, so MainActivity computes it from
+     * the real bar height over the real (16:9) screen height — a
+     * fixed % floated the text mid-video when the screen was tall
+     * and letterboxed. Set from updateMiniPlayerLayout, before
+     * applySubtitleStyle. */
+    var subtitleLiftFraction = 0.20f
 
     /** Whether the player controls are currently visible. While they
      * are, the bottom bar covers the lower part of the picture, so
@@ -191,13 +195,11 @@ internal class PlayerController(
             ),
         )
         view.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSizeSp)
-        // 20% clears the ~60dp bottom bar on phones and TVs alike
-        // (the bar is ~17% of a phone-landscape height, ~11% of a
-        // TV's); 3% is the resting position with controls hidden.
-        // Mini player (v2.0.24): the player is short and its bar is
-        // two rows tall, so 38% lifts the text clear of it.
+        // subtitleLiftFraction clears the bottom bar (20% fullscreen,
+        // computed for the mini player); 3% is the resting position
+        // with controls hidden.
         view.setBottomPaddingFraction(
-            if (subtitleControlsVisible) (if (miniPlayerMode) 0.38f else 0.20f) else 0.03f,
+            if (subtitleControlsVisible) subtitleLiftFraction else 0.03f,
         )
     }
 

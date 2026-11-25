@@ -419,6 +419,9 @@ internal fun MainActivity.showMoviesDetails() {
     // enabled, so it is the safe landing; Play takes focus once the
     // streams load (see loadMovieStreams).
     movieFavButton.post { if (moviesOpen && movieFavButton.isShown) movieFavButton.requestFocus() }
+    // v2.0.25: the details pane has content — a wide mini player
+    // (empty Home) goes back to 55/45.
+    updateMiniPlayerLayout()
 }
 
 
@@ -455,6 +458,9 @@ internal fun MainActivity.searchMovies() {
                     movieStatus.text = "${results.size} movies mili."
                     showMovieResults(results)
                 }
+                // v2.0.25: search results are content — a wide mini
+                // player (empty Home) goes back to 55/45.
+                updateMiniPlayerLayout()
             }
         } catch (error: IOException) {
             runOnUiThread {
