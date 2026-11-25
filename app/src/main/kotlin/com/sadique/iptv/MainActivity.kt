@@ -254,7 +254,7 @@ class MainActivity : Activity() {
     // General lists in the user's own order — 1-5 are his picks, the
     // rest by popularity. Names must match the M3U exactly.
     private val pinnedPkOrder = listOf(
-        "Green Entertainment", "ARY Digital", "Hum TV", "Geo Entertainment", "Aan TV", "MUN TV",
+        "Green Entertainment", "Hum TV", "ARY Digital", "Geo Entertainment", "Aan TV", "MUN TV",
         "Express Entertainment", "Hum Sitaray", "A Plus", "TV One", "PTV Home",
         "Play Entertainment", "Bol Entertainment HD", "Apna Channel", "8XM",
         "aurLife HD", "LTN Family", "M Entertainment", "PTV Global",

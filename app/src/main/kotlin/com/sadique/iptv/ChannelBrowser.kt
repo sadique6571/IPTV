@@ -32,6 +32,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewOutlineProvider
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -95,7 +96,7 @@ internal fun MainActivity.setBrowseLevel(level: BrowseLevel, moveFocus: Boolean 
 internal fun MainActivity.focusPlayingRowOrFirst(preferChannel: Channel? = selected) {
     val channel = preferChannel
     if (channel != null) {
-        focusChannel(channel)
+        focusChannel(channel, center = true)
         // focusChannel is a no-op when the channel is not in this
         // list (filter changed) — but if focus already sits on a row,
         // that is still a good landing, so only fall back to the
@@ -133,6 +134,44 @@ internal fun MainActivity.updateBrowseVisibility() {
     libraryPane.visibility = if (visible) View.VISIBLE else View.GONE
 }
 
+
+/** Indian song/music channels by name (the M3U group is "General"
+ * for most of them, so names are the only signal). */
+private val songChannelNames = setOf(
+    "B4U Music", "Mastiii", "Mh 1 Music", "Music India", "PTC Music",
+    "Punjabi Beats HD", "Punjabi Hits", "Punjabi Music HD", "Zingabad",
+    "Balle Balle HD", "E 24",
+)
+
+/** Movie channels by name (same reason — the M3U group is
+ * "General" for most of them). */
+private val movieChannelNames = setOf(
+    "All Time Movies", "B4U Kadak", "B4U Movies", "Boogle Bollywood",
+    "Colors Cineplex", "Dangal 2", "Dangal TV", "Goldmines Action",
+    "Hindi Hits SD", "Maha Movie", "Manoranjan TV", "MH One Movies",
+    "Movie Punjab", "NH BollyFlix", "Pitaara", "Pitaara Comedy",
+    "Shemaroo Josh", "The Movie Club", "Zee Cinema APAC",
+)
+
+/** The list-order tier for a channel (the user's order, 2026-11-25):
+ * 0 pinned Pakistani drama, 1 other Pakistani (Islamic channels
+ * excepted — they get their own block), 2 Indian songs, 3 movies,
+ * 4 news, 5 Islamic, 6 everything else. */
+internal fun MainActivity.channelTier(channel: Channel): Int {
+    if (pinnedPkRank.containsKey(channel.name)) return 0
+    val isPk = channel.country.equals("PK", ignoreCase = true)
+    val isIslamic = groupMatches(channel, "islamic", "religious")
+    if (isPk && !isIslamic) return 1
+    if (channel.name in songChannelNames || groupMatches(channel, "music")) return 2
+    if (channel.name in movieChannelNames || groupMatches(channel, "movies") ||
+        channel.name.contains("movie", ignoreCase = true) ||
+        channel.name.contains("cinema", ignoreCase = true) ||
+        channel.name.contains("cineplex", ignoreCase = true)
+    ) return 3
+    if (groupMatches(channel, "news")) return 4
+    if (isIslamic) return 5
+    return 6
+}
 
 /** Rebuilds the channel list as ONE list (no pages — the user asked
  * for a single scroll). With preserveScroll, the scroll position is
@@ -184,14 +223,18 @@ internal fun MainActivity.populate(preserveScroll: Boolean = false) {
         }
         accepted && (query.isEmpty() || channel.name.contains(query, ignoreCase = true))
     }.let { filtered ->
-        // Pinned Pakistani entertainment first (the user's own 1-5,
-        // then the rest by popularity), then Pakistani channels,
-        // Indian last (stable sort keeps the M3U order inside each
-        // group). Favorites/Recent keep their own order; imported
-        // playlists keep theirs.
+        // The user's own order (2026-11-25): pinned Pakistani drama
+        // first (Green 1, Hum 2, then the rest), then all other
+        // Pakistani channels, then Indian songs, then movie channels,
+        // then news; Islamic channels sit in their own block, and
+        // everything else (sports, kids, other countries) follows in
+        // the old country order (other countries, then India). A
+        // stable sort keeps the M3U order inside each tier.
+        // Favorites/Recent keep their own order; imported playlists
+        // keep theirs.
         if (filter == "Favs" || filter == "Recent" || filter == "M3U") filtered
         else filtered.sortedWith(
-            compareBy<Channel> { pinnedPkRank[it.name] ?: Int.MAX_VALUE }
+            compareBy<Channel> { channelTier(it) }
                 .thenBy {
                     when (it.country.uppercase(Locale.ROOT)) {
                         "PK" -> 0
@@ -391,12 +434,37 @@ internal fun MainActivity.appendChannelRows(limit: Int) {
 }
 
 
-internal fun MainActivity.focusChannel(channel: Channel) {
+internal fun MainActivity.focusChannel(channel: Channel, center: Boolean = false) {
     // One list, no pages: the row index IS the match index.
     val index = currentMatches.indexOfFirst { it.key == channel.key }
     if (index < 0) return
     appendChannelRows(index + 1)
-    list.getChildAt(index)?.requestFocus()
+    val row = list.getChildAt(index) ?: return
+    // The row may have just been appended, or the pane may have just
+    // become visible again after fullscreen — either way its position
+    // is not laid out yet, and focusing now scrolls the list from
+    // stale coordinates (it used to land 1-2 rows above the playing
+    // channel). Wait for the layout pass, then focus; on the way back
+    // to the list the playing row is centered in the visible list so
+    // it is unmistakable.
+    list.viewTreeObserver.addOnGlobalLayoutListener(
+        object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                list.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                if (!list.isAttachedToWindow) return
+                row.requestFocus()
+                if (!center) return
+                val viewH = listScroll.height
+                val rowH = row.height
+                if (viewH > 0 && rowH > 0) {
+                    val target = (row.top - (viewH - rowH) / 2)
+                        .coerceIn(0, maxOf(0, list.height - viewH))
+                    listScroll.scrollTo(0, target)
+                }
+            }
+        },
+    )
+    list.requestLayout()
 }
 
 
