@@ -17,9 +17,11 @@ import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Typeface
+import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.StateListDrawable
 import android.os.Bundle
 import android.os.Handler
@@ -103,19 +105,17 @@ internal fun MainActivity.checkForUpdateManually() {
 }
 
 
-/** Themed dialog shell: navy gradient card with rounded corners, so
- * the update dialogs match the app instead of the system dialog
- * look. The window background goes transparent so the card's own
- * corners show. */
+/** Themed dialog shell (v2.0.26): neutral black glass like the
+ * player popup, capsule corners, compact padding — the old navy
+ * gradient did not match the app's theme. The window background
+ * goes transparent so the card's own corners show. */
 internal fun MainActivity.themedDialogView(): LinearLayout = column().apply {
-    background = GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(0xff0a1245.toInt(), 0xff2a1b6b.toInt()),
-    ).apply {
-        cornerRadius = dp(24).toFloat()
-        setStroke(dp(1), 0x6696acff.toInt())
+    background = GradientDrawable().apply {
+        setColor(0xe6000000.toInt())
+        cornerRadius = dp(28).toFloat()
+        setStroke(dp(1), 0x26ffffff.toInt())
     }
-    setPadding(dp(24), dp(20), dp(24), dp(20))
+    setPadding(dp(20), dp(16), dp(20), dp(16))
 }
 
 
@@ -126,15 +126,42 @@ internal fun MainActivity.showThemedDialog(view: View, cancelable: Boolean = tru
         .create()
     dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
     dialog.show()
+    // Wide capsule (v2.0.26): the default dialog width left the box
+    // narrow — 65% of the TV width, 90% on phones.
+    val width = (resources.displayMetrics.widthPixels * if (isTv) 0.65f else 0.9f).toInt()
+    dialog.window?.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
     return dialog
+}
+
+
+/** Update dialog title row (v2.0.26): a real download icon
+ * (ic_download, cyan) instead of the "⬆" text glyph, which read
+ * as a broken character on the TV. */
+private fun MainActivity.updateTitleRow(text: String): LinearLayout {
+    val row = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
+    row.addView(ImageView(this).apply {
+        setImageResource(R.drawable.ic_download)
+        imageTintList = ColorStateList.valueOf(cyan)
+        layoutParams = LinearLayout.LayoutParams(
+            dp(if (isTv) 28 else 24), dp(if (isTv) 28 else 24),
+        )
+    })
+    row.addView(label(text, if (isTv) 20 else 18, cyan).apply {
+        setTypeface(null, Typeface.BOLD)
+        layoutParams = LinearLayout.LayoutParams(-2, -2).apply {
+            marginStart = dp(10)
+        }
+    })
+    return row
 }
 
 
 internal fun MainActivity.showUpdateDialog(update: UpdateChecker.Update) {
     val layout = themedDialogView()
-    layout.addView(label("⬆ App Update", if (isTv) 20 else 18, cyan).apply {
-        setTypeface(null, Typeface.BOLD)
-    })
+    layout.addView(updateTitleRow("App Update"))
     layout.addView(label(
         "Naya version aa gaya hai (${update.tag}). Download kar ke install karna hai?",
         if (isTv) 16 else 14, textColor,
@@ -152,15 +179,24 @@ internal fun MainActivity.showUpdateDialog(update: UpdateChecker.Update) {
                     GradientDrawable.Orientation.LEFT_RIGHT,
                     intArrayOf(cyan, blue),
                 ).apply {
-                    cornerRadius = dp(10).toFloat()
+                    cornerRadius = dp(25).toFloat()
                     setStroke(dp(2), Color.WHITE)
                 })
-            addState(intArrayOf(android.R.attr.state_pressed), shape(blue, cyan, 10))
-            addState(intArrayOf(), gradientPill(10))
+            addState(intArrayOf(android.R.attr.state_pressed), shape(blue, cyan, 25))
+            addState(intArrayOf(), gradientPill(25))
         }
         setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
     }
-    val laterButton = button("Baad mein") { dialog?.dismiss() }
+    // Capsule like Download (v2.0.26) — the default button() shape
+    // is only 10dp.
+    val laterButton = button("Baad mein") { dialog?.dismiss() }.apply {
+        background = StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused),
+                glassShape(25, cyan, if (isTv) 3 else 2))
+            addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 25))
+            addState(intArrayOf(), glassShape(25))
+        }
+    }
     val buttons = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.END
@@ -178,19 +214,29 @@ internal fun MainActivity.showUpdateDialog(update: UpdateChecker.Update) {
 
 
 internal fun MainActivity.downloadAndInstallUpdate(update: UpdateChecker.Update) {
+    // Capsule progress bar (v2.0.26): rounded track + rounded cyan
+    // fill, replacing the old system bar. No indeterminate phase —
+    // it starts at 0% and fills as the download reports.
     val progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
         max = 100
-        isIndeterminate = true
-        indeterminateTintList = ColorStateList.valueOf(cyan)
-        progressTintList = ColorStateList.valueOf(cyan)
-        progressBackgroundTintList = ColorStateList.valueOf(0x33ffffff.toInt())
+        progress = 0
+        val track = GradientDrawable().apply {
+            setColor(0x33ffffff.toInt())
+            cornerRadius = dp(6).toFloat()
+        }
+        val fill = GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            intArrayOf(cyan, blue),
+        ).apply { cornerRadius = dp(6).toFloat() }
+        progressDrawable = LayerDrawable(arrayOf(
+            track,
+            ClipDrawable(fill, Gravity.START, ClipDrawable.HORIZONTAL),
+        ))
     }
     val progressText = label("Download ho raha hai… 0%", 14, textColor)
     val layout = themedDialogView().apply {
-        addView(label("⬆ Update download ho raha hai", if (isTv) 18 else 16, cyan).apply {
-            setTypeface(null, Typeface.BOLD)
-        })
-        addView(progressBar, LinearLayout.LayoutParams(-1, -2).apply {
+        addView(updateTitleRow("Update download ho raha hai"))
+        addView(progressBar, LinearLayout.LayoutParams(-1, dp(12)).apply {
             topMargin = dp(16)
         })
         addView(progressText, LinearLayout.LayoutParams(-1, -2).apply {
@@ -205,7 +251,6 @@ internal fun MainActivity.downloadAndInstallUpdate(update: UpdateChecker.Update)
                 runOnUiThread {
                     if (isDestroyed) return@runOnUiThread
                     if (percent >= 0) {
-                        progressBar.isIndeterminate = false
                         progressBar.progress = percent
                         progressText.text = "Download ho raha hai… $percent%"
                     }

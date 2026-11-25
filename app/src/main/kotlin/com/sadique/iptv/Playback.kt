@@ -232,6 +232,9 @@ internal fun MainActivity.applyControlVisibility() {
     movieStopButton.visibility = if (movie) View.VISIBLE else View.GONE
     // D-pad chain across the visible row buttons, in visual order.
     // Demo order: Prev, Next, Audio, CC, Quality, fullscreen.
+    // v2.0.26: the first row button's left is the last visible
+    // transport button (Stop while a movie plays but is not seekable
+    // yet — the disc used to be skipped over).
     val rowButtons = listOf(
         moviePrevButton, movieNextButton, movieAudioButton,
         movieCCButton, movieQualityButton, fullscreenButton,
@@ -240,7 +243,7 @@ internal fun MainActivity.applyControlVisibility() {
         val button = rowButtons[i]
         button.nextFocusLeftId = if (i == 0) {
             if (movie) {
-                if (seekCluster) seekForwardButton.id else playPauseButton.id
+                if (seekCluster) seekForwardButton.id else movieStopButton.id
             } else {
                 View.NO_ID
             }
@@ -252,14 +255,19 @@ internal fun MainActivity.applyControlVisibility() {
     }
     // Demo UI: the -10s/+10s cluster sits between play/pause and the
     // row buttons; the top bar sits above the seek bar.
-    seekBackButton.nextFocusRightId = playPauseButton.id
+    // v2.0.26: the transport cluster is one linear chain in visual
+    // order (disc — Stop — -10 — +10 — row buttons). It used to hub
+    // through the disc (-10's right and +10's left both pointed at
+    // it), so from -10 the pointer looped back to the disc and +10
+    // and everything right of it was unreachable.
+    seekBackButton.nextFocusRightId = seekForwardButton.id
     seekBackButton.nextFocusLeftId = if (movie) movieStopButton.id else View.NO_ID
     seekBackButton.nextFocusUpId = seekTarget
-    seekForwardButton.nextFocusLeftId = playPauseButton.id
+    seekForwardButton.nextFocusLeftId = seekBackButton.id
     seekForwardButton.nextFocusRightId =
         if (rowButtons.isNotEmpty()) rowButtons.first().id else View.NO_ID
     seekForwardButton.nextFocusUpId = seekTarget
-    playPauseButton.nextFocusLeftId = if (seekCluster) seekBackButton.id else View.NO_ID
+    playPauseButton.nextFocusLeftId = View.NO_ID
     // Stop (v2.0.25) is the disc's right neighbour while a movie
     // plays; from Stop, right goes to -10 (seekable) or the first
     // row button, like the disc used to.
