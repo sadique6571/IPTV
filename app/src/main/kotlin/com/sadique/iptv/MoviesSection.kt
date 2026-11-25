@@ -69,7 +69,7 @@ import java.util.concurrent.Executors
 // ---- MovieBox movies (v1) ----
 //
 // A full-screen Movies SECTION (same Qwen navy-glass look) beside Live
-// TV: TV has a sidebar (search + nav + Live TV) with posters on the
+// TV: TV has a sidebar (search + nav) with posters on the
 // right; mobile keeps a top header + scrolling search and tabs. Then
 // search → results (poster + name + year + HINDI badge) → details →
 // audio (dub) + quality pickers → Play in the main player.
@@ -92,24 +92,9 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         isClickable = true
         visibility = View.GONE
     }
-    // Header (mobile only): the "Live TV" way back + title. On TV
-    // the sidebar holds the Live TV button, so no header row is needed.
-    var backButton: Button? = null
-    if (!isTv) {
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        backButton = button("Live TV", R.drawable.ic_arrow_back) { closeMovies(stopMovie = true) }
-        backButton.id = View.generateViewId()
-        header.addView(backButton,
-            LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(12) })
-        header.addView(label("🎬 Movies", 22, textColor).apply {
-            setTypeface(null, Typeface.BOLD)
-            letterSpacing = 0.02f
-        })
-        view.addView(header)
-    }
+    // No header row here: the app status bar sits above this browser
+    // (v2.0.23) and carries the "Back to TV" button, so a second
+    // "Live TV" row inside the browser would only duplicate it.
     // Now-playing bar: when a movie is already playing, the section
     // says so and offers a shortcut back to the player.
     movieNowPlayingBar = LinearLayout(this).apply {
@@ -150,7 +135,7 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     movieResults = column()
     if (isTv) {
         // Two-pane (v2.0.37, glass panel + 300dp in v2.0.38): the
-        // sidebar (search + nav + Live TV) on the left, the posters
+        // sidebar (search + nav) on the left, the posters
         // on the right. The sidebar is part of moviesListPane so
         // the details pane hides it too.
         moviesListPane.orientation = LinearLayout.HORIZONTAL
@@ -212,10 +197,11 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         movieResultsScroll = ScrollView(this).apply { addView(scrollContent) }
         moviesListPane.addView(movieResultsScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         // Explicit vertical links — geometry alone is unreliable
-        // across the scroller boundary.
-        backButton?.nextFocusDownId = movieSearchInput.id
+        // across the scroller boundary. Up from the search goes to
+        // the status bar's "Back to TV" button (v2.0.23).
+        backToTvButton.nextFocusDownId = movieSearchInput.id
         movieSearchInput.nextFocusDownId = firstMoviesTabChipId()
-        movieSearchInput.nextFocusUpId = backButton?.id ?: View.NO_ID
+        movieSearchInput.nextFocusUpId = backToTvButton.id
     }
     view.addView(moviesListPane, LinearLayout.LayoutParams(-1, 0, 1f))
 
@@ -368,8 +354,11 @@ internal fun MainActivity.openMovies() {
     // FocusFinder can still reach the rows and buttons underneath —
     // D-pad focus used to escape behind the overlay and the selection
     // vanished (the tabs themselves never moved). While the overlay
-    // is open, the Live TV subtree takes no focus at all.
-    rootView.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+    // is open, the channel list takes no focus at all. The trap is
+    // on the library pane only (v2.0.23): the status bar ("Back to
+    // TV") and the mini-player controls must stay reachable, so
+    // fullscreen works from the mini player itself.
+    libraryPane.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
     // Now-playing bar: show it only when a movie is actually playing.
     val movie = playingMovie
     if (movie != null) {
@@ -398,7 +387,9 @@ internal fun MainActivity.openMoviesToDetails() {
     stopPlayingChannel()
     moviesOpen = true
     moviesView.visibility = View.VISIBLE
-    rootView.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+    // Same focus trap as openMovies(): the library pane only, so the
+    // status bar and the mini-player controls stay reachable.
+    libraryPane.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
     // Now-playing bar: in mini-player mode the movie is playing above
     // the browser — the bar's Player button is the way back to fullscreen.
     val movie = playingMovie
@@ -423,7 +414,7 @@ internal fun MainActivity.closeMovies(stopMovie: Boolean = false) {
     moviesOpen = false
     moviesView.visibility = View.GONE
     // Release the focus trap before focus goes back to the Live TV layout.
-    rootView.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+    libraryPane.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
     // A movie keeps playing underneath when the browser is closed.
     focusBrowse()
     updateMiniPlayerLayout()
