@@ -32,8 +32,10 @@ The header shows IPTV upload and download combined. Its daily total uses Pakista
 ```
 
 Requires JDK 17+ and Android SDK platform 35. CI builds the debug APK on every
-push to `main` (`.github/workflows/android.yml`) and uploads it as the
-`IPTV-debug` artifact.
+push (`.github/workflows/android.yml`) and uploads it as the `IPTV-debug`
+artifact; on `main` it also builds the R8 release APK (`IPTV.apk`, signed with
+the keystore from the `RELEASE_KEYSTORE_*` secrets) and publishes that as the
+GitHub release. The in-app updater looks for the `IPTV.apk` asset.
 
 `build-apk.sh` is a thin wrapper around `./gradlew assembleDebug`, kept so the
 old build command still works.
