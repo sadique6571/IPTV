@@ -95,32 +95,10 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     // No header row here: the app status bar sits above this browser
     // (v2.0.23) and carries the "Back to TV" button, so a second
     // "Live TV" row inside the browser would only duplicate it.
-    // Now-playing bar: when a movie is already playing, the section
-    // says so and offers a shortcut back to the player.
-    movieNowPlayingBar = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        background = glassShape(16)
-        setPadding(dp(16), dp(10), dp(16), dp(10))
-        visibility = View.GONE
-    }
-    movieNowPlayingLabel = TextView(this).apply {
-        textSize = if (isTv) 15f else 14f
-        setTextColor(textColor)
-        maxLines = 1
-        ellipsize = TextUtils.TruncateAt.END
-    }
-    movieNowPlayingBar.addView(movieNowPlayingLabel, LinearLayout.LayoutParams(0, -2, 1f))
-    movieNowPlayingBar.addView(button("Player", R.drawable.ic_play) {
-        // Mini player: the movie is playing in the small player above —
-        // go back to fullscreen (the browser closes, the movie keeps playing).
-        closeMovies()
-        if (playingMovie != null) applyFullScreen(true)
-    },
-        LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
-    view.addView(movieNowPlayingBar, LinearLayout.LayoutParams(-1, -2).apply {
-        topMargin = dp(10)
-    })
+    // (The old "Abhi chal rahi hai" bar is gone in v2.0.24: it only
+    // ever showed in mini-player mode, where the player's own top
+    // bar already shows the title and its fullscreen chip is the way
+    // back to fullscreen.)
 
     // ---- Search + results pane ----
     moviesListPane = column()
@@ -139,7 +117,8 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         // on the right. The sidebar is part of moviesListPane so
         // the details pane hides it too.
         moviesListPane.orientation = LinearLayout.HORIZONTAL
-        moviesListPane.addView(buildMoviesSidebar(),
+        moviesSidebarView = buildMoviesSidebar()
+        moviesListPane.addView(moviesSidebarView,
             LinearLayout.LayoutParams(dp(300), -1))
         val content = column()
         content.addView(movieStatus)
@@ -359,14 +338,8 @@ internal fun MainActivity.openMovies() {
     // TV") and the mini-player controls must stay reachable, so
     // fullscreen works from the mini player itself.
     libraryPane.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-    // Now-playing bar: show it only when a movie is actually playing.
-    val movie = playingMovie
-    if (movie != null) {
-        movieNowPlayingLabel.text = "▶ Abhi chal rahi hai: ${movie.title}"
-        movieNowPlayingBar.visibility = View.VISIBLE
-    } else {
-        movieNowPlayingBar.visibility = View.GONE
-    }
+    // The "Abhi chal rahi hai" bar is gone (v2.0.24) — see
+    // buildMoviesView: the mini player's own top bar shows the title.
     showMoviesList()
     // Mini player: a movie playing windowed puts the small player on
     // top and this browser below it.
@@ -390,15 +363,8 @@ internal fun MainActivity.openMoviesToDetails() {
     // Same focus trap as openMovies(): the library pane only, so the
     // status bar and the mini-player controls stay reachable.
     libraryPane.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-    // Now-playing bar: in mini-player mode the movie is playing above
-    // the browser — the bar's Player button is the way back to fullscreen.
-    val movie = playingMovie
-    if (movie != null) {
-        movieNowPlayingLabel.text = "▶ Abhi chal rahi hai: ${movie.title}"
-        movieNowPlayingBar.visibility = View.VISIBLE
-    } else {
-        movieNowPlayingBar.visibility = View.GONE
-    }
+    // The "Abhi chal rahi hai" bar is gone (v2.0.24) — see
+    // buildMoviesView: the mini player's own top bar shows the title.
     showMoviesDetails()
     updateMiniPlayerLayout()
 }

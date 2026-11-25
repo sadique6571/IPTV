@@ -14,15 +14,20 @@ internal fun MainActivity.renderMoviesHome() {
     movieResults.removeAllViews()
     val continuing = movieStore.continueWatching()
     val favorites = movieStore.favoritesList()
+    // v2.0.24: while the mini player is on, Continue Watching stays
+    // hidden — the side-by-side panel is too narrow for its rows and
+    // they clip. It comes back once the player is stopped (the list
+    // re-renders then, with isMiniPlayer() false).
+    val showContinuing = continuing.isNotEmpty() && !isMiniPlayer()
     movieStatus.text = when {
-        continuing.isNotEmpty() && favorites.isNotEmpty() -> "Continue Watching · Favorites"
-        continuing.isNotEmpty() -> "Continue Watching"
+        showContinuing && favorites.isNotEmpty() -> "Continue Watching · Favorites"
+        showContinuing -> "Continue Watching"
         favorites.isNotEmpty() -> "Favorites"
         else -> "Abhi koi movie nahi mili — search karke movie dekhein."
     }
     // Continue Watching keeps its rich rows (progress bar + remaining
     // time) — a poster rail would lose that.
-    if (continuing.isNotEmpty()) {
+    if (showContinuing) {
         movieResults.addView(sectionLabel("▶ Continue Watching"))
         val rows = mutableListOf<View>()
         for (entry in continuing) {
