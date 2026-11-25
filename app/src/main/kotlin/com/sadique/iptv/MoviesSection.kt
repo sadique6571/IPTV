@@ -234,19 +234,6 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     detailsInner.addView(movieEpisodeColumn, LinearLayout.LayoutParams(-1, -2).apply {
         bottomMargin = dp(12)
     })
-    movieQualityLabel = label("Quality", if (isTv) 15 else 13, textColor).apply {
-        setTypeface(null, Typeface.BOLD)
-    }
-    detailsInner.addView(movieQualityLabel)
-    val qualityScroll = HorizontalScrollView(this).apply {
-        isHorizontalScrollBarEnabled = false
-        overScrollMode = View.OVER_SCROLL_NEVER
-    }
-    movieQualityRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-    qualityScroll.addView(movieQualityRow)
-    detailsInner.addView(qualityScroll, LinearLayout.LayoutParams(-1, -2).apply {
-        bottomMargin = dp(12)
-    })
     movieDetailsStatus = label("", if (isTv) 15 else 13, muted)
     detailsInner.addView(movieDetailsStatus)
     moviePlayButton = Button(this).apply {
@@ -271,24 +258,23 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     detailsInner.addView(moviePlayButton, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(12)
     })
-    // Secondary actions stacked full-width under Play (v2.0.28):
-    // big, wide, full-screen like Play — the old compact row shared
-    // the width, so in the narrow side panel (264dp) "Favorite" no
-    // longer fit. Download stays mobile-only.
-    val actionsRow = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    // Secondary actions in one compact row under Play (instead of four
+    // stacked full-width buttons): Favorite / Download / Back share the
+    // width. Download stays mobile-only.
+    val actionsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
     movieFavButton = button("Favorite", R.drawable.ic_favorite_outline) { toggleFavoriteMovie() }
-    actionsRow.addView(movieFavButton, LinearLayout.LayoutParams(-1, dp(if (isTv) 56 else 52)))
+    actionsRow.addView(movieFavButton, LinearLayout.LayoutParams(0, dp(if (isTv) 56 else 52), 1f).apply {
+        marginEnd = dp(8)
+    })
     // Download (v2.0.35, mobile only — the user did not approve TV
     // downloads): saves the movie file so it plays without internet.
     movieDownloadButton = button("Download", R.drawable.ic_download) { startMovieDownload() }
     movieDownloadButton.visibility = if (isTv) View.GONE else View.VISIBLE
-    actionsRow.addView(movieDownloadButton, LinearLayout.LayoutParams(-1, dp(if (isTv) 56 else 52)).apply {
-        topMargin = dp(8)
+    actionsRow.addView(movieDownloadButton, LinearLayout.LayoutParams(0, dp(if (isTv) 56 else 52), 1f).apply {
+        marginEnd = dp(8)
     })
     actionsRow.addView(button("Back", R.drawable.ic_arrow_back) { showMoviesList() },
-        LinearLayout.LayoutParams(-1, dp(if (isTv) 56 else 52)).apply {
-            topMargin = dp(8)
-        })
+        LinearLayout.LayoutParams(0, dp(if (isTv) 56 else 52), 1f))
     detailsInner.addView(actionsRow, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(8)
     })

@@ -27,11 +27,8 @@ internal fun MainActivity.buildMoviesRail(title: String, movies: List<MovieBox.M
         gravity = Gravity.CENTER_VERTICAL
     }
     header.addView(sectionLabel(title), LinearLayout.LayoutParams(0, -2, 1f))
-    // v2.0.28: big and bold — the old wrap-content button was small.
-    val seeAll = button("See All", R.drawable.ic_chevron_right, iconEnd = true) { showMoviesSeeAll(title, movies) }.apply {
-        setTypeface(null, Typeface.BOLD)
-    }
-    header.addView(seeAll, LinearLayout.LayoutParams(-2, dp(if (isTv) 56 else 52)))
+    val seeAll = button("See All", R.drawable.ic_chevron_right, iconEnd = true) { showMoviesSeeAll(title, movies) }
+    header.addView(seeAll)
     rail.addView(header)
     val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
     // Only the cards visible at first load eagerly — the rest of the

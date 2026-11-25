@@ -303,10 +303,8 @@ class MainActivity : Activity() {
     internal lateinit var movieDetailsTitle: TextView
     internal lateinit var movieDetailsMeta: TextView
     internal lateinit var movieDetailsDesc: TextView
-    internal lateinit var movieQualityRow: LinearLayout
-    internal lateinit var movieQualityLabel: TextView
     // Series details (v2.0.27): season chips + episode list in the same
-    // details pane. Hidden for movies; the quality row is per-episode.
+    // details pane. Hidden for movies.
     internal lateinit var movieSeasonLabel: TextView
     internal lateinit var movieSeasonScroll: HorizontalScrollView
     internal lateinit var movieSeasonRow: LinearLayout
@@ -698,12 +696,10 @@ class MainActivity : Activity() {
             ellipsize = TextUtils.TruncateAt.END
         }
         searchClearRow.addView(searchClearLabel, LinearLayout.LayoutParams(0, -2, 1f))
-        // v2.0.28: big and bold — the old wrap-content button was small.
-        searchClearRow.addView(button("Saaf karein", R.drawable.ic_close) { clearSearch() }.apply {
-            setTypeface(null, Typeface.BOLD)
-        }, LinearLayout.LayoutParams(-2, dp(if (isTv) 56 else 52)).apply {
-            marginStart = dp(8)
-        })
+        searchClearRow.addView(button("Saaf karein", R.drawable.ic_close) { clearSearch() },
+            LinearLayout.LayoutParams(-2, -2).apply {
+                marginStart = dp(8)
+            })
         left.addView(searchClearRow, LinearLayout.LayoutParams(-1, -2).apply {
             bottomMargin = dp(4)
         })
@@ -721,36 +717,44 @@ class MainActivity : Activity() {
             // Touch: the action buttons live under the list (the narrow
             // top bar has no room for them). On TV they are round buttons
             // in the TopBar instead, so the list gets the full height.
-            // Library footer (v2.0.28): big, wide, full-width buttons
-            // stacked — the old two-across rows were too narrow.
-            val footerH = dp(if (isTv) 56 else 52)
+            val actions = LinearLayout(this)
+            left.addView(actions, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(8)
+            })
             // Search lives in the inline field above the list now
             // (v2.0.37) — no dialog button.
-            left.addView(button("Playlists") { showPlaylists() },
-                LinearLayout.LayoutParams(-1, footerH).apply {
-                    topMargin = dp(8)
+            actions.addView(button("Playlists") { showPlaylists() },
+                LinearLayout.LayoutParams(0, -2, 1f))
+            // Library footer: two tidy rows of equal buttons instead of stacked
+            // full-width ones. The Import dialog still offers a direct stream
+            // URL — only the label is shorter.
+            val libraryActions = LinearLayout(this)
+            left.addView(libraryActions, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(6)
+            })
+            libraryActions.addView(button("Import M3U") { choosePlaylist() },
+                LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginEnd = dp(4)
                 })
-            // The Import dialog still offers a direct stream URL —
-            // only the label is shorter.
-            left.addView(button("Import M3U") { choosePlaylist() },
-                LinearLayout.LayoutParams(-1, footerH).apply {
-                    topMargin = dp(6)
-                })
-            left.addView(button("Xtream") { askXtream() },
-                LinearLayout.LayoutParams(-1, footerH).apply {
-                    topMargin = dp(6)
+            libraryActions.addView(button("Xtream") { askXtream() },
+                LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginStart = dp(4)
                 })
             // Manual update check (UpdateChecker): compares the installed build
             // with the latest GitHub release and offers to install it.
             // Touch devices have no categories pane, so Movies gets a footer
             // button next to Update (on TV it is a category item instead).
-            left.addView(button("Update", R.drawable.ic_upload) { checkForUpdateManually() },
-                LinearLayout.LayoutParams(-1, footerH).apply {
-                    topMargin = dp(6)
+            val updateRow = LinearLayout(this)
+            left.addView(updateRow, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(6)
+            })
+            updateRow.addView(button("Update", R.drawable.ic_upload) { checkForUpdateManually() },
+                LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginEnd = dp(4)
                 })
-            left.addView(button("Movies", R.drawable.ic_movie) { openMovies() },
-                LinearLayout.LayoutParams(-1, footerH).apply {
-                    topMargin = dp(6)
+            updateRow.addView(button("Movies", R.drawable.ic_movie) { openMovies() },
+                LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    marginStart = dp(4)
                 })
         }
         // Player card (Qwen PlayerCard): 16:9, 24dp rounded corners, 1dp

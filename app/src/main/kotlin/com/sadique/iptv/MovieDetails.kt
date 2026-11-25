@@ -222,7 +222,6 @@ internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
     movieDetailsTitle.text = movie.title
     movieDetailsMeta.text = ""
     movieDetailsDesc.text = ""
-    movieQualityRow.removeAllViews()
     movieSeasonRow.removeAllViews()
     movieEpisodeColumn.removeAllViews()
     movieSeasonLabel.visibility = View.GONE
@@ -334,7 +333,6 @@ internal fun MainActivity.loadMovieStreams() {
     val request = ++movieStreamsRequest
     currentMovieStreams = emptyList()
     selectedQuality = 0
-    movieQualityRow.removeAllViews()
     moviePlayButton.isEnabled = false
     movieDetailsStatus.text = "Streams load ho rahe hain…"
     imports.execute {
@@ -373,7 +371,6 @@ internal fun MainActivity.loadSeriesSeasons(subjectId: String? = null) {
     selectedQuality = 0
     movieSeasonRow.removeAllViews()
     movieEpisodeColumn.removeAllViews()
-    movieQualityRow.removeAllViews()
     moviePlayButton.isEnabled = false
     movieDetailsStatus.text = "Seasons load ho rahe hain…"
     imports.execute {
@@ -438,7 +435,6 @@ internal fun MainActivity.showSeasonEpisodes(seasonNumber: Int) {
     val season = currentSeriesSeasons.firstOrNull { it.number == seasonNumber } ?: return
     selectedEpisode = 0
     movieEpisodeColumn.removeAllViews()
-    movieQualityRow.removeAllViews()
     currentMovieStreams = emptyList()
     selectedQuality = 0
     moviePlayButton.isEnabled = false
@@ -514,7 +510,6 @@ internal fun MainActivity.loadEpisodeStreams() {
     val request = ++movieStreamsRequest
     currentMovieStreams = emptyList()
     selectedQuality = 0
-    movieQualityRow.removeAllViews()
     moviePlayButton.isEnabled = false
     val epTitle = currentSeriesSeasons.firstOrNull { it.number == season }
         ?.episodes?.firstOrNull { it.number == episode }?.title.orEmpty()
@@ -546,65 +541,15 @@ internal fun MainActivity.loadEpisodeStreams() {
 internal fun MainActivity.showMovieStreams(streams: List<MovieBox.MovieStream>) {
     val resolutions = streams.map { it.resolution }.filter { it > 0 }
         .distinct().sortedDescending()
-    // Series: quality is picked in the player (Quality button), not
-    // on the episode list screen — no quality row here. Best quality
-    // is the default; the in-player dialog can switch it while playing.
-    if (currentMovieDetails?.movie?.isSeries == true) {
-        selectedQuality = resolutions.firstOrNull() ?: 0
-        movieQualityLabel.visibility = View.GONE
-        movieQualityRow.visibility = View.GONE
-        // The file size again (v2.0.2 showed it, v2.0.4 lost it): the
-        // best stream's size, e.g. "Stream ready hai · 282 MB — Play dabayein."
-        val best = streams.firstOrNull()
-        val sizeText = if (best != null && best.sizeBytes > 0) " · ${formatSize(best.sizeBytes)}" else ""
-        movieDetailsStatus.text = "Stream ready hai$sizeText — Play dabayein."
-        moviePlayButton.isEnabled = true
-        // If the user hasn't moved off the Fav landing yet, put focus
-        // on Play now that it works.
-        if (movieFavButton.hasFocus()) moviePlayButton.requestFocus()
-        return
-    }
-    // Movies keep the quality chips: restore the row in case a series
-    // hid it.
-    movieQualityLabel.visibility = View.VISIBLE
-    movieQualityRow.visibility = View.VISIBLE
-    if (resolutions.isEmpty()) {
-        // Streams exist but none reports a resolution — one Auto entry
-        // that plays the best (first) stream.
-        selectedQuality = 0
-        val chipView = chip("Auto") {
-            selectedQuality = 0
-            markChipByTag(movieQualityRow, 0)
-        }
-        chipView.tag = 0
-        chipView.isSelected = true
-        refreshFilterText(chipView)
-        movieQualityRow.addView(chipView)
-        movieDetailsStatus.text = "Stream ready hai — Play dabayein."
-        moviePlayButton.isEnabled = true
-        // If the user hasn't moved off the Fav landing yet, put focus
-        // on Play now that it works.
-        if (movieFavButton.hasFocus()) moviePlayButton.requestFocus()
-        return
-    }
-    // Default: the highest available quality.
-    selectedQuality = resolutions.first()
-    for (res in resolutions) {
-        val chipView = chip("${res}p") {
-            selectedQuality = res
-            markChipByTag(movieQualityRow, res)
-        }
-        chipView.tag = res
-        chipView.isSelected = res == selectedQuality
-        refreshFilterText(chipView)
-        movieQualityRow.addView(chipView, LinearLayout.LayoutParams(-2, -2).apply {
-            marginEnd = dp(8)
-        })
-    }
-    val best = streams.first()
-    val sizeText = if (best.sizeBytes > 0) " · ${formatSize(best.sizeBytes)}" else ""
-    val qualityWord = if (resolutions.size == 1) "quality" else "qualities"
-    movieDetailsStatus.text = "${resolutions.size} $qualityWord available$sizeText — Play dabayein."
+    // Quality is picked in the player (Quality chip), not in the
+    // details — there is no quality row here. Best quality is the
+    // default; the in-player dialog can switch it while playing.
+    selectedQuality = resolutions.firstOrNull() ?: 0
+    // The file size again (v2.0.2 showed it, v2.0.4 lost it): the
+    // best stream's size, e.g. "Stream ready hai · 282 MB — Play dabayein."
+    val best = streams.firstOrNull()
+    val sizeText = if (best != null && best.sizeBytes > 0) " · ${formatSize(best.sizeBytes)}" else ""
+    movieDetailsStatus.text = "Stream ready hai$sizeText — Play dabayein."
     moviePlayButton.isEnabled = true
     // If the user hasn't moved off the Fav landing yet, put focus
     // on Play now that it works.
