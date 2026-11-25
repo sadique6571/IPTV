@@ -32,7 +32,11 @@ internal object UpdateChecker {
 
     private const val LATEST_RELEASE_URL =
         "https://api.github.com/repos/sadique6571/IPTV/releases/latest"
-    private const val APK_ASSET_NAME = "IPTV-debug.apk"
+    // Since v2.0.22 the published asset is the R8 release build, IPTV.apk.
+    // Renamed together with the workflow: the OLD installed build looks for
+    // IPTV-debug.apk, so v2.0.22 must be installed manually once — after
+    // that the updater finds every later release by this name.
+    private const val APK_ASSET_NAME = "IPTV.apk"
     private const val PREFS_NAME = "iptv_update"
     private const val KEY_LAST_CHECK = "last_check_ms"
     private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
