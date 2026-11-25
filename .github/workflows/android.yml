@@ -79,15 +79,14 @@ jobs:
           path: app/build/outputs/compact/IPTV-debug.apk
           if-no-files-found: error
       # Release build (main only, not PRs): R8/minify via :app:compactReleaseApk.
-      # The keystore comes from secrets — one-time setup, either choice works:
-      #  * new release key: generate one, base64 it into RELEASE_KEYSTORE_BASE64
-      #    + its passwords into RELEASE_KEYSTORE_PASSWORD / RELEASE_KEY_ALIAS /
-      #    RELEASE_KEY_PASSWORD. First install needs uninstall + reinstall.
-      #  * debug key for release: put base64 of the committed app/debug.keystore
-      #    in RELEASE_KEYSTORE_BASE64, passwords "android", alias androiddebugkey.
-      #    Updates keep working, no uninstall — but no security benefit either.
-      # A missing/empty secret fails here loudly instead of shipping a
-      # wrongly-signed APK.
+      # Signing uses the committed debug keystore (app/debug.keystore) —
+      # the deliberate choice, so updates install over the current app with
+      # no uninstall. The keystore is copied directly: the earlier
+      # RELEASE_KEYSTORE_BASE64 secret route was removed after main run #181
+      # failed twice (attempts 1-2) with "base64: error: invalid input" —
+      # the pasted value would not decode even after being re-entered and
+      # verified. A future new release key needs the secret route re-added
+      # (and set by a method that does not paste 3400 chars into a form).
       - name: Build release APK with Gradle
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
@@ -96,11 +95,7 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          if [ -z "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
-            echo "RELEASE_KEYSTORE_BASE64 secret is not set — see the comment above this step." >&2
-            exit 1
-          fi
-          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+          cp app/debug.keystore release.keystore
           chmod +x gradlew
           ./gradlew --quiet :app:compactReleaseApk --stacktrace
       - uses: actions/upload-artifact@v4
