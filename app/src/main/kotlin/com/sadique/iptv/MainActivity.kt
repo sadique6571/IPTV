@@ -1499,9 +1499,19 @@ class MainActivity : Activity() {
         }
         updateFullscreenUi()
         applyControlVisibility()
+        updateMiniPlayerLayout()
         if (enabled) {
+            // Going fullscreen closes the Movies browser (the movie
+            // keeps playing).
+            if (moviesOpen) closeMovies()
             if (playingMovie != null) playPauseButton.requestFocus()
             else if (fullscreenButton.isShown) fullscreenButton.requestFocus()
+        } else if (playingMovie != null) {
+            // Back from a fullscreen movie: the mini player — the small
+            // player stays on top and the Movies browser opens below it
+            // (the playing title's details when rendered, else the list).
+            if (currentMovieDetails != null && movieDetailsRendered) openMoviesToDetails()
+            else openMovies()
         } else {
             focusBrowse()
         }
@@ -1554,6 +1564,9 @@ class MainActivity : Activity() {
         metaName.maxWidth = (resources.displayMetrics.widthPixels * 0.5).toInt()
         updateFullscreenUi()
         updateBrowseVisibility()
+        // A rotation in mini-player mode re-applies the mini-player
+        // layout with the new display metrics.
+        updateMiniPlayerLayout()
     }
 
     /**
@@ -1613,6 +1626,77 @@ class MainActivity : Activity() {
             rootView.setPadding(rootPaddingPx, dp(if (isTv) 10 else 8), rootPaddingPx, dp(if (isTv) 12 else 8))
             playerPane.setPadding(if (isTv || isLandscape) paneGapPx else 0, 0, 0, 0)
         }
+    }
+
+    /** Mini player (v2.0.21): when a movie plays windowed with the Movies
+     * browser open, the small player stays on top and the browser fills
+     * the rest below it — the TV pattern, on phone and TV alike. The
+     * split pane is forced vertical (player first), the screen gets a
+     * fixed height (16:9, at most 40% of the display height), the header
+     * hides, and the browser overlay is offset below the player. When
+     * the mini player is off, the same function restores the normal
+     * layout for the current orientation. It must run AFTER
+     * updateFullscreenUi (which also sets the header), so it is called
+     * at the end of applyFullScreen / applyOrientationLayout /
+     * openMovies / openMoviesToDetails / closeMovies. Internal so the
+     * Movies browser functions (extensions in MoviesSection.kt) can
+     * call it. */
+    internal fun updateMiniPlayerLayout() {
+        val miniPlayer = playingMovie != null && moviesOpen && !fullScreen
+        val sideBySide = isTv || isLandscape
+        val vertical = miniPlayer || !sideBySide
+        splitPane.orientation = if (vertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+        // Re-order only when wrong: side-by-side → library first (left);
+        // vertical → player first (top).
+        val libraryIndex = splitPane.indexOfChild(libraryPane)
+        if (!vertical && libraryIndex != 0) {
+            splitPane.removeView(libraryPane)
+            splitPane.addView(libraryPane, 0)
+        } else if (vertical && libraryIndex == 0) {
+            splitPane.removeView(libraryPane)
+            splitPane.addView(libraryPane)
+        }
+        val libraryWidthDp = if (isTv) 320 else 300
+        if (miniPlayer) {
+            playerPane.layoutParams = LinearLayout.LayoutParams(-1, -2)
+            libraryPane.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+            screen.layoutParams = LinearLayout.LayoutParams(-1, miniPlayerHeight())
+        } else if (!sideBySide) {
+            playerPane.layoutParams = LinearLayout.LayoutParams(-1, -2)
+            libraryPane.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+            val playerWidthPx = resources.displayMetrics.widthPixels - 2 * rootPaddingPx
+            val playerHeight = (playerWidthPx * 9 / 16).coerceAtMost(dp(320))
+            screen.layoutParams = LinearLayout.LayoutParams(-1, playerHeight)
+        } else {
+            playerPane.layoutParams = LinearLayout.LayoutParams(0, -1, 1f)
+            libraryPane.layoutParams = LinearLayout.LayoutParams(dp(libraryWidthDp), -1)
+            screen.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+        }
+        // Header: hidden in mini-player mode (the player is flush at the
+        // top); otherwise the normal windowed rule.
+        headerView.visibility = if (fullScreen || miniPlayer || (!isTv && isLandscape)) {
+            View.GONE
+        } else {
+            View.VISIBLE
+        }
+        // Movies overlay: below the player in mini-player mode, full
+        // screen otherwise.
+        if (moviesViewBuilt) {
+            moviesView.layoutParams = FrameLayout.LayoutParams(-1, -1).apply {
+                topMargin = if (miniPlayer) miniPlayerHeight() else 0
+            }
+        }
+        updateBrowseVisibility()
+    }
+
+    /** Mini-player screen height: 16:9 of the available width, at most
+     * 40% of the display height (on the 1920x1080 TV that is 432px — a
+     * small player on top with room for the movies section below). */
+    private fun miniPlayerHeight(): Int {
+        val widthPx = resources.displayMetrics.widthPixels - 2 * rootPaddingPx
+        val byWidth = widthPx * 9 / 16
+        val byHeight = (resources.displayMetrics.heightPixels * 0.4).toInt()
+        return minOf(byWidth, byHeight)
     }
 
     @Suppress("DEPRECATION")
@@ -1741,7 +1825,6 @@ class MainActivity : Activity() {
     /** Back while something plays: stop it and return to the movie's
      * details screen when one was rendered, else to Live TV. */
     private fun backFromMoviePlayback() {
-        saveMovieProgress(async = false)
         val stoppedChannel = selected
         // A movie/episode played from its details screen returns
         // there (episode list for series) instead of Live TV: Play
@@ -1750,6 +1833,21 @@ class MainActivity : Activity() {
         // rendered details) keeps the old behaviour.
         val wasMovie = playingMovie != null
         val details = currentMovieDetails
+        stopCurrentPlayback()
+        if (wasMovie && details != null && movieDetailsRendered) {
+            openMoviesToDetails()
+        } else {
+            focusBrowse(stoppedChannel)
+        }
+    }
+
+    /** Stops whatever is playing (movie or channel) and clears the movie
+     * state — no navigation (no return to details, no focus change).
+     * Used by backFromMoviePlayback and by closeMovies(stopMovie = true)
+     * when the user leaves the Movies section while a movie plays in
+     * the mini player. */
+    internal fun stopCurrentPlayback() {
+        saveMovieProgress(async = false)
         stopPlayback()
         selected = null
         playingMovie = null
@@ -1762,11 +1860,6 @@ class MainActivity : Activity() {
         applyControlVisibility()
         markPlayingRow()
         updateBrowseVisibility()
-        if (wasMovie && details != null && movieDetailsRendered) {
-            openMoviesToDetails()
-        } else {
-            focusBrowse(stoppedChannel)
-        }
     }
 
     override fun onBackPressed() {
@@ -1778,20 +1871,17 @@ class MainActivity : Activity() {
                 moviesSeeAll = null
                 renderCurrentMoviesTab()
             } else {
-                closeMovies()
+                // Backing out of the Movies section stops a movie playing
+                // in the mini player — otherwise it would keep playing in
+                // the channels screen's small player.
+                closeMovies(stopMovie = true)
             }
         } else if (fullScreen) {
-            // Mobile: one Back from a fullscreen movie returns to its
-            // details screen. Exiting fullscreen alone only shows the
-            // channels list (the Movies browser is closed while a
-            // movie plays), so the user would need a second Back.
-            // TV keeps the two-step behaviour.
-            if (!isTv && playingMovie != null && currentMovieDetails != null && movieDetailsRendered) {
-                applyFullScreen(false)
-                backFromMoviePlayback()
-            } else {
-                applyFullScreen(false)
-            }
+            // Back from fullscreen: a movie opens the mini player (small
+            // player on top, Movies section below, movie keeps playing);
+            // a channel just exits fullscreen. (applyFullScreen(false)
+            // opens the browser for a playing movie — same on phone and TV.)
+            applyFullScreen(false)
         } else if (query.isNotEmpty()) {
             // Back from a search restores the full list (task 2) — the user
             // is never stuck on a filtered (or empty) result.
