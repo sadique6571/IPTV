@@ -40,9 +40,13 @@ internal fun MainActivity.buildMoviesRail(title: String, movies: List<MovieBox.M
             marginEnd = dp(12)
         })
     }
-    // End stops: LEFT past the first card / RIGHT past the last must
-    // not wander off the rail.
-    row.getChildAt(0)?.nextFocusLeftId = View.NO_ID
+    // End stops: LEFT past the first card reaches the sidebar
+    // navigation (v2.0.28 — it was NO_ID, so only the first rail's
+    // first card got a way back, via linkMoviesTabFocus; the other
+    // rails' first cards relied on geometry across the scroller and
+    // the pointer went nowhere). RIGHT past the last card stays.
+    row.getChildAt(0)?.nextFocusLeftId =
+        if (isTv) firstMoviesTabChipId() else View.NO_ID
     if (row.childCount > 0) {
         row.getChildAt(row.childCount - 1)?.nextFocusRightId = View.NO_ID
     }

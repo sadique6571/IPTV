@@ -169,15 +169,13 @@ https://plus.gigabitcdn.net/live-stream/apna-punjab-H3sE/playlist.m3u8
 http://cdn6.live247stream.com/gaundapunjab/tv/playlist.m3u8
 #EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd" tvg-logo="https://yt3.googleusercontent.com/inqG4jvFhbFI9jB8IBzmCmct8fcsfeKFwMGAqg-TIi7Ogid0DC-IgM4o6p9ZUW3zhd7AsQ6AomU=s176-c-k-c0x00ffffff-no-rj",ARUJ TV
 http://103.86.132.58:9981/stream/channelid/1391980280
-#EXTINF:-1 group-title="General" tvg-country="MY" tvg-language="pan" tvg-logo="https://i.imgur.com/V2jREQ5.png",Okey
-https://d25tgymtnqzu8s.cloudfront.net/smil:okey/playlist.m3u8?id=3
 #EXTINF:-1 group-title="General" tvg-country="CA" tvg-language="pan" tvg-logo="https://upload.wikimedia.org/wikipedia/en/8/88/PTC_Punjabi.png",PTC Punjabi Canada
 https://stream.ottlive.co.in/ptccanada/index.m3u8
 #EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd" tvg-logo="https://i.imgur.com/IJH47fJ.png",Discover Pakistan
 http://116.90.120.149:8000/play/a0s8/index.m3u8
 #EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd" tvg-logo="https://i.imgur.com/KHuKQQL.png",JooMusic
 https://livecdn.live247stream.com/joomusic/tv/playlist.m3u8
-#EXTINF:-1 group-title="Islamic" tvg-country="PK" tvg-language="urd" tvg-logo="https://raw.githubusercontent.com/fawazahmed0/tiger/master/peace/urdu.jpg",Peace TV Urdu
+#EXTINF:-1 group-title="Islamic" tvg-country="PK" tvg-language="urd" tvg-logo="https://upload.wikimedia.org/wikipedia/en/5/59/Peace_TV_official_logo.png",Peace TV Urdu
 https://dzkyvlfyge.erbvr.com/PeaceTvUrdu/index.m3u8
 #EXTINF:-1 group-title="News" tvg-country="PK" tvg-language="urd" tvg-logo="https://i.imgur.com/eqKrL9S.png",92 News
 https://www.youtube.com/@92NewsHDtv/live
@@ -197,7 +195,7 @@ http://175.107.244.52:4456/play/a06i
 https://live.msnetworks.net/hum-news/master.m3u8
 #EXTINF:-1 group-title="General" tvg-country="PK" tvg-language="urd" tvg-logo="https://upload.wikimedia.org/wikipedia/en/b/bb/ARY_Musik_logo.png",ARY Musik
 http://103.86.132.58:9981/stream/channelid/1567867194
-#EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="urd" tvg-logo="https://yt3.googleusercontent.com/ytc/AIdro_ljxQ7hfzXg6V-r-CXDCQKc0cWL-aI5yQmtVRq5yEVtWw=s176-c-k-c0x00ffffff-no-rj",A Sports HD
+#EXTINF:-1 group-title="Sports" tvg-country="PK" tvg-language="urd" tvg-logo="https://upload.wikimedia.org/wikipedia/en/0/0c/A_Sports_Logo.png",A Sports HD
 https://live.msnetworks.net/a-sports/master.m3u8
 #EXTINF:-1 group-title="Drama" tvg-country="PK" tvg-language="urd" tvg-logo="https://yt3.googleusercontent.com/gmRmvRYUHVbi2YnWiM_RbJtwPMkKK_WJfsWYINioLLVutKiQ5_Yf1xbGY57qGJydAY7zNuRp6Q=s176-c-k-c0x00ffffff-no-rj",Geo Entertainment
 http://175.107.244.52:4456/play/a06h/index.m3u8
@@ -217,15 +215,3 @@ https://cdn.rabta.stream/M-Sports/index.m3u8
 https://d36r8jifhgsk5j.cloudfront.net/Willow_TV.m3u8
 #EXTINF:-1 group-title="Sports" tvg-country="AU" tvg-language="eng" tvg-logo="https://resources.cricket-australia.pulselive.com/cricket-australia/photo/2025/07/25/836eddae-4329-4542-ad17-dcd37e9d951a/Cricket-Gold-1920x1080_noBG.png",Cricket Gold
 https://d382r3rgbxdixq.cloudfront.net/scheduler/scheduleMaster/418.m3u8
-#EXTINF:-1 group-title="Kids" tvg-country="IN" tvg-language="hin" tvg-logo="https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/Cartoon_Network_2010_logo.svg/960px-Cartoon_Network_2010_logo.svg.png",Cartoon Network (India)
-http://103.135.253.32:8080/CN-NETWORK/index.m3u8
-#EXTINF:-1 group-title="Sports" tvg-country="IN" tvg-language="hin" tvg-logo="https://dtil.tmsimg.com/assets/s158255_ld_h15_aa.png",DD Sports
-https://d3qs3d2rkhfqrt.cloudfront.net/out/v1/b17adfe543354fdd8d189b110617cddd/index.m3u8
-#EXTINF:-1 group-title="Sports" tvg-country="IN" tvg-language="hin" tvg-logo="https://dtil.tmsimg.com/assets/s158255_ld_h15_aa.png",DD Sports HD
-https://cdn.pishow.tv/ott/live/1161/master.m3u8
-#EXTINF:-1 group-title="Sports" tvg-country="IN" tvg-language="hin" tvg-logo="https://papaji.freetvindia.com/media/kabaddi_24x7.png",Kabaddi 24x7
-https://samitaorigin.tangotv.in/KABADDI24X7/SAMITAORIGIN/index.m3u8
-#EXTINF:-1 group-title="Sports" tvg-country="UK" tvg-language="eng" tvg-logo="https://i.imgur.com/olQJgm7.png",Eurosport 1
-https://r.eu.cdn-redge.media/livehls/oeu/mt/live/eurosport_1_en/live.livx/playlist.m3u8
-#EXTINF:-1 group-title="Sports" tvg-country="UK" tvg-language="eng" tvg-logo="https://i.imgur.com/f56dHgR.png",Eurosport 2
-https://r.eu.cdn-redge.media/livehls/oeu/mt/live/eurosport_2_en/live.livx/playlist.m3u8

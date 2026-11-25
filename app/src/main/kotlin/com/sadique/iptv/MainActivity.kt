@@ -253,15 +253,21 @@ class MainActivity : Activity() {
     // Pakistani entertainment channels pinned to the top of the All /
     // General lists in the user's own order — 1-5 are his picks, the
     // rest by popularity. Names must match the M3U exactly.
-    private val pinnedPkOrder = listOf(
-        "Green Entertainment", "Hum TV", "ARY Digital", "Geo Entertainment", "Aan TV", "MUN TV",
-        "Express Entertainment", "Hum Sitaray", "A Plus", "TV One", "PTV Home",
-        "Play Entertainment", "Bol Entertainment HD", "Apna Channel", "8XM",
-        "aurLife HD", "LTN Family", "M Entertainment", "PTV Global",
-        "InPlus Pakistan", "Falak TV", "JooMusic", "Discover Pakistan",
-        "Paigham Television",
+    // The user's own order for the Pakistani entertainment head of
+    // the list (2026-11-25): Green 1, Hum 2, ARY 3, Aan 4, MUN 5,
+    // Geo 6, Express 7, then the rest. This is an ORDER inside the
+    // PK-entertainment tier, not a pin — no channel is pinned, and
+    // nothing jumps out of its own tier. Paigham is NOT here: it is
+    // Islamic, so it sits in the Islamic block.
+    internal val pkEntTopOrder = listOf(
+        "Green Entertainment", "Hum TV", "ARY Digital", "Aan TV", "MUN TV",
+        "Geo Entertainment", "Express Entertainment", "Hum Sitaray", "A Plus",
+        "TV One", "PTV Home", "Play Entertainment", "Bol Entertainment HD",
+        "Apna Channel", "8XM", "aurLife HD", "LTN Family", "M Entertainment",
+        "PTV Global", "InPlus Pakistan", "Falak TV", "JooMusic",
+        "Discover Pakistan", "ARUJ TV", "ARY Musik", "Jalwa TV",
     )
-    internal val pinnedPkRank = pinnedPkOrder.withIndex().associate { it.value to it.index }
+    internal val pkEntTopRank = pkEntTopOrder.withIndex().associate { it.value to it.index }
     internal var videoOptions = emptyList<PlayerController.VideoOption>()
     internal var selectedVideoIndex = -1
     internal var seekable = false
@@ -297,10 +303,8 @@ class MainActivity : Activity() {
     internal lateinit var movieDetailsTitle: TextView
     internal lateinit var movieDetailsMeta: TextView
     internal lateinit var movieDetailsDesc: TextView
-    internal lateinit var movieQualityRow: LinearLayout
-    internal lateinit var movieQualityLabel: TextView
     // Series details (v2.0.27): season chips + episode list in the same
-    // details pane. Hidden for movies; the quality row is per-episode.
+    // details pane. Hidden for movies.
     internal lateinit var movieSeasonLabel: TextView
     internal lateinit var movieSeasonScroll: HorizontalScrollView
     internal lateinit var movieSeasonRow: LinearLayout
@@ -1814,10 +1818,15 @@ class MainActivity : Activity() {
      * Watching is hidden, so Home is empty iff there are no
      * favorites — the empty middle then belongs to the player, up
      * to the sidebar. Any content (another tab, search results, a
-     * See All list, the details pane) restores the 55/45 split. */
+     * See All list) restores the 55/45 split.
+     * v2.0.28: the DETAILS pane is a narrow side panel too (264dp),
+     * like the Live TV sidebar — the side panel and the player are
+     * the same in every section, so the player is wide while the
+     * details sit in a narrow column. The details are a single
+     * column (title, meta, quality, Play/Fav/Back), so they fit. */
     private fun isMiniPlayerWide(): Boolean {
         if (!isMiniPlayer() || !isTv) return false
-        if (moviesDetailsPane.visibility == View.VISIBLE) return false
+        if (moviesDetailsPane.visibility == View.VISIBLE) return true
         if (moviesSeeAll != null || movieResultsAreSearch) return false
         if (moviesTab != MoviesTab.HOME) return false
         return movieStore.favoritesList().isEmpty()

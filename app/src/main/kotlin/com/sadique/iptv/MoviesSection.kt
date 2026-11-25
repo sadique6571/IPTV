@@ -234,19 +234,6 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     detailsInner.addView(movieEpisodeColumn, LinearLayout.LayoutParams(-1, -2).apply {
         bottomMargin = dp(12)
     })
-    movieQualityLabel = label("Quality", if (isTv) 15 else 13, textColor).apply {
-        setTypeface(null, Typeface.BOLD)
-    }
-    detailsInner.addView(movieQualityLabel)
-    val qualityScroll = HorizontalScrollView(this).apply {
-        isHorizontalScrollBarEnabled = false
-        overScrollMode = View.OVER_SCROLL_NEVER
-    }
-    movieQualityRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-    qualityScroll.addView(movieQualityRow)
-    detailsInner.addView(qualityScroll, LinearLayout.LayoutParams(-1, -2).apply {
-        bottomMargin = dp(12)
-    })
     movieDetailsStatus = label("", if (isTv) 15 else 13, muted)
     detailsInner.addView(movieDetailsStatus)
     moviePlayButton = Button(this).apply {
@@ -446,6 +433,13 @@ internal fun MainActivity.searchMovies() {
     movieProgress.visibility = View.VISIBLE
     movieStatus.text = "Search ho raha hai…"
     movieResults.removeAllViews()
+    // The focused view (a quick chip, the search field) was just
+    // removed with the results — without a landing the D-pad pointer
+    // is lost until results arrive, and forever on an empty search.
+    // Park focus on the search field: it is always there, and DOWN
+    // from it reaches the tabs. showMovieResults moves focus to the
+    // first row when results arrive.
+    movieSearchInput.requestFocus()
     imports.execute {
         try {
             val results = movieBox.search(query)
@@ -500,6 +494,10 @@ internal fun MainActivity.showMovieResults(movies: List<MovieBox.Movie>) {
 internal fun MainActivity.linkMovieRowActions(rows: List<View>) {
     for (i in rows.indices) {
         val row = rows[i] as? LinearLayout ?: continue
+        // LEFT from any row reaches the sidebar navigation (v2.0.28):
+        // geometry alone is unreliable across the scroller boundary,
+        // so rows past the first had no way back to the tabs.
+        if (isTv) row.nextFocusLeftId = firstMoviesTabChipId()
         val action = (0 until row.childCount).mapNotNull { row.getChildAt(it) }
             .firstOrNull { it.tag == "rowAction" } ?: continue
         if (i > 0) action.nextFocusUpId = rows[i - 1].id

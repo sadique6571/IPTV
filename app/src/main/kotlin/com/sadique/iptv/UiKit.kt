@@ -285,8 +285,18 @@ internal fun Context.episodeNumberButton(value: String, action: () -> Unit) = Bu
 /** White text on the active (gradient) or focused filter, muted otherwise.
  * A chip with a vector icon keeps the icon the same color as the text;
  * harmless on buttons without a compound drawable. */
+/** Chip / nav-item text color, matching the background the state
+ * list actually shows (v2.0.28): the selected state is the BRIGHT
+ * cyan→blue gradient, so selected text must be DARK to read — white
+ * on bright cyan washed out (the quality chip in the TV photo was
+ * unreadable). Focused wins over selected in the state list (dark
+ * glass + cyan ring), so focused text stays white. */
 internal fun refreshFilterText(view: Button) {
-    val color = if (view.isSelected || view.isFocused) Color.WHITE else muted
+    val color = when {
+        view.isFocused -> Color.WHITE
+        view.isSelected -> Color.BLACK
+        else -> muted
+    }
     view.setTextColor(color)
     view.compoundDrawableTintList = ColorStateList.valueOf(color)
 }

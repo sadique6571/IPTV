@@ -32,7 +32,6 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewOutlineProvider
-import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -116,6 +115,12 @@ internal fun MainActivity.focusBrowse(preferChannel: Channel? = selected) {
         playPauseButton.requestFocus()
         return
     }
+    // A playing channel always wins: from any screen, leaving it
+    // lands on the playing channel's row — so switch to the channels
+    // level first (no focus jump while switching), then focus the row.
+    if (isTv && preferChannel != null && browseLevel == BrowseLevel.CATEGORIES) {
+        setBrowseLevel(BrowseLevel.CHANNELS, moveFocus = false)
+    }
     if (isTv && browseLevel == BrowseLevel.CATEGORIES) {
         filterChips[filter]?.requestFocus()
         return
@@ -143,34 +148,60 @@ private val songChannelNames = setOf(
     "Balle Balle HD", "E 24",
 )
 
+/** Pakistani drama channels by name (the M3U group is "General"
+ * for Geo Kahani and ARY Zindagi, so names are the only signal). */
+private val pkDramaNames = setOf(
+    "Geo Kahani", "ARY Zindagi", "Aaj Entertainment",
+)
+
 /** Movie channels by name (same reason — the M3U group is
- * "General" for most of them). */
+ * "General" for most of them). Pitaara Comedy is NOT here: it is a
+ * comedy/drama channel, so it stays in the drama-entertainment
+ * tier. */
 private val movieChannelNames = setOf(
     "All Time Movies", "B4U Kadak", "B4U Movies", "Boogle Bollywood",
     "Colors Cineplex", "Dangal 2", "Dangal TV", "Goldmines Action",
     "Hindi Hits SD", "Maha Movie", "Manoranjan TV", "MH One Movies",
-    "Movie Punjab", "NH BollyFlix", "Pitaara", "Pitaara Comedy",
-    "Shemaroo Josh", "The Movie Club", "Zee Cinema APAC",
+    "Movie Punjab", "NH BollyFlix", "Pitaara", "Shemaroo Josh",
+    "The Movie Club", "Zee Cinema APAC", "Tabbar Hits",
 )
 
 /** The list-order tier for a channel (the user's order, 2026-11-25):
- * 0 pinned Pakistani drama, 1 other Pakistani (Islamic channels
- * excepted — they get their own block), 2 Indian songs, 3 movies,
- * 4 news, 5 Islamic, 6 everything else. */
+ * 0 Pakistani entertainment, 1 Pakistani drama, 2 Pakistani sports,
+ * 3 Pakistani news, 4 other cricket sports, 5 Indian songs,
+ * 6 Indian movies, 7 Indian / Canadian drama-entertainment, 8 kids,
+ * 9 Islamic, 10 everything else. No channel is pinned: the head of
+ * tier 0 is the user's own order (pkEntTopOrder), applied as a
+ * tiebreaker inside the tier, and every channel stays in its own
+ * tier. */
 internal fun MainActivity.channelTier(channel: Channel): Int {
-    if (pinnedPkRank.containsKey(channel.name)) return 0
     val isPk = channel.country.equals("PK", ignoreCase = true)
-    val isIslamic = groupMatches(channel, "islamic", "religious")
-    if (isPk && !isIslamic) return 1
-    if (channel.name in songChannelNames || groupMatches(channel, "music")) return 2
+    val isIslamic = channel.name == "Paigham Television" ||
+        groupMatches(channel, "islamic", "religious")
+    // The user's top entertainment order — Geo Entertainment is
+    // group Drama in the M3U but the user counts it as
+    // entertainment (#6), so the name list wins over the group.
+    if (channel.name in pkEntTopOrder) return 0
+    if (isIslamic) return 9
+    if (isPk) {
+        if (channel.name in pkDramaNames || groupMatches(channel, "drama")) return 1
+        if (groupMatches(channel, "sports", "cricket")) return 2
+        if (groupMatches(channel, "news")) return 3
+        if (groupMatches(channel, "kids", "animation")) return 8
+        return 0
+    }
+    if (groupMatches(channel, "sports", "cricket")) return 4
+    if (channel.name in songChannelNames || groupMatches(channel, "music")) return 5
     if (channel.name in movieChannelNames || groupMatches(channel, "movies") ||
         channel.name.contains("movie", ignoreCase = true) ||
         channel.name.contains("cinema", ignoreCase = true) ||
         channel.name.contains("cineplex", ignoreCase = true)
-    ) return 3
-    if (groupMatches(channel, "news")) return 4
-    if (isIslamic) return 5
-    return 6
+    ) return 6
+    if (groupMatches(channel, "kids", "animation")) return 8
+    if (channel.country.equals("IN", ignoreCase = true) ||
+        channel.country.equals("CA", ignoreCase = true)
+    ) return 7
+    return 10
 }
 
 /** Rebuilds the channel list as ONE list (no pages — the user asked
@@ -223,18 +254,21 @@ internal fun MainActivity.populate(preserveScroll: Boolean = false) {
         }
         accepted && (query.isEmpty() || channel.name.contains(query, ignoreCase = true))
     }.let { filtered ->
-        // The user's own order (2026-11-25): pinned Pakistani drama
-        // first (Green 1, Hum 2, then the rest), then all other
-        // Pakistani channels, then Indian songs, then movie channels,
-        // then news; Islamic channels sit in their own block, and
-        // everything else (sports, kids, other countries) follows in
-        // the old country order (other countries, then India). A
-        // stable sort keeps the M3U order inside each tier.
+        // The user's own order (2026-11-25): Pakistani
+        // entertainment first (Green 1, Hum 2, ARY 3, Aan 4, MUN 5,
+        // Geo 6, Express 7, then the rest), then Pakistani drama,
+        // Pakistani sports, Pakistani news, other cricket sports,
+        // Indian songs, Indian movies, Indian / Canadian
+        // drama-entertainment, kids, Islamic in their own block,
+        // and everything else last. No channel is pinned: the head
+        // of the entertainment tier is the pkEntTopOrder tiebreaker,
+        // and a stable sort keeps the M3U order inside each tier.
         // Favorites/Recent keep their own order; imported playlists
         // keep theirs.
         if (filter == "Favs" || filter == "Recent" || filter == "M3U") filtered
         else filtered.sortedWith(
             compareBy<Channel> { channelTier(it) }
+                .thenBy { pkEntTopRank[it.name] ?: Int.MAX_VALUE }
                 .thenBy {
                     when (it.country.uppercase(Locale.ROOT)) {
                         "PK" -> 0
@@ -444,27 +478,28 @@ internal fun MainActivity.focusChannel(channel: Channel, center: Boolean = false
     // become visible again after fullscreen — either way its position
     // is not laid out yet, and focusing now scrolls the list from
     // stale coordinates (it used to land 1-2 rows above the playing
-    // channel). Wait for the layout pass, then focus; on the way back
-    // to the list the playing row is centered in the visible list so
-    // it is unmistakable.
-    list.viewTreeObserver.addOnGlobalLayoutListener(
-        object : ViewTreeObserver.OnGlobalLayoutListener {
-            override fun onGlobalLayout() {
-                list.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                if (!list.isAttachedToWindow) return
-                row.requestFocus()
-                if (!center) return
-                val viewH = listScroll.height
-                val rowH = row.height
-                if (viewH > 0 && rowH > 0) {
-                    val target = (row.top - (viewH - rowH) / 2)
-                        .coerceIn(0, maxOf(0, list.height - viewH))
-                    listScroll.scrollTo(0, target)
-                }
-            }
-        },
-    )
-    list.requestLayout()
+    // channel). Retry on the message queue until the row has a real
+    // height, then focus; on the way back to the list the playing
+    // row is centered in the visible list so it is unmistakable.
+    var attempts = 0
+    fun land() {
+        if (!list.isAttachedToWindow) return
+        if (row.height <= 0 && attempts < 5) {
+            attempts++
+            list.post { land() }
+            return
+        }
+        row.requestFocus()
+        if (!center) return
+        val viewH = listScroll.height
+        val rowH = row.height
+        if (viewH > 0 && rowH > 0) {
+            val target = (row.top - (viewH - rowH) / 2)
+                .coerceIn(0, maxOf(0, list.height - viewH))
+            listScroll.scrollTo(0, target)
+        }
+    }
+    list.post { land() }
 }
 
 
