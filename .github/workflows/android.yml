@@ -85,15 +85,22 @@ jobs:
       # RELEASE_KEYSTORE_BASE64 secret route was removed after main run #181
       # failed twice (attempts 1-2) with "base64: error: invalid input" —
       # the pasted value would not decode even after being re-entered and
-      # verified. A future new release key needs the secret route re-added
-      # (and set by a method that does not paste 3400 chars into a form).
+      # verified. The remaining three signing secrets were then removed
+      # after main run #185 failed at :app:packageRelease with
+      # "No key with alias '' found" — RELEASE_KEY_ALIAS arrived empty
+      # even though the secret had been set. The alias/password are
+      # literals here instead: they are the public debug key's well-known
+      # values, already in plain text in app/build.gradle.kts (debug
+      # signing block), so keeping them as secrets bought nothing. A
+      # future new release key needs the secret route re-added (and set
+      # by a method that does not paste into a form).
       - name: Build release APK with Gradle
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           RELEASE_KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
-          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RELEASE_KEYSTORE_PASSWORD: android
+          RELEASE_KEY_ALIAS: androiddebugkey
+          RELEASE_KEY_PASSWORD: android
         run: |
           cp app/debug.keystore release.keystore
           chmod +x gradlew
