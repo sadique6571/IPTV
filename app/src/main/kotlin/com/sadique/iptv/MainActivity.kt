@@ -99,6 +99,9 @@ class MainActivity : Activity() {
     internal lateinit var libraryPane: LinearLayout
     internal lateinit var rootView: LinearLayout
     internal lateinit var headerView: LinearLayout
+    // "Back to TV" in the status bar (v2.0.23): the way back from the
+    // Movies section — visible only while movies are open.
+    internal lateinit var backToTvButton: Button
     // Network speed + today's usage label (v2.0.44, header right end):
     // "500 Kbps/30 MB", refreshed once a second while visible.
     internal lateinit var networkLabel: TextView
@@ -485,6 +488,16 @@ class MainActivity : Activity() {
         // (settles "theme did not change" — it shows the old build).
         headerView.addView(label(UpdateChecker.installedVersionLabel(this), 12, muted2).apply {
             setPadding(0, dp(6), dp(12), 0)
+        })
+        // "Back to TV" (v2.0.23): the way back from the Movies section
+        // lives in the status bar now — visible only while movies are
+        // open (the sidebar / mobile-header duplicates are gone).
+        // Stops the movie too, like Back from the movies list.
+        backToTvButton = topPillButton(R.drawable.ic_arrow_back, "Live TV") { closeMovies(stopMovie = true) }
+        backToTvButton.id = View.generateViewId()
+        backToTvButton.visibility = View.GONE
+        headerView.addView(backToTvButton, LinearLayout.LayoutParams(-2, -2).apply {
+            marginEnd = dp(8)
         })
         if (isTv) {
             // Wide pill action buttons (v2.0.37): icon + visible title —
@@ -1590,13 +1603,9 @@ class MainActivity : Activity() {
         // a windowed card look, and rounded corners on a fullscreen video
         // just waste the screen corners. The border ring squares too.
         // (Setting a new outline provider re-clips the video at once.)
-        val cornerRadius = if (fullScreen) 0f else dp(24).toFloat()
-        screen.outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(0, 0, view.width, view.height, cornerRadius)
-            }
-        }
-        (screenBorder.background as? GradientDrawable)?.cornerRadius = cornerRadius
+        // The mini player is square-cornered too (docked, not a card) —
+        // updateMiniPlayerLayout re-applies this after this function.
+        setScreenCorners(if (fullScreen) 0f else dp(24).toFloat())
         if (isTv) {
             if (fullScreen) {
                 headerView.visibility = View.GONE
@@ -1628,23 +1637,47 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Mini player (v2.0.21): when a movie plays windowed with the Movies
-     * browser open, the small player stays on top and the browser fills
-     * the rest below it — the TV pattern, on phone and TV alike. The
-     * split pane is forced vertical (player first), the screen gets a
-     * fixed height (16:9, at most 40% of the display height), the header
-     * hides, and the browser overlay is offset below the player. When
-     * the mini player is off, the same function restores the normal
-     * layout for the current orientation. It must run AFTER
+    /** Mini player (v2.0.21): a movie playing windowed with the Movies
+     * browser open. v2.0.23 docks it like the Live TV player instead
+     * of floating it as a rounded card on top:
+     * - TV: side-by-side like Live TV — the Movies browser is the left
+     *   pane (55% of the width), the player the right pane (45%), both
+     *   fixed, square-cornered, flush against each other.
+     * - Phone: the player stays on top (16:9, at most 40% of the
+     *   display height) with the browser filling the rest below it,
+     *   but docked — square corners, flush, no floating gap.
+     * - Both: the status bar stays visible with the "Back to TV"
+     *   button, and the player controls stay pinned on the player
+     *   (no auto-hide), so fullscreen is always one tap away.
+     * When the mini player is off, the same function restores the
+     * normal layout for the current orientation. It must run AFTER
      * updateFullscreenUi (which also sets the header), so it is called
      * at the end of applyFullScreen / applyOrientationLayout /
      * openMovies / openMoviesToDetails / closeMovies. Internal so the
      * Movies browser functions (extensions in MoviesSection.kt) can
      * call it. */
+    internal fun isMiniPlayer(): Boolean =
+        playingMovie != null && moviesOpen && !fullScreen
+
+    /** Square or rounded player corners. Fullscreen and the mini
+     * player are square (docked, edge to edge); windowed Live TV
+     * keeps the 24dp card rounding. */
+    private fun setScreenCorners(radius: Float) {
+        screen.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, radius)
+            }
+        }
+        (screenBorder.background as? GradientDrawable)?.cornerRadius = radius
+    }
+
     internal fun updateMiniPlayerLayout() {
-        val miniPlayer = playingMovie != null && moviesOpen && !fullScreen
+        val miniPlayer = isMiniPlayer()
         val sideBySide = isTv || isLandscape
-        val vertical = miniPlayer || !sideBySide
+        // TV mini player: side-by-side like Live TV (movies left,
+        // player right). Phone mini player: player on top, movies
+        // below. Otherwise the normal orientation rule.
+        val vertical = if (miniPlayer) !isTv else !sideBySide
         splitPane.orientation = if (vertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
         // Re-order only when wrong: side-by-side → library first (left);
         // vertical → player first (top).
@@ -1657,34 +1690,98 @@ class MainActivity : Activity() {
             splitPane.addView(libraryPane)
         }
         val libraryWidthDp = if (isTv) 320 else 300
-        if (miniPlayer) {
+        // TV side-by-side split: the player takes 45% of the pane
+        // width, the Movies browser the other 55% (enough for the
+        // 300dp sidebar + a 3-4 poster grid on the 1920 TV).
+        val availW = resources.displayMetrics.widthPixels - 2 * rootPaddingPx
+        val tvPlayerW = (availW * 0.45).toInt()
+        if (miniPlayer && isTv) {
+            // Player: fixed right pane. splitPane gravity END pushes
+            // the single fixed-width child to the right (the library
+            // pane is GONE underneath the browser overlay).
+            splitPane.gravity = Gravity.END
+            playerPane.layoutParams = LinearLayout.LayoutParams(tvPlayerW, -1)
+            libraryPane.layoutParams = LinearLayout.LayoutParams(-1, -1)
+            screen.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+        } else if (miniPlayer) {
+            splitPane.gravity = Gravity.START
             playerPane.layoutParams = LinearLayout.LayoutParams(-1, -2)
             libraryPane.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
             screen.layoutParams = LinearLayout.LayoutParams(-1, miniPlayerHeight())
         } else if (!sideBySide) {
+            splitPane.gravity = Gravity.START
             playerPane.layoutParams = LinearLayout.LayoutParams(-1, -2)
             libraryPane.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
             val playerWidthPx = resources.displayMetrics.widthPixels - 2 * rootPaddingPx
             val playerHeight = (playerWidthPx * 9 / 16).coerceAtMost(dp(320))
             screen.layoutParams = LinearLayout.LayoutParams(-1, playerHeight)
         } else {
+            splitPane.gravity = Gravity.START
             playerPane.layoutParams = LinearLayout.LayoutParams(0, -1, 1f)
             libraryPane.layoutParams = LinearLayout.LayoutParams(dp(libraryWidthDp), -1)
             screen.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
         }
-        // Header: hidden in mini-player mode (the player is flush at the
-        // top); otherwise the normal windowed rule.
-        headerView.visibility = if (fullScreen || miniPlayer || (!isTv && isLandscape)) {
+        // Pane padding: docked (0) in mini-player mode, else the normal
+        // windowed/fullscreen rule — mirrors updateFullscreenUi, which
+        // runs before this function in applyFullScreen but not in
+        // openMovies/closeMovies.
+        playerPane.setPadding(
+            if (miniPlayer || fullScreen) 0
+            else if (isTv || isLandscape) paneGapPx
+            else 0, 0, 0, 0)
+        // Docked corners in mini-player mode (square, not a card).
+        setScreenCorners(if (fullScreen || miniPlayer) 0f else dp(24).toFloat())
+        // Header: always visible windowed — in mini-player mode it
+        // carries the "Back to TV" button. Phone landscape hides it
+        // only for plain Live TV.
+        headerView.visibility = if (fullScreen) {
+            View.GONE
+        } else if (moviesOpen) {
+            View.VISIBLE
+        } else if (!isTv && isLandscape) {
             View.GONE
         } else {
             View.VISIBLE
         }
-        // Movies overlay: below the player in mini-player mode, full
-        // screen otherwise.
+        backToTvButton.visibility = if (moviesOpen) View.VISIBLE else View.GONE
+        // Movies overlay: a real pane now, not a floating sheet — below
+        // the header, flush against the player. Its top edge is the
+        // header's bottom edge: root top padding + header height.
+        // Header height is deterministic: 64dp (48dp pill + 16dp
+        // padding) on TV and while movies are open, else 60dp
+        // (44dp icon + 16dp padding).
         if (moviesViewBuilt) {
-            moviesView.layoutParams = FrameLayout.LayoutParams(-1, -1).apply {
-                topMargin = if (miniPlayer) miniPlayerHeight() else 0
+            val headerH = dp(if (isTv || moviesOpen) 64 else 60)
+            val rootTopPad = dp(if (isTv) 10 else 8)
+            val rootBottomPad = dp(if (isTv) 12 else 8)
+            if (miniPlayer && isTv) {
+                moviesView.layoutParams = FrameLayout.LayoutParams(availW - tvPlayerW, -1).apply {
+                    gravity = Gravity.START
+                    topMargin = rootTopPad + headerH
+                    leftMargin = rootPaddingPx
+                    bottomMargin = rootBottomPad
+                }
+            } else if (miniPlayer) {
+                moviesView.layoutParams = FrameLayout.LayoutParams(-1, -1).apply {
+                    topMargin = rootTopPad + headerH + miniPlayerHeight()
+                }
+            } else if (moviesOpen) {
+                moviesView.layoutParams = FrameLayout.LayoutParams(-1, -1).apply {
+                    topMargin = rootTopPad + headerH
+                }
+            } else {
+                moviesView.layoutParams = FrameLayout.LayoutParams(-1, -1).apply {
+                    topMargin = 0
+                }
             }
+        }
+        // Mini player: the controls stay pinned on the player — no
+        // auto-hide — so fullscreen (and everything else) is always
+        // one tap away. hidePlayerControls/scheduleHideControls also
+        // refuse to hide while the mini player is on.
+        if (miniPlayer) {
+            controlsVisible = true
+            applyControlVisibility()
         }
         updateBrowseVisibility()
     }

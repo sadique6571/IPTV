@@ -11,7 +11,7 @@ import android.widget.LinearLayout
 /**
  * Movies sidebar (v2.0.37, TV only): the two-pane Movies layout —
  * search field + one vertical column of nav buttons (Home, Movies,
- * TV Shows, Genres, My List) + Live TV at the bottom, posters on
+ * TV Shows, Genres, My List), posters on
  * the right. Mobile keeps the top layout (see buildMoviesView).
  *
  * The sidebar IS the tab row: moviesTabRow is this vertical column,
@@ -61,8 +61,7 @@ internal fun MainActivity.buildMovieSearchInput(): EditText {
     }
 }
 
-/** Builds the TV Movies sidebar: search on top, the tab column,
- * Live TV at the bottom. Assigns movieSearchInput + moviesTabRow.
+/** Builds the TV Movies sidebar: search on top, the tab column.
  * The sidebar is a bright glass panel (v2.0.39) — rounded
  * corners, 12dp internal padding — so its items sit inset and
  * nothing touches the panel edge or looks cut off (v2.0.37's
@@ -103,22 +102,16 @@ internal fun MainActivity.buildMoviesSidebar(): LinearLayout {
         })
     }
     sidebar.addView(moviesTabRow, LinearLayout.LayoutParams(-1, -2))
-    // Live TV way back at the bottom (the spacer pushes it down).
-    val spacer = View(this)
-    sidebar.addView(spacer, LinearLayout.LayoutParams(-1, 0, 1f))
-    val liveTvButton = button("Live TV", R.drawable.ic_arrow_back) { closeMovies(stopMovie = true) }
-    liveTvButton.id = View.generateViewId()
-    sidebar.addView(liveTvButton, LinearLayout.LayoutParams(-1, -2).apply {
-        marginStart = dp(8)
-        marginEnd = dp(8)
-    })
     // Explicit vertical links — geometry alone is unreliable across
-    // the pane boundary.
+    // the pane boundary. Up from the search goes to the status
+    // bar's "Back to TV" button (v2.0.23 — the sidebar's own Live
+    // TV button is gone; the status bar is the way back now).
     val firstTab = moviesTabRow.getChildAt(0)
     val lastTab = moviesTabRow.getChildAt(moviesTabRow.childCount - 1)
     movieSearchInput.nextFocusDownId = firstTab?.id ?: View.NO_ID
+    movieSearchInput.nextFocusUpId = backToTvButton.id
+    backToTvButton.nextFocusDownId = movieSearchInput.id
     firstTab?.nextFocusUpId = movieSearchInput.id
-    lastTab?.nextFocusDownId = liveTvButton.id
-    liveTvButton.nextFocusUpId = lastTab?.id ?: View.NO_ID
+    lastTab?.nextFocusDownId = View.NO_ID
     return sidebar
 }

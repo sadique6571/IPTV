@@ -302,6 +302,9 @@ internal fun MainActivity.showPlayerControls() {
  * its own touches, so a tap could not bring the controls back. */
 internal fun MainActivity.hidePlayerControls() {
     if ((isTv && playingMovie == null) || scrubbing || selected?.web == true) return
+    // Mini player (v2.0.23): the controls stay pinned on the player —
+    // no auto-hide — so fullscreen is always one tap away.
+    if (isMiniPlayer()) return
     controlsVisible = false
     overlayBar.visibility = View.GONE
     topBar.visibility = View.GONE
@@ -311,6 +314,8 @@ internal fun MainActivity.hidePlayerControls() {
 
 internal fun MainActivity.scheduleHideControls() {
     if ((isTv && playingMovie == null) || selected?.web == true) return
+    // Mini player (v2.0.23): the controls stay pinned on the player.
+    if (isMiniPlayer()) return
     mainHandler.removeCallbacks(hideControlsRunnable)
     mainHandler.postDelayed(hideControlsRunnable, CONTROLS_HIDE_DELAY_MS)
 }
