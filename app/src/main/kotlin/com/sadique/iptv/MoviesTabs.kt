@@ -96,6 +96,10 @@ internal fun MainActivity.renderCurrentMoviesTab() {
         )
         MoviesTab.DOWNLOADS -> renderDownloads()
     }
+    // v2.0.25: the mini player goes wide on an empty Home and
+    // restores 55/45 when content opens — re-check the split after
+    // every content render.
+    updateMiniPlayerLayout()
 }
 
 /** A tab that is one vertical list of movie rows (Movies / TV Shows /
