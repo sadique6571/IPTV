@@ -78,6 +78,37 @@ jobs:
           name: IPTV-debug
           path: app/build/outputs/compact/IPTV-debug.apk
           if-no-files-found: error
+      # Release build (main only, not PRs): R8/minify via :app:compactReleaseApk.
+      # The keystore comes from secrets — one-time setup, either choice works:
+      #  * new release key: generate one, base64 it into RELEASE_KEYSTORE_BASE64
+      #    + its passwords into RELEASE_KEYSTORE_PASSWORD / RELEASE_KEY_ALIAS /
+      #    RELEASE_KEY_PASSWORD. First install needs uninstall + reinstall.
+      #  * debug key for release: put base64 of the committed app/debug.keystore
+      #    in RELEASE_KEYSTORE_BASE64, passwords "android", alias androiddebugkey.
+      #    Updates keep working, no uninstall — but no security benefit either.
+      # A missing/empty secret fails here loudly instead of shipping a
+      # wrongly-signed APK.
+      - name: Build release APK with Gradle
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          RELEASE_KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -z "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
+            echo "RELEASE_KEYSTORE_BASE64 secret is not set — see the comment above this step." >&2
+            exit 1
+          fi
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+          chmod +x gradlew
+          ./gradlew --quiet :app:compactReleaseApk --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          name: IPTV-release
+          path: app/build/outputs/compact/IPTV.apk
+          if-no-files-found: error
   publish:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
@@ -88,7 +119,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: IPTV-debug
+          name: IPTV-release
           path: release
       - name: Publish GitHub Release
         env:
@@ -97,12 +128,12 @@ jobs:
           version_name=$(grep -m1 'versionName' app/build.gradle.kts | sed -E 's/.*versionName = "([^"]+)".*/\1/')
           version_code=$(grep -m1 'versionCode' app/build.gradle.kts | grep -oE '[0-9]+')
           tag="v${version_name}.${version_code}"
-          cp release/IPTV-debug.apk IPTV-debug.apk
+          cp release/IPTV.apk IPTV.apk
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" IPTV-debug.apk --clobber
+            gh release upload "$tag" IPTV.apk --clobber
           else
-            gh release create "$tag" IPTV-debug.apk \
+            gh release create "$tag" IPTV.apk \
               --title "IPTV $version_name (build $version_code)" \
-              --notes "Auto-built from main. Installs over the previous build (same signing key)."
+              --notes "Release build (R8/minify). Install manually once — the old build looks for the IPTV-debug.apk asset, so the in-app updater cannot offer this one; afterwards it picks up later releases as before."
           fi
           echo "Published release $tag"
