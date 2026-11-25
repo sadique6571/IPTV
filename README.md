@@ -34,7 +34,9 @@ The header shows IPTV upload and download combined. Its daily total uses Pakista
 Requires JDK 17+ and Android SDK platform 35. CI builds the debug APK on every
 push (`.github/workflows/android.yml`) and uploads it as the `IPTV-debug`
 artifact; on `main` it also builds the R8 release APK (`IPTV.apk`, signed with
-the keystore from the `RELEASE_KEYSTORE_*` secrets) and publishes that as the
+the committed debug keystore `app/debug.keystore`; the key password and alias
+come from the `RELEASE_KEYSTORE_PASSWORD` / `RELEASE_KEY_ALIAS` /
+`RELEASE_KEY_PASSWORD` secrets) and publishes that as the
 GitHub release. The in-app updater looks for the `IPTV.apk` asset.
 
 `build-apk.sh` is a thin wrapper around `./gradlew assembleDebug`, kept so the
@@ -53,9 +55,10 @@ old build command still works.
   in PiP mode.
 - Xtream credentials are stored in the app-private playlist metadata file, in
   the clear, like the stream URLs themselves.
-- Signing: every build uses the fixed debug key in `app/debug.keystore`
-  (PKCS12, alias `androiddebugkey`, password `android`), wired in
-  `app/build.gradle.kts`, so updates install cleanly over older builds. It is
-  a DEBUG key only — never use it for a release build, and never replace it
-  without expecting an uninstall first: Android refuses to update an app
-  whose signature changed.
+- Signing: every build — the debug APK and the R8 release APK alike — uses
+  the fixed debug key in `app/debug.keystore` (PKCS12, alias `androiddebugkey`,
+  password `android`), wired in `app/build.gradle.kts`, so updates install
+  cleanly over older builds. Reusing the debug key for the release build is a
+  deliberate choice (a separate release key would need an uninstall first);
+  never replace the key without expecting an uninstall: Android refuses to
+  update an app whose signature changed.
