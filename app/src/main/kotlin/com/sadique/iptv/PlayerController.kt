@@ -153,6 +153,12 @@ internal class PlayerController(
      * look (transparent background + drop shadow). */
     var subtitleBackground: Boolean = true
 
+    /** Mini-player mode (v2.0.24): the small player is short, so the
+     * lift that clears the fullscreen bar (20%) leaves the subtitle
+     * on the mini player's two-row bar — 38% clears it. Set from
+     * updateMiniPlayerLayout, before applySubtitleStyle. */
+    var miniPlayerMode = false
+
     /** Whether the player controls are currently visible. While they
      * are, the bottom bar covers the lower part of the picture, so
      * subtitles lift above it (like Netflix); when the controls hide,
@@ -188,7 +194,11 @@ internal class PlayerController(
         // 20% clears the ~60dp bottom bar on phones and TVs alike
         // (the bar is ~17% of a phone-landscape height, ~11% of a
         // TV's); 3% is the resting position with controls hidden.
-        view.setBottomPaddingFraction(if (subtitleControlsVisible) 0.20f else 0.03f)
+        // Mini player (v2.0.24): the player is short and its bar is
+        // two rows tall, so 38% lifts the text clear of it.
+        view.setBottomPaddingFraction(
+            if (subtitleControlsVisible) (if (miniPlayerMode) 0.38f else 0.20f) else 0.03f,
+        )
     }
 
     /** Change the subtitle size live (from the CC menu) and re-apply

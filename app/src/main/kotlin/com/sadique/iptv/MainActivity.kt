@@ -92,6 +92,11 @@ class MainActivity : Activity() {
     // movie is not live — and shown again for channels.
     internal lateinit var metaLiveBadge: TextView
     internal lateinit var overlayBar: LinearLayout
+    // Mini-player two-row bar (v2.0.24): the chips row the bar splits
+    // into in TV mini-player mode (seek row on top, chips below).
+    // Created with the bar; attached only in that mode.
+    private lateinit var chipsRow: LinearLayout
+    private var miniBarTwoRow = false
     internal lateinit var status: TextView
     internal lateinit var buffering: ProgressBar
     internal lateinit var numberOverlay: TextView
@@ -102,6 +107,11 @@ class MainActivity : Activity() {
     // "Back to TV" in the status bar (v2.0.23): the way back from the
     // Movies section — visible only while movies are open.
     internal lateinit var backToTvButton: Button
+    // Live TV header action buttons (Playlists / Import M3U / Xtream /
+    // Update, TV only): hidden while movies are open (v2.0.24) — with
+    // "Back to TV" added, the header's children overflow the 960dp TV
+    // width and the weighted network label collapses to 0 width.
+    private val headerActionButtons = mutableListOf<Button>()
     // Network speed + today's usage label (v2.0.44, header right end):
     // "500 Kbps/30 MB", refreshed once a second while visible.
     internal lateinit var networkLabel: TextView
@@ -273,14 +283,13 @@ class MainActivity : Activity() {
     internal lateinit var contentFrame: FrameLayout
     internal var moviesViewBuilt = false
     internal lateinit var moviesView: LinearLayout
+    // TV Movies sidebar (search + nav), stored so its width can narrow
+    // in mini-player mode (v2.0.24). Only built on TV.
+    internal lateinit var moviesSidebarView: LinearLayout
     internal lateinit var moviesListPane: LinearLayout
     internal lateinit var moviesDetailsPane: LinearLayout
     internal lateinit var movieSearchInput: EditText
     internal lateinit var movieStatus: TextView
-    // Now-playing bar at the top of the Movies section: shown when a movie
-    // is already playing, with a shortcut back to the player.
-    internal lateinit var movieNowPlayingBar: LinearLayout
-    internal lateinit var movieNowPlayingLabel: TextView
     internal lateinit var movieProgress: ProgressBar
     internal lateinit var movieResults: LinearLayout
     internal lateinit var movieResultsScroll: ScrollView
@@ -449,7 +458,9 @@ class MainActivity : Activity() {
         val rootPaddingDp = if (isTv) 32 else 12
         val rootPadding = dp(rootPaddingDp)
         rootPaddingPx = rootPadding
-        val libraryWidthDp = if (isTv) 320 else 300
+        // v2.0.24: TV browse pane 320dp -> 260dp — the Live TV side
+        // panel was a third of the screen and the player got squeezed.
+        val libraryWidthDp = if (isTv) 260 else 300
         val paneGapDp = if (isTv) 14 else 12
         paneGapPx = dp(paneGapDp)
         rootView = column().apply {
@@ -511,7 +522,9 @@ class MainActivity : Activity() {
                 Triple(R.drawable.ic_upload, "Update") { checkForUpdateManually() },
             )
             for ((iconRes, title, action) in topActions) {
-                headerView.addView(topPillButton(iconRes, title, action),
+                val button = topPillButton(iconRes, title, action)
+                headerActionButtons += button
+                headerView.addView(button,
                     LinearLayout.LayoutParams(-2, -2).apply {
                         marginEnd = dp(8)
                     })
@@ -521,6 +534,12 @@ class MainActivity : Activity() {
         // the far end of the header panel — "500 Kbps/30 MB".
         networkLabel = label("0 Kbps/0 B", 12, muted2).apply {
             gravity = Gravity.END
+            // Single line, always (v2.0.24): if the header ever overflows
+            // again, this must clip — not wrap vertically and inflate
+            // the header (that hid the icon/title/buttons behind the
+            // movies overlay).
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
         }
         headerView.addView(networkLabel, LinearLayout.LayoutParams(0, -2, 1f))
         rootView.addView(headerView, LinearLayout.LayoutParams(-1, -2).apply {
@@ -842,8 +861,19 @@ class MainActivity : Activity() {
             // v2.0.17: roomier bar — the demo's chips sit with clear
             // space above and below inside the pill (chips ~40% of
             // the bar height), so TV 10dp / phone 6dp vertical.
-            setPadding(dp(6), dp(if (isTv) 10 else 9), dp(6), dp(if (isTv) 10 else 9))
+            // v2.0.24: more side room — the play disc and the fullscreen
+            // chip sat flush against the bar's edges; 14dp TV / 10dp
+            // phone leaves a gap, and the seek bar (weight 1f) shortens
+            // a little to make it.
+            setPadding(dp(if (isTv) 14 else 10), dp(if (isTv) 10 else 9), dp(if (isTv) 14 else 10), dp(if (isTv) 10 else 9))
             elevation = dp(6).toFloat()
+        }
+        // Mini-player two-row bar (v2.0.24): the chips row the bar
+        // splits into in TV mini-player mode. Created here, attached
+        // only by setMiniPlayerBar.
+        chipsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
         playPauseButton = overlayButton(R.drawable.ic_play) {
             playerController?.togglePlayPause()
@@ -953,6 +983,11 @@ class MainActivity : Activity() {
             setTypeface(null, Typeface.BOLD)
             textSize = if (isTv) 10f else 10f
             gravity = Gravity.CENTER
+            // v2.0.24: the text sat ~3.5px low in the 24dp chip (measured
+            // on the TV screenshot) — the Button's default font padding
+            // makes the line box taller than the glyphs. Off, the text
+            // centers on its real height.
+            includeFontPadding = false
             background = rowChipBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
@@ -972,6 +1007,8 @@ class MainActivity : Activity() {
             setTypeface(null, Typeface.BOLD)
             textSize = if (isTv) 10f else 10f
             gravity = Gravity.CENTER
+            // v2.0.24: same off-center text as Prev (see above).
+            includeFontPadding = false
             background = rowChipBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
@@ -1060,6 +1097,8 @@ class MainActivity : Activity() {
             minWidth = 0
             setPadding(dp(10), dp(if (isTv) 6 else 2), dp(10), dp(if (isTv) 6 else 2))
             background = rowChipBackground()
+            // v2.0.24: same off-center text as Prev (see above).
+            includeFontPadding = false
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
             setOnClickListener { showQualityPopup(it) }
@@ -1079,6 +1118,9 @@ class MainActivity : Activity() {
             setPadding(dp(10), 0, dp(10), 0)
             textSize = if (isTv) 10f else 10f
             setTextColor(Color.WHITE)
+            // v2.0.24: same off-center text as Prev (see above) — the
+            // screenshot shows the same ~3.5px drop on this chip too.
+            includeFontPadding = false
             background = rowChipBackground()
             visibility = View.GONE
             setOnClickListener { showMovieAudio(it) }
@@ -1102,6 +1144,8 @@ class MainActivity : Activity() {
             textSize = if (isTv) 10f else 10f
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
+            // v2.0.24: same off-center text as Prev (see above).
+            includeFontPadding = false
             background = rowChipBackground()
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
@@ -1656,6 +1700,67 @@ class MainActivity : Activity() {
      * openMovies / openMoviesToDetails / closeMovies. Internal so the
      * Movies browser functions (extensions in MoviesSection.kt) can
      * call it. */
+    /** Mini-player bar (v2.0.24, TV side-by-side only): the mini player
+     * is 45% of the screen, too narrow for the full single-row bar —
+     * the chips alone fill it, so the seek row had no room (no seek
+     * bar, no time) and the subtitle overlapped the chips. In mini
+     * mode the bar becomes two rows: seek + time on top, chips below,
+     * slimmer (4dp vertical padding, 32dp disc/seek) so it fits the
+     * short player. Phone keeps the single row (full width fits). */
+    private fun setMiniPlayerBar(twoRow: Boolean) {
+        if (!::overlayBar.isInitialized || !::chipsRow.isInitialized) return
+        if (twoRow == miniBarTwoRow) return
+        miniBarTwoRow = twoRow
+        // Slimmer sizes in mini mode (restored below for the single row).
+        playPauseButton.layoutParams = LinearLayout.LayoutParams(
+            dp(if (twoRow) 32 else if (isTv) 40 else 34),
+            dp(if (twoRow) 32 else if (isTv) 40 else 34),
+        )
+        seekBar.layoutParams = LinearLayout.LayoutParams(
+            0, dp(if (twoRow) 32 else if (isTv) 40 else 36), 1f,
+        )
+        if (twoRow) {
+            // Chips move into chipsRow; seekRow becomes the top row.
+            overlayBar.orientation = LinearLayout.VERTICAL
+            overlayBar.removeView(seekRow)
+            for (chip in listOf(
+                playPauseButton, seekBackButton, seekForwardButton,
+                moviePrevButton, movieNextButton, movieAudioButton,
+                movieCCButton, movieQualityButton, fullscreenButton,
+            )) {
+                overlayBar.removeView(chip)
+                chipsRow.addView(chip)
+            }
+            overlayBar.addView(seekRow, LinearLayout.LayoutParams(-1, -2))
+            overlayBar.addView(chipsRow, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(4)
+            })
+            overlayBar.setPadding(dp(14), dp(4), dp(14), dp(4))
+        } else {
+            overlayBar.removeView(chipsRow)
+            overlayBar.removeView(seekRow)
+            chipsRow.removeAllViews()
+            overlayBar.orientation = LinearLayout.HORIZONTAL
+            overlayBar.addView(playPauseButton)
+            overlayBar.addView(seekBackButton)
+            overlayBar.addView(seekForwardButton)
+            overlayBar.addView(seekRow, LinearLayout.LayoutParams(0, -2, 1f))
+            overlayBar.addView(moviePrevButton)
+            overlayBar.addView(movieNextButton)
+            overlayBar.addView(movieAudioButton)
+            overlayBar.addView(movieCCButton)
+            overlayBar.addView(movieQualityButton)
+            overlayBar.addView(fullscreenButton)
+            overlayBar.setPadding(
+                dp(if (isTv) 14 else 10), dp(if (isTv) 10 else 9),
+                dp(if (isTv) 14 else 10), dp(if (isTv) 10 else 9),
+            )
+        }
+        // Re-sync visibility + focus after the move (IDs are unchanged,
+        // so the D-pad chain in applyControlVisibility still fits).
+        applyControlVisibility()
+    }
+
     internal fun isMiniPlayer(): Boolean =
         playingMovie != null && moviesOpen && !fullScreen
 
@@ -1673,6 +1778,11 @@ class MainActivity : Activity() {
 
     internal fun updateMiniPlayerLayout() {
         val miniPlayer = isMiniPlayer()
+        // Mini-player bar + subtitle lift (v2.0.24): two-row bar on TV
+        // side-by-side, and subtitles lift higher over the short player.
+        setMiniPlayerBar(miniPlayer && isTv)
+        playerController?.miniPlayerMode = miniPlayer
+        playerController?.applySubtitleStyle()
         val sideBySide = isTv || isLandscape
         // TV mini player: side-by-side like Live TV (movies left,
         // player right). Phone mini player: player on top, movies
@@ -1689,7 +1799,7 @@ class MainActivity : Activity() {
             splitPane.removeView(libraryPane)
             splitPane.addView(libraryPane)
         }
-        val libraryWidthDp = if (isTv) 320 else 300
+        val libraryWidthDp = if (isTv) 260 else 300
         // TV side-by-side split: the player takes 45% of the pane
         // width, the Movies browser the other 55% (enough for the
         // 300dp sidebar + a 3-4 poster grid on the 1920 TV).
@@ -1744,6 +1854,13 @@ class MainActivity : Activity() {
             View.VISIBLE
         }
         backToTvButton.visibility = if (moviesOpen) View.VISIBLE else View.GONE
+        // v2.0.24: the four Live TV action buttons leave the header
+        // while movies are open — with "Back to TV" added, the header
+        // overflows the 960dp TV width, the weighted network label
+        // collapses to 0 width and wraps vertically, and its wrapped
+        // height inflates the header so the icon/title/buttons drop
+        // behind the movies overlay (empty pill + vertical text).
+        headerActionButtons.forEach { it.visibility = if (moviesOpen) View.GONE else View.VISIBLE }
         // Movies overlay: a real pane now, not a floating sheet — below
         // the header, flush against the player. Its top edge is the
         // header's bottom edge: root top padding + header height.
@@ -1772,6 +1889,18 @@ class MainActivity : Activity() {
             } else {
                 moviesView.layoutParams = FrameLayout.LayoutParams(-1, -1).apply {
                     topMargin = 0
+                }
+            }
+            // v2.0.24: narrow the Movies sidebar while the mini player
+            // is on — 300dp leaves the side-by-side content pane too
+            // narrow (Continue Watching rows clip); 200dp still fits
+            // the search + nav buttons.
+            if (isTv && ::moviesSidebarView.isInitialized) {
+                val sidebarW = dp(if (miniPlayer) 200 else 300)
+                val sidebarParams = moviesSidebarView.layoutParams
+                if (sidebarParams.width != sidebarW) {
+                    sidebarParams.width = sidebarW
+                    moviesSidebarView.layoutParams = sidebarParams
                 }
             }
         }
