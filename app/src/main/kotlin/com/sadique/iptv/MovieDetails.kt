@@ -206,6 +206,26 @@ internal fun MainActivity.saveMovieProgress(async: Boolean) {
 }
 
 
+private fun MainActivity.setMovieDetailsAction(
+    message: String,
+    canPlay: Boolean = false,
+    retry: (() -> Unit)? = null,
+) {
+    movieDetailsStatus.text = message
+    val enabled = canPlay || retry != null
+    if (!enabled && moviePlayButton.hasFocus()) movieFavButton.requestFocus()
+    moviePlayButton.apply {
+        text = if (retry != null) "Retry" else "Play"
+        setCompoundDrawablesWithIntrinsicBounds(if (retry == null) R.drawable.ic_play else 0, 0, 0, 0)
+        isEnabled = enabled
+        setOnClickListener {
+            if (retry != null) retry() else playSelectedMovie()
+        }
+    }
+    if (enabled && movieFavButton.hasFocus()) moviePlayButton.requestFocus()
+}
+
+
 internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
     movieResumeRequest++
     movieStreamsRequest++
@@ -231,8 +251,7 @@ internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
     selectedSeason = 0
     selectedEpisode = 0
     currentSeriesSeasons = emptyList()
-    moviePlayButton.isEnabled = false
-    movieDetailsStatus.text = "Details load ho rahe hain…"
+    setMovieDetailsAction("Details load ho rahe hain…")
     updateMovieFavButton()
     showMoviesDetails()
     imports.execute {
@@ -242,10 +261,12 @@ internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
                 if (isDestroyed || request != movieDetailsRequest) return@runOnUiThread
                 if (details.movie.isSeries) showSeriesDetails(details) else showMovieDetails(details)
             }
-        } catch (error: IOException) {
+        } catch (_: IOException) {
             runOnUiThread {
                 if (isDestroyed || request != movieDetailsRequest) return@runOnUiThread
-                movieDetailsStatus.text = "Details nahi mile: ${error.message}"
+                setMovieDetailsAction("Details load nahi ho sake. Dobara koshish karein.") {
+                    openMovieDetails(movie)
+                }
             }
         }
     }
@@ -333,25 +354,25 @@ internal fun MainActivity.loadMovieStreams() {
     val request = ++movieStreamsRequest
     currentMovieStreams = emptyList()
     selectedQuality = 0
-    moviePlayButton.isEnabled = false
-    movieDetailsStatus.text = "Streams load ho rahe hain…"
+    setMovieDetailsAction("Streams load ho rahe hain…")
     imports.execute {
         try {
             // A dub is a different subject with its own files — reuse the
             // details we already have when the original is selected.
             val details = currentMovieDetails?.takeIf { it.movie.subjectId == subjectId }
                 ?: movieBox.details(subjectId)
-            currentPlayTitle = details.movie.title
             val streams = movieBox.streams(details)
             runOnUiThread {
                 if (isDestroyed || request != movieStreamsRequest) return@runOnUiThread
-                currentMovieStreams = streams
-                showMovieStreams(streams)
+                currentPlayTitle = details.movie.title
+                showMovieStreams(streams, "Is movie ka playable link nahi mila.") {
+                    loadMovieStreams()
+                }
             }
-        } catch (error: IOException) {
+        } catch (_: IOException) {
             runOnUiThread {
                 if (isDestroyed || request != movieStreamsRequest) return@runOnUiThread
-                movieDetailsStatus.text = "Streams nahi mile: ${error.message}"
+                setMovieDetailsAction("Movie stream load nahi ho saki.") { loadMovieStreams() }
             }
         }
     }
@@ -360,7 +381,7 @@ internal fun MainActivity.loadMovieStreams() {
 
 /** Loads a series' seasons (for the selected dub when one is picked),
  * then shows the first season's episodes. */
-internal fun MainActivity.loadSeriesSeasons(subjectId: String? = null) {
+internal fun MainActivity.loadSeriesSeasons(subjectId: String? = null, preferredSeason: Int = 0) {
     val id = subjectId ?: selectedDubId ?: return
     movieStreamsRequest++
     val request = ++movieSeasonsRequest
@@ -371,18 +392,19 @@ internal fun MainActivity.loadSeriesSeasons(subjectId: String? = null) {
     selectedQuality = 0
     movieSeasonRow.removeAllViews()
     movieEpisodeColumn.removeAllViews()
-    moviePlayButton.isEnabled = false
-    movieDetailsStatus.text = "Seasons load ho rahe hain…"
+    setMovieDetailsAction("Seasons load ho rahe hain…")
     imports.execute {
         try {
             val details = currentMovieDetails?.takeIf { it.movie.subjectId == id } ?: movieBox.details(id)
-            currentPlayTitle = details.movie.title
             val seasons = movieBox.seasons(details.movie.subjectId)
             runOnUiThread {
                 if (isDestroyed || request != movieSeasonsRequest) return@runOnUiThread
+                currentPlayTitle = details.movie.title
                 currentSeriesSeasons = seasons
                 if (seasons.isEmpty()) {
-                    movieDetailsStatus.text = "Is series ke seasons nahi mile."
+                    setMovieDetailsAction("Is series ke seasons nahi mile.") {
+                        loadSeriesSeasons(id, preferredSeason)
+                    }
                     return@runOnUiThread
                 }
                 movieSeasonLabel.visibility = View.VISIBLE
@@ -390,12 +412,12 @@ internal fun MainActivity.loadSeriesSeasons(subjectId: String? = null) {
                 movieEpisodeLabel.visibility = View.VISIBLE
                 movieEpisodeColumn.visibility = View.VISIBLE
                 rebuildSeasonChips()
-                selectSeason(seasons.first().number)
+                selectSeason(seasons.firstOrNull { it.number == preferredSeason }?.number ?: seasons.first().number)
             }
-        } catch (error: IOException) {
+        } catch (_: IOException) {
             runOnUiThread {
                 if (isDestroyed || request != movieSeasonsRequest) return@runOnUiThread
-                movieDetailsStatus.text = "Seasons nahi mile: ${error.message}"
+                setMovieDetailsAction("Seasons load nahi ho sake.") { loadSeriesSeasons(id, preferredSeason) }
             }
         }
     }
@@ -437,7 +459,6 @@ internal fun MainActivity.showSeasonEpisodes(seasonNumber: Int) {
     movieEpisodeColumn.removeAllViews()
     currentMovieStreams = emptyList()
     selectedQuality = 0
-    moviePlayButton.isEnabled = false
     // Compact number grid: small "1" "2" "3" buttons in rows instead of
     // one full-width box per episode.
     fun buildGrid(perRow: Int) {
@@ -478,7 +499,13 @@ internal fun MainActivity.showSeasonEpisodes(seasonNumber: Int) {
             }
         }
     }
-    movieDetailsStatus.text = "${season.episodes.size} episodes — episode chunein."
+    if (season.episodes.isEmpty()) {
+        setMovieDetailsAction("Is season ke episodes nahi mile.") {
+            loadSeriesSeasons(preferredSeason = seasonNumber)
+        }
+    } else {
+        setMovieDetailsAction("${season.episodes.size} episodes — episode chunein.")
+    }
 }
 
 
@@ -510,14 +537,13 @@ internal fun MainActivity.loadEpisodeStreams() {
     val request = ++movieStreamsRequest
     currentMovieStreams = emptyList()
     selectedQuality = 0
-    moviePlayButton.isEnabled = false
     val epTitle = currentSeriesSeasons.firstOrNull { it.number == season }
         ?.episodes?.firstOrNull { it.number == episode }?.title.orEmpty()
-    movieDetailsStatus.text = if (epTitle.isNotEmpty()) {
+    setMovieDetailsAction(if (epTitle.isNotEmpty()) {
         "E$episode · $epTitle load ho raha hai…"
     } else {
         "Episode load ho raha hai…"
-    }
+    })
     imports.execute {
         try {
             val details = currentMovieDetails?.takeIf { it.movie.subjectId == subjectId }
@@ -525,20 +551,30 @@ internal fun MainActivity.loadEpisodeStreams() {
             val streams = movieBox.episodeStreams(details, season, episode)
             runOnUiThread {
                 if (isDestroyed || request != movieStreamsRequest) return@runOnUiThread
-                currentMovieStreams = streams
-                showMovieStreams(streams)
+                showMovieStreams(streams, "Is episode ka playable link nahi mila.") {
+                    loadEpisodeStreams()
+                }
             }
-        } catch (error: IOException) {
+        } catch (_: IOException) {
             runOnUiThread {
                 if (isDestroyed || request != movieStreamsRequest) return@runOnUiThread
-                movieDetailsStatus.text = "Episode nahi mila: ${error.message}"
+                setMovieDetailsAction("Episode stream load nahi ho saki.") { loadEpisodeStreams() }
             }
         }
     }
 }
 
 
-internal fun MainActivity.showMovieStreams(streams: List<MovieBox.MovieStream>) {
+private fun MainActivity.showMovieStreams(
+    streams: List<MovieBox.MovieStream>,
+    emptyMessage: String,
+    retry: () -> Unit,
+) {
+    currentMovieStreams = streams
+    if (streams.isEmpty()) {
+        setMovieDetailsAction(emptyMessage, retry = retry)
+        return
+    }
     val resolutions = streams.map { it.resolution }.filter { it > 0 }
         .distinct().sortedDescending()
     // Quality is picked in the player (Quality chip), not in the
@@ -547,13 +583,9 @@ internal fun MainActivity.showMovieStreams(streams: List<MovieBox.MovieStream>) 
     selectedQuality = resolutions.firstOrNull() ?: 0
     // The file size again (v2.0.2 showed it, v2.0.4 lost it): the
     // best stream's size, e.g. "Stream ready hai · 282 MB — Play dabayein."
-    val best = streams.firstOrNull()
-    val sizeText = if (best != null && best.sizeBytes > 0) " · ${formatSize(best.sizeBytes)}" else ""
-    movieDetailsStatus.text = "Stream ready hai$sizeText — Play dabayein."
-    moviePlayButton.isEnabled = true
-    // If the user hasn't moved off the Fav landing yet, put focus
-    // on Play now that it works.
-    if (movieFavButton.hasFocus()) moviePlayButton.requestFocus()
+    val best = streams.firstOrNull { it.resolution == selectedQuality } ?: streams.first()
+    val sizeText = if (best.sizeBytes > 0) " · ${formatSize(best.sizeBytes)}" else ""
+    setMovieDetailsAction("Stream ready hai$sizeText — Play dabayein.", canPlay = true)
 }
 
 

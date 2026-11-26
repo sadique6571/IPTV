@@ -56,8 +56,8 @@ internal fun MainActivity.buildChannelSearchInput(): EditText {
                 (keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_UP)) {
                 val direction = if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) View.FOCUS_DOWN
                     else View.FOCUS_UP
-                focusSearch(direction)?.requestFocus()
-                true
+                (isTv && direction == View.FOCUS_DOWN && focusChannelSearchContent()) ||
+                    (focusSearch(direction)?.requestFocus() == true)
             } else {
                 false
             }
