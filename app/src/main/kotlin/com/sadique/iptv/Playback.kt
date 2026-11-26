@@ -197,12 +197,11 @@ internal fun MainActivity.applyControlVisibility() {
     // the dialog lists the audio tracks + dubs that exist.
     val audio = movie
     movieAudioButton.visibility = if (audio) View.VISIBLE else View.GONE
-    // Series episode buttons: Prev unless on the first episode, Next
-    // unless on the last (episode count from the loaded seasons).
+    // Series navigation follows the loaded episode numbers across seasons.
     val episode = playingEpisodeEpisode
-    val episodeCount = currentSeriesSeasons.firstOrNull { it.number == playingEpisodeSeason }?.episodeCount ?: 0
-    val showPrev = movie && playingEpisodeSeason > 0 && episode > 1
-    val showNext = movie && playingEpisodeSeason > 0 && episodeCount > 0 && episode < episodeCount
+    val showPrev = movie && (adjacentEpisode(playingSeriesSeasons, playingEpisodeSeason, episode, -1) != null ||
+        (playingEpisodeSeason > 0 && episode > 1 && playingSeriesSeasons.none { it.number == playingEpisodeSeason }))
+    val showNext = movie && nextMovieEpisode() != null
     moviePrevButton.visibility = if (showPrev) View.VISIBLE else View.GONE
     movieNextButton.visibility = if (showNext) View.VISIBLE else View.GONE
     // CC (English subtitles only): shown when this title has one.

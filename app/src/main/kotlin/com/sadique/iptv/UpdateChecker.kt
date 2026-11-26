@@ -145,12 +145,11 @@ internal object UpdateChecker {
 
     /**
      * Downloads the release APK into cacheDir/updates/ (served to the
-     * installer through FileProvider). Calls [onProgress] with 0..100 on the
-     * calling (worker) thread whenever the percentage changes; no calls when
-     * the server gives no content length. Returns the downloaded file.
+     * installer through FileProvider). Reports downloaded and total bytes
+     * on the worker thread. A negative total means the server omitted it.
      */
     @Throws(IOException::class)
-    fun downloadApk(context: Context, update: Update, onProgress: (Int) -> Unit): File {
+    fun downloadApk(context: Context, update: Update, onProgress: (Long, Long) -> Unit): File {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
         val out = File(dir, APK_ASSET_NAME)
         val part = File.createTempFile("update-", ".part", dir)
@@ -165,7 +164,8 @@ internal object UpdateChecker {
             val code = connection.responseCode
             if (code != HttpURLConnection.HTTP_OK) throw IOException("Download: HTTP $code")
             val total = connection.getHeaderField("Content-Length")?.toLongOrNull() ?: -1L
-            var lastPercent = -1
+            var lastStep = 0L
+            onProgress(0L, total)
             connection.inputStream.use { input ->
                 FileOutputStream(part).use { output ->
                     val buffer = ByteArray(8192)
@@ -176,12 +176,10 @@ internal object UpdateChecker {
                         hash.update(buffer, 0, read)
                         output.write(buffer, 0, read)
                         downloaded += read
-                        if (total > 0) {
-                            val percent = ((downloaded * 100) / total).toInt().coerceIn(0, 100)
-                            if (percent != lastPercent) {
-                                lastPercent = percent
-                                onProgress(percent)
-                            }
+                        val step = if (total > 0) (downloaded * 100 / total).coerceAtMost(100) else downloaded / (128 * 1024)
+                        if (step != lastStep) {
+                            lastStep = step
+                            onProgress(downloaded, total)
                         }
                     }
                 }

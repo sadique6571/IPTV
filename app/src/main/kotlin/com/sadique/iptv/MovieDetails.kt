@@ -96,8 +96,10 @@ internal fun MainActivity.seekMovieBy(deltaMs: Long) {
 internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscreenOnSuccess: Boolean = true) {
     val request = ++movieResumeRequest
     ensureMoviesView()
-    movieProgress.visibility = View.VISIBLE
-    movieStatus.text = "Movie load ho rahi hai…"
+    val fromDetails = moviesOpen && moviesDetailsPane.isShown
+    val message = if (fromDetails) movieDetailsStatus else movieStatus
+    if (fromDetails) movieResumeButton.isEnabled = false else movieProgress.visibility = View.VISIBLE
+    message.text = "Resume load ho raha hai…"
     imports.execute {
         try {
             val details = movieBox.details(entry.subjectId)
@@ -123,26 +125,26 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscree
             runOnUiThread {
                 if (isDestroyed || request != movieResumeRequest) return@runOnUiThread
                 movieProgress.visibility = View.GONE
-                // The resume fetched the details — keep them. A fresh
-                // app start has no currentMovieDetails/currentPlayTitle,
-                // so without this the top-bar title fallbacks were
-                // stale after a Continue Watching resume.
-                currentMovieDetails = details
-                currentPlayTitle = details.movie.title
+                if (fromDetails) movieResumeButton.isEnabled = true
                 // firstOrNull, never first(): an empty stream list used
                 // to throw on the UI thread and crash the app.
                 val stream = streams.firstOrNull { it.resolution == entry.quality }
                     ?: streams.firstOrNull()
                 if (stream == null) {
-                    movieStatus.text = "Resume nahi ho saka: koi playable link nahi mila."
-                    status.text = movieStatus.text
+                    message.text = "Resume nahi ho saka: koi playable link nahi mila."
+                    status.text = message.text
                     return@runOnUiThread
                 }
+                if (!fromDetails) {
+                    movieDetailsRendered = false
+                    currentMovieDetails = details
+                }
+                currentPlayTitle = details.movie.title
                 // Keep the resolved streams: the in-player quality
                 // switcher offers these after a resume, same as after
                 // picking a quality on the details screen.
                 currentMovieStreams = streams
-                if (entry.isSeries) currentSeriesSeasons = seasons
+                if (entry.isSeries && !fromDetails) currentSeriesSeasons = seasons
                 selectedQuality = stream.resolution
                 currentSubtitle = subtitleForStream(stream, details)
                 closeMovies()
@@ -156,6 +158,7 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscree
                     episodeSeason = if (entry.isSeries) entry.season else 0,
                     episodeNumber = if (entry.isSeries) entry.episode else 0,
                     dubs = details.audioDubs(),
+                    seriesSeasons = seasons,
                 )
                 applyFullScreen(fullscreenOnSuccess)
             }
@@ -163,8 +166,9 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscree
             runOnUiThread {
                 if (isDestroyed || request != movieResumeRequest) return@runOnUiThread
                 movieProgress.visibility = View.GONE
-                movieStatus.text = "Resume nahi ho saka. Dobara koshish karein."
-                status.text = movieStatus.text
+                if (fromDetails) movieResumeButton.isEnabled = true
+                message.text = "Resume nahi ho saka. Dobara koshish karein."
+                status.text = message.text
             }
         }
     }
@@ -222,7 +226,10 @@ private fun MainActivity.setMovieDetailsAction(
             if (retry != null) retry() else playSelectedMovie()
         }
     }
-    if (enabled && movieFavButton.hasFocus()) moviePlayButton.requestFocus()
+    val focused = currentFocus
+    val selectedEpisodeFocused = isTv && focused?.parent?.parent === movieEpisodeColumn &&
+        focused?.tag == selectedEpisode
+    if (enabled && (movieFavButton.hasFocus() || selectedEpisodeFocused)) moviePlayButton.requestFocus()
 }
 
 
@@ -241,7 +248,13 @@ internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
     subtitlesEnabled = true
     movieDetailsTitle.text = movie.title
     movieDetailsMeta.text = ""
-    movieDetailsDesc.text = ""
+    renderMovieSynopsis("")
+    movieResumeButton.visibility = View.GONE
+    movieDetailsPoster.removeAllViews()
+    if (isTv) {
+        movieDetailsPoster.addView(posterTile(movie.posterUrl, movie.title))
+        movieDetailsPoster.visibility = View.VISIBLE
+    }
     movieSeasonRow.removeAllViews()
     movieEpisodeColumn.removeAllViews()
     movieSeasonLabel.visibility = View.GONE
@@ -253,6 +266,7 @@ internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
     currentSeriesSeasons = emptyList()
     setMovieDetailsAction("Details load ho rahe hain…")
     updateMovieFavButton()
+    movieDetailsScroll.scrollTo(0, 0)
     showMoviesDetails()
     imports.execute {
         try {
@@ -286,15 +300,7 @@ internal fun MainActivity.showMovieDetails(details: MovieBox.Details) {
     if (details.rating.isNotEmpty()) metaParts += "★ ${details.rating}"
     if (details.genres.isNotEmpty()) metaParts += details.genres.take(3).joinToString(", ")
     movieDetailsMeta.text = metaParts.joinToString(" · ")
-    val descParts = mutableListOf<String>()
-    // MovieBox returns the title as the description when there is no
-    // real synopsis — showing it again under the title is redundant.
-    if (details.description.isNotEmpty() &&
-        !details.description.trim().equals(details.movie.title.trim(), ignoreCase = true)
-    ) descParts += details.description
-    if (details.director.isNotEmpty()) descParts += "Director: ${details.director}"
-    if (details.stars.isNotEmpty()) descParts += "Cast: ${details.stars}"
-    movieDetailsDesc.text = descParts.joinToString("\n\n")
+    renderMovieDetailsExtra(details)
     loadMovieStreams()
 }
 
@@ -315,16 +321,51 @@ internal fun MainActivity.showSeriesDetails(details: MovieBox.Details) {
     if (details.genres.isNotEmpty()) metaParts += details.genres.take(3).joinToString(", ")
     metaParts += "Series"
     movieDetailsMeta.text = metaParts.joinToString(" · ")
-    val descParts = mutableListOf<String>()
-    // MovieBox returns the title as the description when there is no
-    // real synopsis — showing it again under the title is redundant.
-    if (details.description.isNotEmpty() &&
-        !details.description.trim().equals(details.movie.title.trim(), ignoreCase = true)
-    ) descParts += details.description
-    if (details.director.isNotEmpty()) descParts += "Director: ${details.director}"
-    if (details.stars.isNotEmpty()) descParts += "Cast: ${details.stars}"
-    movieDetailsDesc.text = descParts.joinToString("\n\n")
+    renderMovieDetailsExtra(details)
     loadSeriesSeasons()
+}
+
+private fun MainActivity.renderMovieDetailsExtra(details: MovieBox.Details) {
+    val synopsis = buildList {
+        if (details.description.isNotBlank() &&
+            !details.description.trim().equals(details.movie.title.trim(), ignoreCase = true)
+        ) add(details.description)
+        if (details.director.isNotBlank()) add("Director: ${details.director}")
+        if (details.stars.isNotBlank()) add("Cast: ${details.stars}")
+    }
+    renderMovieSynopsis(synopsis.joinToString("\n\n"))
+    if (isTv) refreshMovieResume(details)
+}
+
+private fun MainActivity.renderMovieSynopsis(text: String) {
+    movieDetailsDesc.text = text
+    movieDetailsDesc.visibility = if (text.isBlank()) View.GONE else View.VISIBLE
+    if (!isTv) return
+    movieDetailsDesc.maxLines = 3
+    movieDetailsMoreButton.text = "More"
+    movieDetailsMoreButton.visibility = View.GONE
+    movieDetailsDesc.post { updateMovieSynopsisButton() }
+}
+
+internal fun MainActivity.updateMovieSynopsisButton() {
+    val layout = movieDetailsDesc.layout ?: return
+    val truncated = layout.lineCount > 0 && layout.getEllipsisCount(layout.lineCount - 1) > 0
+    val visible = movieDetailsDesc.visibility == View.VISIBLE &&
+        (movieDetailsDesc.maxLines > 3 || truncated)
+    movieDetailsMoreButton.visibility = if (visible) View.VISIBLE else View.GONE
+}
+
+internal fun MainActivity.refreshMovieResume(details: MovieBox.Details) {
+    if (!isTv) return
+    val subjects = details.audioDubs().map { it.subjectId }.toSet()
+    val entry = movieStore.continueWatching().firstOrNull { it.subjectId in subjects }
+    movieResumeButton.visibility = if (entry == null) View.GONE else View.VISIBLE
+    movieResumeButton.isEnabled = true
+    if (entry != null) {
+        movieResumeButton.text = if (entry.isSeries) "Resume S${entry.season} E${entry.episode}" else "Resume"
+        movieResumeButton.setOnClickListener { resumeMovie(entry) }
+        if (movieFavButton.hasFocus()) movieResumeButton.requestFocus()
+    }
 }
 
 
@@ -453,21 +494,26 @@ internal fun MainActivity.selectSeason(number: Int) {
 }
 
 
-internal fun MainActivity.showSeasonEpisodes(seasonNumber: Int) {
+internal fun MainActivity.showSeasonEpisodes(seasonNumber: Int, activeEpisode: Int = 0) {
     val season = currentSeriesSeasons.firstOrNull { it.number == seasonNumber } ?: return
-    selectedEpisode = 0
+    selectedEpisode = activeEpisode
     movieEpisodeColumn.removeAllViews()
-    currentMovieStreams = emptyList()
-    selectedQuality = 0
-    // Compact number grid: small "1" "2" "3" buttons in rows instead of
-    // one full-width box per episode.
+    if (activeEpisode == 0) {
+        currentMovieStreams = emptyList()
+        selectedQuality = 0
+    }
+    val watched = if (isTv) {
+        currentMovieDetails?.audioDubs().orEmpty().flatMap { movieStore.watchedEpisodes(it.subjectId, seasonNumber) }.toSet()
+    } else emptySet()
+    // TV uses readable full-width episode rows. Phones retain the compact grid.
     fun buildGrid(perRow: Int) {
         movieEpisodeColumn.removeAllViews()
         for (chunk in season.episodes.chunked(perRow)) {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             for (ep in chunk) {
-                row.addView(seriesEpisodeRow(seasonNumber, ep), LinearLayout.LayoutParams(-2, -2).apply {
-                    marginEnd = dp(8)
+                row.addView(seriesEpisodeRow(seasonNumber, ep, ep.number.toString() in watched),
+                    LinearLayout.LayoutParams(if (isTv) -1 else -2, -2).apply {
+                    if (!isTv) marginEnd = dp(8)
                 })
             }
             movieEpisodeColumn.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
@@ -475,7 +521,7 @@ internal fun MainActivity.showSeasonEpisodes(seasonNumber: Int) {
             })
         }
     }
-    val perRow = if (isTv) 8 else 5
+    val perRow = if (isTv) 1 else 5
     buildGrid(perRow)
     if (!isTv) {
         // Auto-fit (mobile): measure the REAL rendered button width
@@ -499,6 +545,7 @@ internal fun MainActivity.showSeasonEpisodes(seasonNumber: Int) {
             }
         }
     }
+    if (activeEpisode > 0) return
     if (season.episodes.isEmpty()) {
         setMovieDetailsAction("Is season ke episodes nahi mile.") {
             loadSeriesSeasons(preferredSeason = seasonNumber)
@@ -512,8 +559,13 @@ internal fun MainActivity.showSeasonEpisodes(seasonNumber: Int) {
 /** One episode button: a small number button in the grid (selected
  * state shows the picked episode). Tapping it loads that episode's
  * streams; the episode title shows in the status line instead. */
-internal fun MainActivity.seriesEpisodeRow(seasonNumber: Int, ep: MovieBox.EpisodeRef): View {
-    return episodeNumberButton("${ep.number}") {
+internal fun MainActivity.seriesEpisodeRow(seasonNumber: Int, ep: MovieBox.EpisodeRef, watched: Boolean): View {
+    val title = if (isTv) {
+        val name = ep.title.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+        val marker = if (watched) "✓  " else ""
+        "${marker}E${ep.number}$name"
+    } else ep.number.toString()
+    return episodeNumberButton(title) {
         if (selectedEpisode != ep.number || selectedSeason != seasonNumber || currentMovieStreams.isEmpty()) {
             selectedSeason = seasonNumber
             selectedEpisode = ep.number
@@ -521,6 +573,13 @@ internal fun MainActivity.seriesEpisodeRow(seasonNumber: Int, ep: MovieBox.Episo
             loadEpisodeStreams()
         }
     }.apply {
+        if (isTv) {
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            textSize = 16f
+            contentDescription = if (watched) "$title, watched" else title
+        }
         tag = ep.number
         isSelected = ep.number == selectedEpisode && seasonNumber == selectedSeason
         refreshFilterText(this)
@@ -611,6 +670,7 @@ internal fun MainActivity.playSelectedMovie() {
         episodeSeason = if (isSeries) selectedSeason else 0,
         episodeNumber = if (isSeries) selectedEpisode else 0,
         dubs = details.audioDubs(),
+        seriesSeasons = currentSeriesSeasons.takeIf { isSeries }.orEmpty(),
     )
     applyFullScreen(true)
 }
@@ -632,6 +692,8 @@ internal fun MainActivity.playMovieStream(
     episodeNumber: Int = 0,
     dubs: List<MovieBox.Dub> = emptyList(),
     autoplay: Boolean = true,
+    seriesSeasons: List<MovieBox.Season> =
+        if (playingMovie?.subjectId == movie.subjectId) playingSeriesSeasons else emptyList(),
 ) {
     audioRequest++
     playingDubs = dubs
@@ -664,6 +726,7 @@ internal fun MainActivity.playMovieStream(
     }
     playingEpisodeSeason = episodeSeason
     playingEpisodeEpisode = episodeNumber
+    playingSeriesSeasons = seriesSeasons
     playingMovieUrl = url
     playingMovieHeaders = headers
     movieEnded = false
@@ -1024,9 +1087,11 @@ internal fun MainActivity.playAdjacentEpisode(delta: Int) {
     val season = playingEpisodeSeason
     val episode = playingEpisodeEpisode
     if (season <= 0 || episode <= 0) return
-    val target = episode + delta
-    val count = currentSeriesSeasons.firstOrNull { it.number == season }?.episodeCount ?: 0
-    if (target < 1 || (count > 0 && target > count)) {
+    val target = adjacentEpisode(playingSeriesSeasons, season, episode, delta)
+        ?: if (delta < 0 && episode > 1 && playingSeriesSeasons.none { it.number == season }) {
+            SeriesEpisode(season, MovieBox.EpisodeRef(episode - 1))
+        } else null
+    if (target == null) {
         toast(if (delta > 0) "Aakhri episode hai." else "Pehla episode hai.")
         return
     }
@@ -1035,14 +1100,22 @@ internal fun MainActivity.playAdjacentEpisode(delta: Int) {
         try {
             val details = currentMovieDetails?.takeIf { it.movie.subjectId == movie.subjectId }
                 ?: movieBox.details(movie.subjectId)
-            val streams = movieBox.episodeStreams(details, season, target)
+            val streams = movieBox.episodeStreams(details, target.season, target.episode.number)
             runOnUiThread {
-                if (isDestroyed || playingMovie !== movie || playingEpisodeEpisode != episode) return@runOnUiThread
+                if (isDestroyed || playingMovie !== movie ||
+                    playingEpisodeSeason != season || playingEpisodeEpisode != episode
+                ) return@runOnUiThread
                 if (streams.isEmpty()) {
                     toast("Episode nahi mila.")
                     return@runOnUiThread
                 }
-                playAdjacentStreams(movie, season, target, streams)
+                val player = playerController
+                if (delta > 0 && player != null && player.duration() > 0 &&
+                    player.duration() - player.position() in 0..20_000L
+                ) {
+                    movieStore.markEpisodeWatched(movie.subjectId, season, episode)
+                }
+                playAdjacentStreams(movie, target.season, target.episode.number, streams)
             }
         } catch (_: IOException) {
             runOnUiThread { toast("Episode load nahi ho saka.") }
@@ -1137,11 +1210,32 @@ internal fun MainActivity.topBarTitle(): String {
  * count must be known — after a Continue Watching resume the
  * seasons are not loaded yet, and then Up Next stays hidden, just
  * like the Prev/Next buttons. */
-internal fun MainActivity.hasNextEpisode(): Boolean {
-    if (playingMovie == null || playingEpisodeSeason <= 0 || playingEpisodeEpisode <= 0) return false
-    val count = currentSeriesSeasons.firstOrNull { it.number == playingEpisodeSeason }?.episodeCount ?: 0
-    return count > 0 && playingEpisodeEpisode < count
+internal data class SeriesEpisode(val season: Int, val episode: MovieBox.EpisodeRef)
+
+internal fun adjacentEpisode(
+    seasons: List<MovieBox.Season>,
+    season: Int,
+    episode: Int,
+    direction: Int,
+): SeriesEpisode? {
+    if (season <= 0 || episode <= 0 || direction == 0) return null
+    val current = seasons.firstOrNull { it.number == season } ?: return null
+    if (direction > 0) {
+        current.episodes.filter { it.number > episode }.minByOrNull { it.number }
+            ?.let { return SeriesEpisode(season, it) }
+        val next = seasons.filter { it.number > season && it.episodes.isNotEmpty() }.minByOrNull { it.number }
+            ?: return null
+        return SeriesEpisode(next.number, next.episodes.minBy { it.number })
+    }
+    current.episodes.filter { it.number < episode }.maxByOrNull { it.number }
+        ?.let { return SeriesEpisode(season, it) }
+    val previous = seasons.filter { it.number < season && it.episodes.isNotEmpty() }.maxByOrNull { it.number }
+        ?: return null
+    return SeriesEpisode(previous.number, previous.episodes.maxBy { it.number })
 }
+
+internal fun MainActivity.nextMovieEpisode(): SeriesEpisode? =
+    adjacentEpisode(playingSeriesSeasons, playingEpisodeSeason, playingEpisodeEpisode, 1)
 
 private fun MainActivity.upNextKey() =
     "${playingMovie?.subjectId}:${playingEpisodeSeason}:${playingEpisodeEpisode}"
@@ -1151,19 +1245,20 @@ private fun MainActivity.upNextKey() =
  * auto-play countdown. Seeking away from the end hides it again. */
 internal fun MainActivity.checkUpNext(position: Long, duration: Long) {
     val remaining = duration - position
-    if (remaining > 25_000 || !hasNextEpisode()) {
+    if (remaining > 25_000) {
         hideUpNextCard()
         return
     }
     if (remaining <= 0 || remaining > 20_000) return
     if (upNextShownFor == upNextKey()) return
-    showUpNextCard()
+    val next = nextMovieEpisode() ?: return
+    showUpNextCard(next)
 }
 
-internal fun MainActivity.showUpNextCard() {
+internal fun MainActivity.showUpNextCard(next: SeriesEpisode) {
     val movie = playingMovie ?: return
-    val next = playingEpisodeEpisode + 1
-    upNextTitle.text = "Up Next: S${playingEpisodeSeason}:E$next"
+    val title = next.episode.title.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+    upNextTitle.text = "Up Next: S${next.season} E${next.episode.number}$title"
     upNextCountdownValue = 10
     upNextCountdown.text = "Auto-plays in 10s"
     upNextShownFor = upNextKey()

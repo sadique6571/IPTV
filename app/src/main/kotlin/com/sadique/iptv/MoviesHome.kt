@@ -14,11 +14,7 @@ internal fun MainActivity.renderMoviesHome() {
     movieResults.removeAllViews()
     val continuing = movieStore.continueWatching()
     val favorites = movieStore.favoritesList()
-    // v2.0.24: while the mini player is on, Continue Watching stays
-    // hidden — the side-by-side panel is too narrow for its rows and
-    // they clip. It comes back once the player is stopped (the list
-    // re-renders then, with isMiniPlayer() false).
-    val showContinuing = continuing.isNotEmpty() && !isMiniPlayer()
+    val showContinuing = continuing.isNotEmpty() && (isTv || !isMiniPlayer())
     movieStatus.text = when {
         showContinuing && favorites.isNotEmpty() -> "Continue Watching · Favorites"
         showContinuing -> "Continue Watching"

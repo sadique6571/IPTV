@@ -14,6 +14,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorFilter
 import android.graphics.Outline
+import android.graphics.Rect
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -53,6 +54,7 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.view.OneShotPreDrawListener
 import java.io.File
 import java.io.IOException
 import java.net.URI
@@ -77,6 +79,26 @@ import java.util.concurrent.Executors
 // it never detaches the player view underneath.
 // All MovieBox calls run on the `imports` executor; stale results are
 // dropped with a per-request counter, the same pattern as playEmbed.
+
+internal enum class MovieSearchFilter(val label: String) {
+    ALL("All"), MOVIES("Movies"), SHOWS("TV Shows")
+}
+
+internal data class MovieBrowsePosition(val cardTag: String, val scrollY: Int, val scrollX: Int)
+
+private fun View.movieRailScroll(): HorizontalScrollView? {
+    var ancestor = parent
+    while (ancestor is View) {
+        if (ancestor is HorizontalScrollView) return ancestor
+        ancestor = ancestor.parent
+    }
+    return null
+}
+
+internal fun MainActivity.rememberMovieBrowsePosition(card: View) {
+    val tag = card.tag as? String ?: return
+    moviesReturnPosition = MovieBrowsePosition(tag, movieResultsScroll.scrollY, card.movieRailScroll()?.scrollX ?: 0)
+}
 
 internal fun MainActivity.buildMoviesView(): LinearLayout {
     val view = column().apply {
@@ -111,6 +133,10 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         indeterminateTintList = ColorStateList.valueOf(cyan)
     }
     movieResults = column()
+    movieSearchFilters = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        visibility = View.GONE
+    }
     if (isTv) {
         // Two-pane (v2.0.37, glass panel + 300dp in v2.0.38): the
         // sidebar (search + nav) on the left, the posters
@@ -122,6 +148,25 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
             LinearLayout.LayoutParams(dp(300), -1))
         val content = column()
         content.addView(movieStatus)
+        for (filter in MovieSearchFilter.entries) {
+            val control = chip(filter.label) {
+                movieSearchFilter = filter
+                markChipByTag(movieSearchFilters, filter)
+                showMovieResults(moveFocus = false)
+            }
+            control.tag = filter
+            control.id = View.generateViewId()
+            control.nextFocusLeftId = firstMoviesTabChipId()
+            movieSearchFilters.addView(control, LinearLayout.LayoutParams(-2, -2).apply {
+                marginEnd = dp(4)
+            })
+        }
+        val filtersScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(movieSearchFilters)
+        }
+        content.addView(filtersScroll, LinearLayout.LayoutParams(-1, -2))
         content.addView(movieProgress, LinearLayout.LayoutParams(-2, -2).apply {
             topMargin = dp(8)
             bottomMargin = dp(8)
@@ -186,25 +231,53 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
 
     // ---- Details pane ----
     moviesDetailsPane = column().apply { visibility = View.GONE }
-    val detailsScroll = ScrollView(this)
+    movieDetailsScroll = ScrollView(this)
     val detailsInner = column()
-    detailsScroll.addView(detailsInner)
+    movieDetailsScroll.addView(detailsInner)
+    val detailsHeader = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
+    movieDetailsPoster = FrameLayout(this).apply { visibility = View.GONE }
+    detailsHeader.addView(movieDetailsPoster, LinearLayout.LayoutParams(dp(72), dp(108)).apply {
+        marginEnd = dp(12)
+    })
+    val detailsHeading = column()
+    detailsHeader.addView(detailsHeading, LinearLayout.LayoutParams(0, -2, 1f))
+    detailsInner.addView(detailsHeader)
     movieDetailsTitle = TextView(this).apply {
-        textSize = if (isTv) 24f else 20f
+        textSize = if (isTv) 25f else 20f
         setTypeface(null, Typeface.BOLD)
         setTextColor(textColor)
     }
-    detailsInner.addView(movieDetailsTitle)
+    detailsHeading.addView(movieDetailsTitle)
     movieDetailsMeta = label("", if (isTv) 15 else 13, muted)
-    detailsInner.addView(movieDetailsMeta)
+    detailsHeading.addView(movieDetailsMeta)
     movieDetailsDesc = TextView(this).apply {
-        textSize = if (isTv) 15f else 14f
-        setTextColor(muted)
+        textSize = if (isTv) 16f else 14f
+        setTextColor(if (isTv) textColor else muted)
+        if (isTv) {
+            maxLines = 3
+            ellipsize = TextUtils.TruncateAt.END
+        }
     }
     detailsInner.addView(movieDetailsDesc, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(8)
         bottomMargin = dp(12)
     })
+    movieDetailsMoreButton = button("More") {
+        val expand = movieDetailsDesc.maxLines == 3
+        movieDetailsDesc.maxLines = if (expand) Int.MAX_VALUE else 3
+        movieDetailsMoreButton.text = if (expand) "Less" else "More"
+    }.apply { visibility = View.GONE }
+    detailsInner.addView(movieDetailsMoreButton, LinearLayout.LayoutParams(-2, -2).apply {
+        bottomMargin = dp(12)
+    })
+    if (isTv) {
+        movieDetailsDesc.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateMovieSynopsisButton()
+        }
+    }
     // No Audio row here (v2.0.5): audio/dub selection lives in the
     // player (Audio button), so the details screen stays clean.
     // Series only (v2.0.27): season chips + episode list. Hidden for
@@ -234,8 +307,13 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     detailsInner.addView(movieEpisodeColumn, LinearLayout.LayoutParams(-1, -2).apply {
         bottomMargin = dp(12)
     })
+    val detailsActions = column()
     movieDetailsStatus = label("", if (isTv) 15 else 13, muted)
-    detailsInner.addView(movieDetailsStatus)
+    detailsActions.addView(movieDetailsStatus)
+    movieResumeButton = button("Resume", R.drawable.ic_play) {}.apply { visibility = View.GONE }
+    detailsActions.addView(movieResumeButton, LinearLayout.LayoutParams(-1, -2).apply {
+        topMargin = dp(8)
+    })
     moviePlayButton = Button(this).apply {
         text = "Play"
         setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_play, 0, 0, 0)
@@ -255,7 +333,7 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         isEnabled = false
         setOnClickListener { playSelectedMovie() }
     }
-    detailsInner.addView(moviePlayButton, LinearLayout.LayoutParams(-1, -2).apply {
+    detailsActions.addView(moviePlayButton, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(12)
     })
     // Secondary actions in one compact row under Play (instead of four
@@ -275,10 +353,15 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     })
     actionsRow.addView(button("Back", R.drawable.ic_arrow_back) { showMoviesList() },
         LinearLayout.LayoutParams(0, dp(if (isTv) 56 else 52), 1f))
-    detailsInner.addView(actionsRow, LinearLayout.LayoutParams(-1, -2).apply {
+    detailsActions.addView(actionsRow, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(8)
     })
-    moviesDetailsPane.addView(detailsScroll, LinearLayout.LayoutParams(-1, -1))
+    if (isTv) {
+        detailsInner.addView(detailsActions, 1, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+    } else {
+        detailsInner.addView(detailsActions)
+    }
+    moviesDetailsPane.addView(movieDetailsScroll, LinearLayout.LayoutParams(-1, -1))
     view.addView(moviesDetailsPane, LinearLayout.LayoutParams(-1, 0, 1f))
     return view
 }
@@ -350,6 +433,23 @@ internal fun MainActivity.openMoviesToDetails() {
     // Same focus trap as openMovies(): the library pane only, so the
     // status bar and the mini-player controls stay reachable.
     libraryPane.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+    val details = currentMovieDetails
+    if (details != null) {
+        refreshMovieResume(details)
+        val playingSubject = playingMovie?.subjectId
+        if (isTv && playingEpisodeSeason > 0 && playingEpisodeEpisode > 0 &&
+            details.audioDubs().any { it.subjectId == playingSubject } &&
+            playingSeriesSeasons.any { it.number == playingEpisodeSeason }
+        ) {
+            selectedDubId = playingSubject
+            currentSeriesSeasons = playingSeriesSeasons
+            selectedSeason = playingEpisodeSeason
+            rebuildSeasonChips()
+            showSeasonEpisodes(selectedSeason, playingEpisodeEpisode)
+            if (currentMovieStreams.isNotEmpty()) movieDetailsStatus.text =
+                "S$selectedSeason E$selectedEpisode · Stream ready hai"
+        }
+    }
     // The "Abhi chal rahi hai" bar is gone (v2.0.24) — see
     // buildMoviesView: the mini player's own top bar shows the title.
     showMoviesDetails()
@@ -375,26 +475,35 @@ internal fun MainActivity.closeMovies(stopMovie: Boolean = false) {
 
 
 internal fun MainActivity.showMoviesList() {
+    if (moviesDetailsPane.isShown && !movieResumeButton.isEnabled) {
+        movieResumeRequest++
+        movieResumeButton.isEnabled = true
+    }
     moviesDetailsPane.visibility = View.GONE
     moviesListPane.visibility = View.VISIBLE
     // No search on screen — re-render whatever tab (or See All list)
     // was showing, so a favorite toggle or a finished movie is
     // reflected. A search result stays as it is.
-    if (!movieResultsAreSearch) renderCurrentMoviesTab()
-    // Focus landing: Back from a movie's details returns to the row
-    // it came from; otherwise the first row (not the search box —
-    // focusing it pops the keyboard and D-pad up/down can die on it).
-    // With no rows at all, the first tab button (Home) is the landing.
-    val returnRow = moviesReturnRow
-    moviesReturnRow = -1
-    val target = if (returnRow in 0 until movieResults.childCount) {
-        movieResults.getChildAt(returnRow)?.takeIf { it.isFocusable }
-    } else {
-        null
-    } ?: firstFocusableDeep(movieResults)
+    val position = moviesReturnPosition
+    moviesReturnPosition = null
+    movieSearchFilters.visibility =
+        if (isTv && movieResultsAreSearch && movieSearchResults.isNotEmpty()) View.VISIBLE else View.GONE
+    if (!movieResultsAreSearch &&
+        (!isTv || position == null || moviesTab == MoviesTab.HOME || moviesTab == MoviesTab.MY_LIST)
+    ) renderCurrentMoviesTab()
+    val card = position?.let { movieResults.findViewWithTag<View>(it.cardTag) }
+    val target = card ?: firstFocusableDeep(movieResults)
         ?: moviesTabRow.getChildAt(0)
         ?: movieSearchInput
-    target.post { if (moviesOpen && target.isShown) target.requestFocus() }
+    OneShotPreDrawListener.add(target) {
+        if (!moviesOpen || !moviesListPane.isShown || !target.isShown) return@add
+        target.requestFocus()
+        if (card != null && position != null) {
+            card.movieRailScroll()?.scrollTo(position.scrollX, 0)
+            movieResultsScroll.scrollTo(0, position.scrollY)
+            card.requestRectangleOnScreen(Rect(0, 0, card.width, card.height), true)
+        }
+    }
 }
 
 
@@ -403,7 +512,11 @@ internal fun MainActivity.showMoviesDetails() {
     moviesDetailsPane.visibility = View.VISIBLE
     movieFavButton.post {
         if (moviesOpen && movieFavButton.isShown) {
-            val action = if (moviePlayButton.isEnabled) moviePlayButton else movieFavButton
+            val action = when {
+                movieResumeButton.isShown && movieResumeButton.isEnabled -> movieResumeButton
+                moviePlayButton.isEnabled -> moviePlayButton
+                else -> movieFavButton
+            }
             action.requestFocus()
         }
     }
@@ -427,6 +540,11 @@ internal fun MainActivity.searchMovies() {
         return
     }
     movieResultsAreSearch = true
+    moviesSeeAll = null
+    moviesReturnPosition = null
+    movieSearchResults = emptyList()
+    movieSearchFilter = MovieSearchFilter.ALL
+    movieSearchFilters.visibility = View.GONE
     val request = ++movieSearchRequest
     // Hide the keyboard so the results are visible on phones.
     val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
@@ -445,13 +563,17 @@ internal fun MainActivity.searchMovies() {
         try {
             val results = movieBox.search(query)
             runOnUiThread {
-                if (isDestroyed || request != movieSearchRequest) return@runOnUiThread
+                if (isDestroyed || !movieResultsAreSearch || request != movieSearchRequest) return@runOnUiThread
                 movieProgress.visibility = View.GONE
                 if (results.isEmpty()) {
                     movieStatus.text = "Koi movie nahi mili — naam badal kar dobara try karein."
                 } else {
-                    movieStatus.text = "${results.size} movies mili."
-                    showMovieResults(results)
+                    movieSearchResults = results
+                    if (isTv) {
+                        movieSearchFilters.visibility = View.VISIBLE
+                        markChipByTag(movieSearchFilters, movieSearchFilter)
+                    }
+                    showMovieResults()
                 }
                 // v2.0.25: search results are content — a wide mini
                 // player (empty Home) goes back to 55/45.
@@ -459,7 +581,7 @@ internal fun MainActivity.searchMovies() {
             }
         } catch (error: IOException) {
             runOnUiThread {
-                if (isDestroyed || request != movieSearchRequest) return@runOnUiThread
+                if (isDestroyed || !movieResultsAreSearch || request != movieSearchRequest) return@runOnUiThread
                 movieProgress.visibility = View.GONE
                 movieStatus.text = "Search nahi ho saka: ${error.message}"
             }
@@ -468,7 +590,13 @@ internal fun MainActivity.searchMovies() {
 }
 
 
-internal fun MainActivity.showMovieResults(movies: List<MovieBox.Movie>) {
+private fun MainActivity.showMovieResults(moveFocus: Boolean = true) {
+    val movies = when (movieSearchFilter) {
+        MovieSearchFilter.ALL -> movieSearchResults
+        MovieSearchFilter.MOVIES -> movieSearchResults.filterNot { it.isSeries }
+        MovieSearchFilter.SHOWS -> movieSearchResults.filter { it.isSeries }
+    }
+    movieStatus.text = if (movies.isEmpty()) "Is filter mein koi title nahi mila." else "${movies.size} titles mile."
     movieResults.removeAllViews()
     val rows = mutableListOf<View>()
     for ((index, movie) in movies.withIndex()) {
@@ -484,8 +612,17 @@ internal fun MainActivity.showMovieResults(movies: List<MovieBox.Movie>) {
     // is unreliable across the scroller boundary).
     setFirstContentBackLink(rows.firstOrNull())
     linkMoviesTabFocus()
+    if (isTv) {
+        for (i in 0 until movieSearchFilters.childCount) {
+            val control = movieSearchFilters.getChildAt(i)
+            control.nextFocusDownId = rows.firstOrNull()?.id ?: View.NO_ID
+            control.nextFocusUpId = movieSearchInput.id
+        }
+        val selectedFilter = movieSearchFilters.findViewWithTag<View>(movieSearchFilter)
+        rows.firstOrNull()?.nextFocusUpId = selectedFilter?.id ?: View.NO_ID
+    }
     movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
-    movieResults.getChildAt(0)?.requestFocus()
+    if (moveFocus && moviesListPane.isShown) rows.firstOrNull()?.requestFocus()
 }
 
 /** Links each movie row's action button (♥ fav / ✕ remove) up and down
@@ -529,7 +666,11 @@ internal fun MainActivity.continueRow(entry: MovieStore.ContinueEntry): View {
         background = rowBackground(false)
         elevation = dp(3).toFloat()
         setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
-        setOnClickListener { resumeMovie(entry) }
+        tag = "continue:${entry.subjectId}"
+        setOnClickListener {
+            rememberMovieBrowsePosition(this)
+            resumeMovie(entry)
+        }
     }
     val posterWidth = dp(if (isTv) 60 else 56)
     val posterHeight = dp(if (isTv) 90 else 84)
@@ -661,9 +802,9 @@ internal fun MainActivity.movieRow(movie: MovieBox.Movie, backgroundLoad: Boolea
         background = rowBackground(false)
         elevation = dp(3).toFloat()
         setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
-        // Remember this row so Back from the details pane returns to it.
+        tag = "movie:${movie.subjectId}"
         setOnClickListener {
-            moviesReturnRow = movieResults.indexOfChild(this)
+            rememberMovieBrowsePosition(this)
             openMovieDetails(movie)
         }
     }
@@ -682,10 +823,13 @@ internal fun MainActivity.movieRow(movie: MovieBox.Movie, backgroundLoad: Boolea
         maxLines = 2
         ellipsize = TextUtils.TruncateAt.END
     })
-    if (movie.year.isNotEmpty()) {
+    if (movie.year.isNotEmpty() || isTv && movieResultsAreSearch) {
         texts.addView(TextView(this).apply {
-            text = movie.year
-            textSize = 13f
+            text = if (isTv && movieResultsAreSearch) {
+                listOf(movie.year, if (movie.isSeries) "TV Show" else "Movie")
+                    .filter { it.isNotBlank() }.joinToString(" · ")
+            } else movie.year
+            textSize = if (isTv) 15f else 13f
             setTextColor(muted2)
         })
     }
@@ -703,7 +847,7 @@ internal fun MainActivity.movieRow(movie: MovieBox.Movie, backgroundLoad: Boolea
             background = shape(cyan, cyan, 8, 0)
         })
     }
-    if (movie.isSeries) {
+    if (movie.isSeries && !(isTv && movieResultsAreSearch)) {
         row.addView(TextView(this).apply {
             text = "SERIES"
             textSize = 11f

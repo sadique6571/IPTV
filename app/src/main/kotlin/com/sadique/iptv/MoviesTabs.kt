@@ -66,6 +66,9 @@ internal fun MainActivity.setFirstContentBackLink(view: View?) {
 internal fun MainActivity.selectMoviesTab(tab: MoviesTab) {
     moviesTab = tab
     movieResultsAreSearch = false
+    movieSearchRequest++
+    movieSearchFilters.visibility = View.GONE
+    moviesReturnPosition = null
     moviesSeeAll = null
     markChipByTag(moviesTabRow, tab)
     renderCurrentMoviesTab()
