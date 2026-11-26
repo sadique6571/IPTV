@@ -31,6 +31,7 @@ import android.text.TextWatcher
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewTreeObserver
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
@@ -82,7 +83,7 @@ internal fun MainActivity.setBrowseLevel(level: BrowseLevel, moveFocus: Boolean 
     listScroll.visibility = if (showingCategories) View.GONE else View.VISIBLE
     if (!moveFocus) return
     if (showingCategories) {
-        filterChips[filter]?.requestFocus()
+        if (!focusChannelSearchContent()) channelSearchInput.requestFocus()
     } else {
         focusPlayingRowOrFirst()
     }
@@ -93,16 +94,21 @@ internal fun MainActivity.setBrowseLevel(level: BrowseLevel, moveFocus: Boolean 
  * first row — Back and level switches used to drop focus on channel
  * #1 even while another channel was playing. */
 internal fun MainActivity.focusPlayingRowOrFirst(preferChannel: Channel? = selected) {
-    val channel = preferChannel
-    if (channel != null) {
-        focusChannel(channel, center = true)
-        // focusChannel is a no-op when the channel is not in this
-        // list (filter changed) — but if focus already sits on a row,
-        // that is still a good landing, so only fall back to the
-        // first row when focus is nowhere in the list.
-        if (currentFocus != null && list.indexOfChild(currentFocus) >= 0) return
+    if (preferChannel != null && focusChannel(preferChannel, center = true)) return
+    if (currentFocus?.parent === list) return
+    if (!focusChannelSearchContent()) channelSearchInput.requestFocus()
+}
+
+/** Focuses the first available browse target below the search field. */
+internal fun MainActivity.focusChannelSearchContent(): Boolean {
+    if (isTv && browseLevel == BrowseLevel.CATEGORIES) {
+        return filterChips[filter]?.requestFocus() == true
     }
-    list.getChildAt(0)?.requestFocus()
+    for (index in 0 until list.childCount) {
+        val row = list.getChildAt(index)
+        if (row.isFocusable && row.requestFocus()) return true
+    }
+    return false
 }
 
 
@@ -115,14 +121,8 @@ internal fun MainActivity.focusBrowse(preferChannel: Channel? = selected) {
         playPauseButton.requestFocus()
         return
     }
-    // A playing channel always wins: from any screen, leaving it
-    // lands on the playing channel's row — so switch to the channels
-    // level first (no focus jump while switching), then focus the row.
-    if (isTv && preferChannel != null && browseLevel == BrowseLevel.CATEGORIES) {
-        setBrowseLevel(BrowseLevel.CHANNELS, moveFocus = false)
-    }
     if (isTv && browseLevel == BrowseLevel.CATEGORIES) {
-        filterChips[filter]?.requestFocus()
+        if (!focusChannelSearchContent()) channelSearchInput.requestFocus()
         return
     }
     focusPlayingRowOrFirst(preferChannel)
@@ -211,6 +211,8 @@ internal fun MainActivity.channelTier(channel: Channel): Int {
 internal fun MainActivity.populate(preserveScroll: Boolean = false) {
     val savedScrollY = if (preserveScroll) listScroll.scrollY else 0
     val previousRowCount = list.childCount
+    val focusedIndex = if (preserveScroll) currentFocus?.let(list::indexOfChild) ?: -1 else -1
+    val focusedKey = if (focusedIndex >= 0) list.getChildAt(focusedIndex).tag else null
     highlightedRow = null
     list.removeAllViews()
     // Search clear row (task 2): always visible while a query is active,
@@ -309,7 +311,13 @@ internal fun MainActivity.populate(preserveScroll: Boolean = false) {
             list.addView(label(emptyText, if (isTv) 16 else 14, muted))
         }
     }
-    listScroll.post { listScroll.scrollTo(0, savedScrollY) }
+    if (focusedIndex >= 0 && listScroll.isShown) {
+        val channel = matches.firstOrNull { it.key == focusedKey }
+            ?: matches.getOrNull(focusedIndex.coerceAtMost(matches.lastIndex))
+        if (channel == null || !focusChannel(channel, center = true)) focusPlayingRowOrFirst()
+    } else {
+        listScroll.post { listScroll.scrollTo(0, savedScrollY) }
+    }
     markPlayingRow()
 }
 
@@ -326,7 +334,7 @@ internal fun MainActivity.groupMatches(channel: Channel, vararg names: String): 
 internal fun MainActivity.clearSearch() {
     query = ""
     populate()
-    list.getChildAt(0)?.requestFocus()
+    focusBrowse()
 }
 
 
@@ -468,38 +476,46 @@ internal fun MainActivity.appendChannelRows(limit: Int) {
 }
 
 
-internal fun MainActivity.focusChannel(channel: Channel, center: Boolean = false) {
-    // One list, no pages: the row index IS the match index.
+internal fun MainActivity.focusChannel(channel: Channel, center: Boolean = false): Boolean {
+    if (!listScroll.isShown || moviesOpen || fullScreen) return false
     val index = currentMatches.indexOfFirst { it.key == channel.key }
-    if (index < 0) return
+    if (index < 0) return false
     appendChannelRows(index + 1)
-    val row = list.getChildAt(index) ?: return
-    // The row may have just been appended, or the pane may have just
-    // become visible again after fullscreen — either way its position
-    // is not laid out yet, and focusing now scrolls the list from
-    // stale coordinates (it used to land 1-2 rows above the playing
-    // channel). Retry on the message queue until the row has a real
-    // height, then focus; on the way back to the list the playing
-    // row is centered in the visible list so it is unmistakable.
-    var attempts = 0
-    fun land() {
-        if (!list.isAttachedToWindow) return
-        if (row.height <= 0 && attempts < 5) {
-            attempts++
-            list.post { land() }
-            return
-        }
-        row.requestFocus()
-        if (!center) return
-        val viewH = listScroll.height
-        val rowH = row.height
-        if (viewH > 0 && rowH > 0) {
-            val target = (row.top - (viewH - rowH) / 2)
-                .coerceIn(0, maxOf(0, list.height - viewH))
-            listScroll.scrollTo(0, target)
-        }
+    val row = list.getChildAt(index) ?: return false
+    if (!row.requestFocus()) return false
+    if (center) {
+        // Wait for a layout pass if the row was just appended or became visible.
+        list.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                list.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                centerFocusedChannelRow(row)
+            }
+        })
+        row.requestLayout()
     }
-    list.post { land() }
+    return true
+}
+
+private fun MainActivity.centerFocusedChannelRow(row: View) {
+    if (!row.hasFocus() || row.parent !== list || !listScroll.isShown) return
+    val height = listScroll.height
+    val target = (row.top - (height - row.height) / 2).coerceIn(0, maxOf(0, list.height - height))
+    listScroll.scrollTo(0, target)
+}
+
+/** Keeps TV up/down in the list and creates the next batch before focus reaches its end. */
+internal fun MainActivity.moveChannelRowFocus(direction: Int): Boolean {
+    val index = currentFocus?.let(list::indexOfChild) ?: return false
+    if (index !in currentMatches.indices) return false
+    val next = index + direction
+    if (next < 0) {
+        val clear = searchClearRow.getChildAt(1)
+        if (!clear.isShown || !clear.requestFocus()) channelSearchInput.requestFocus()
+    } else if (next in currentMatches.indices) {
+        if (next >= list.childCount) appendChannelRows(next + 12)
+        list.getChildAt(next)?.requestFocus()
+    }
+    return true
 }
 
 

@@ -2232,18 +2232,33 @@ class MainActivity : Activity() {
         // the list rebuilt), up/down did nothing at all and
         // navigation looked dead, with no way back. The first press
         // now puts focus back where the browse state needs it
-        // (playing row, category, or movie controls); the next press
-        // zaps again. Fullscreen is excluded — there is legitimately
+        // (playing row, category, or movie controls). Fullscreen is
+        // excluded — there is legitimately
         // nothing focusable while a channel plays fullscreen, and the
         // zap branch below owns those keys.
         if (event.action == KeyEvent.ACTION_DOWN &&
             (event.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
                 event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) &&
             !moviesOpen && !fullScreen &&
-            currentFocus == null && selected != null
+            currentFocus == null
         ) {
             if (event.repeatCount == 0) focusBrowse()
             return true
+        }
+        if (isTv && !moviesOpen && !fullScreen && libraryPane.isShown &&
+            event.action == KeyEvent.ACTION_DOWN
+        ) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP -> if (moveChannelRowFocus(-1)) return true
+                KeyEvent.KEYCODE_DPAD_DOWN -> if (moveChannelRowFocus(1)) return true
+                KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    val focused = currentFocus
+                    if (focused === favButton || focused === qualityButton) {
+                        focusBrowse()
+                        return true
+                    }
+                }
+            }
         }
         if (event.action == KeyEvent.ACTION_DOWN &&
             (event.keyCode == KeyEvent.KEYCODE_DPAD_UP ||

@@ -369,8 +369,8 @@ internal fun MainActivity.closeMovies(stopMovie: Boolean = false) {
     // Release the focus trap before focus goes back to the Live TV layout.
     libraryPane.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
     // A movie keeps playing underneath when the browser is closed.
-    focusBrowse()
     updateMiniPlayerLayout()
+    if (!fullScreen) focusBrowse()
 }
 
 
@@ -401,11 +401,12 @@ internal fun MainActivity.showMoviesList() {
 internal fun MainActivity.showMoviesDetails() {
     moviesListPane.visibility = View.GONE
     moviesDetailsPane.visibility = View.VISIBLE
-    // The focused row just went GONE — without a landing, D-pad focus
-    // is lost and the buttons become unreachable. Fav is always
-    // enabled, so it is the safe landing; Play takes focus once the
-    // streams load (see loadMovieStreams).
-    movieFavButton.post { if (moviesOpen && movieFavButton.isShown) movieFavButton.requestFocus() }
+    movieFavButton.post {
+        if (moviesOpen && movieFavButton.isShown) {
+            val action = if (moviePlayButton.isEnabled) moviePlayButton else movieFavButton
+            action.requestFocus()
+        }
+    }
     // v2.0.25: the details pane has content — a wide mini player
     // (empty Home) goes back to 55/45.
     updateMiniPlayerLayout()
