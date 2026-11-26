@@ -68,7 +68,7 @@ private fun MainActivity.switchMovieDub(movie: MovieBox.Movie, dub: MovieBox.Dub
             // block above.)
             currentSubtitle = subtitleForStream(stream, null)
             playMovieStream(movie.copy(subjectId = dub.subjectId), stream.url, stream.headers,
-                position, season, episode, playingDubs, autoplay)
+                position, season, episode, playingDubs, autoplay, seriesSeasons = playingSeriesSeasons)
             currentMovieStreams = streams
             selectedQuality = stream.resolution
             applyControlVisibility()

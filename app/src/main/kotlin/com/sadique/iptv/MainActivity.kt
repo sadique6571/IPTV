@@ -303,6 +303,10 @@ class MainActivity : Activity() {
     internal lateinit var movieDetailsTitle: TextView
     internal lateinit var movieDetailsMeta: TextView
     internal lateinit var movieDetailsDesc: TextView
+    internal lateinit var movieDetailsScroll: ScrollView
+    internal lateinit var movieDetailsPoster: FrameLayout
+    internal lateinit var movieDetailsMoreButton: Button
+    internal lateinit var movieResumeButton: Button
     // Series details (v2.0.27): season chips + episode list in the same
     // details pane. Hidden for movies.
     internal lateinit var movieSeasonLabel: TextView
@@ -326,9 +330,10 @@ class MainActivity : Activity() {
     internal var playingMovieHeaders: Map<String, String> = emptyMap()
     private var savedMoviePosition = 0L
     internal var movieSearchRequest = 0
-    // Index of the movie row the details pane opened from — Back from
-    // details returns focus to it instead of the search box (-1: none).
-    internal var moviesReturnRow = -1
+    internal lateinit var movieSearchFilters: LinearLayout
+    internal var movieSearchFilter = MovieSearchFilter.ALL
+    internal var movieSearchResults = emptyList<MovieBox.Movie>()
+    internal var moviesReturnPosition: MovieBrowsePosition? = null
     internal var movieDetailsRequest = 0
     internal var movieStreamsRequest = 0
     internal var currentMovieDetails: MovieBox.Details? = null
@@ -355,6 +360,7 @@ class MainActivity : Activity() {
     internal var playingEpisodeEpisode = 0
     internal var movieSeasonsRequest = 0
     internal var currentSeriesSeasons: List<MovieBox.Season> = emptyList()
+    internal var playingSeriesSeasons: List<MovieBox.Season> = emptyList()
     // Movies home feed (v2.0.27): New / Recommended / Series sections,
     // loaded once per app run in the background.
     internal var movieFeedNew = emptyList<MovieBox.Movie>()
@@ -1448,6 +1454,9 @@ class MainActivity : Activity() {
                 }
                 override fun onEnded() {
                     if (isDestroyed) return
+                    playingMovie?.let {
+                        movieStore.markEpisodeWatched(it.subjectId, playingEpisodeSeason, playingEpisodeEpisode)
+                    }
                     // Up Next was counting down and the episode ended
                     // before it fired (e.g. a seek into the last
                     // seconds): go to the next episode instead of the
@@ -1813,23 +1822,13 @@ class MainActivity : Activity() {
     internal fun isMiniPlayer(): Boolean =
         playingMovie != null && moviesOpen && !fullScreen
 
-    /** v2.0.25: the mini player goes wide when the Movies browser
-     * has nothing to show. On the Home tab in mini mode Continue
-     * Watching is hidden, so Home is empty iff there are no
-     * favorites — the empty middle then belongs to the player, up
-     * to the sidebar. Any content (another tab, search results, a
-     * See All list) restores the 55/45 split.
-     * v2.0.28: the DETAILS pane is a narrow side panel too (264dp),
-     * like the Live TV sidebar — the side panel and the player are
-     * the same in every section, so the player is wide while the
-     * details sit in a narrow column. The details are a single
-     * column (title, meta, quality, Play/Fav/Back), so they fit. */
+    /** TV gives the mini player extra width beside details or an empty Movies Home. */
     private fun isMiniPlayerWide(): Boolean {
         if (!isMiniPlayer() || !isTv) return false
         if (moviesDetailsPane.visibility == View.VISIBLE) return true
         if (moviesSeeAll != null || movieResultsAreSearch) return false
         if (moviesTab != MoviesTab.HOME) return false
-        return movieStore.favoritesList().isEmpty()
+        return movieStore.favoritesList().isEmpty() && movieStore.continueWatching().isEmpty()
     }
 
     /** Square or rounded player corners. Fullscreen and the mini

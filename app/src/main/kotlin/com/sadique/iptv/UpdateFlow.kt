@@ -134,20 +134,17 @@ internal fun MainActivity.showThemedDialog(view: View, cancelable: Boolean = tru
 }
 
 
-/** Update dialog title row (v2.0.26): a real download icon
- * (ic_download, cyan) instead of the "⬆" text glyph, which read
- * as a broken character on the TV. */
 private fun MainActivity.updateTitleRow(text: String): LinearLayout {
     val row = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
     }
     row.addView(ImageView(this).apply {
-        setImageResource(R.drawable.ic_download)
+        setImageResource(R.drawable.ic_update_download)
         imageTintList = ColorStateList.valueOf(cyan)
-        layoutParams = LinearLayout.LayoutParams(
-            dp(if (isTv) 28 else 24), dp(if (isTv) 28 else 24),
-        )
+        setPadding(dp(9), dp(9), dp(9), dp(9))
+        background = shape(0x2022d9ee, glassStroke, 14, 1)
+        layoutParams = LinearLayout.LayoutParams(dp(if (isTv) 48 else 42), dp(if (isTv) 48 else 42))
     })
     row.addView(label(text, if (isTv) 20 else 18, cyan).apply {
         setTypeface(null, Typeface.BOLD)
@@ -158,27 +155,21 @@ private fun MainActivity.updateTitleRow(text: String): LinearLayout {
     return row
 }
 
+private fun MainActivity.trackUpdateDialog(dialog: AlertDialog): AlertDialog {
+    updateDownloadDialog = dialog
+    dialog.setOnDismissListener {
+        if (updateDownloadDialog === dialog) updateDownloadDialog = null
+    }
+    return dialog
+}
 
-internal fun MainActivity.showUpdateDialog(update: UpdateChecker.Update) {
-    val layout = themedDialogView()
-    layout.addView(updateTitleRow("App Update"))
-    layout.addView(label(
-        "Naya version aa gaya hai (${update.tag}). Download kar ke install karna hai?",
-        if (isTv) 16 else 14, textColor,
-    ), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
-    var dialog: AlertDialog? = null
-    val downloadButton = button("Download") {
-        dialog?.dismiss()
-        downloadAndInstallUpdate(update)
-    }.apply {
+private fun MainActivity.updatePrimaryButton(text: String, action: () -> Unit): Button =
+    button(text, action = action).apply {
         setTypeface(null, Typeface.BOLD)
         setTextColor(Color.WHITE)
         background = StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_focused),
-                GradientDrawable(
-                    GradientDrawable.Orientation.LEFT_RIGHT,
-                    intArrayOf(cyan, blue),
-                ).apply {
+                GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(cyan, blue)).apply {
                     cornerRadius = dp(25).toFloat()
                     setStroke(dp(2), Color.WHITE)
                 })
@@ -186,6 +177,20 @@ internal fun MainActivity.showUpdateDialog(update: UpdateChecker.Update) {
             addState(intArrayOf(), gradientPill(25))
         }
         setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
+    }
+
+internal fun MainActivity.showUpdateDialog(update: UpdateChecker.Update) {
+    if (updateDownloadDialog?.isShowing == true) return
+    val layout = themedDialogView()
+    layout.addView(updateTitleRow("App Update"))
+    layout.addView(label(
+        "${update.tag} download ke liye tayyar hai.",
+        if (isTv) 16 else 14, textColor,
+    ), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+    var dialog: AlertDialog? = null
+    val downloadButton = updatePrimaryButton("Download") {
+        dialog?.dismiss()
+        downloadAndInstallUpdate(update)
     }
     // Capsule like Download (v2.0.26) — the default button() shape
     // is only 10dp.
@@ -209,15 +214,13 @@ internal fun MainActivity.showUpdateDialog(update: UpdateChecker.Update) {
     layout.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(18)
     })
-    dialog = showThemedDialog(layout)
+    dialog = trackUpdateDialog(showThemedDialog(layout))
     downloadButton.post { downloadButton.requestFocus() }
 }
 
 
 internal fun MainActivity.downloadAndInstallUpdate(update: UpdateChecker.Update) {
-    // Capsule progress bar (v2.0.26): rounded track + rounded cyan
-    // fill, replacing the old system bar. No indeterminate phase —
-    // it starts at 0% and fills as the download reports.
+    if (updateDownloadDialog?.isShowing == true) return
     val progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
         max = 100
         progress = 0
@@ -229,51 +232,80 @@ internal fun MainActivity.downloadAndInstallUpdate(update: UpdateChecker.Update)
             GradientDrawable.Orientation.LEFT_RIGHT,
             intArrayOf(cyan, blue),
         ).apply { cornerRadius = dp(6).toFloat() }
-        progressDrawable = LayerDrawable(arrayOf(
-            track,
-            ClipDrawable(fill, Gravity.START, ClipDrawable.HORIZONTAL),
-        ))
+        progressDrawable = LayerDrawable(arrayOf(track, ClipDrawable(fill, Gravity.START, ClipDrawable.HORIZONTAL))).apply {
+            setId(0, android.R.id.background)
+            setId(1, android.R.id.progress)
+        }
     }
-    val progressText = label("Download ho raha hai… 0%", 14, textColor)
+    val progressText = label("Download shuru ho raha hai…", if (isTv) 16 else 14, textColor)
+    val actions = column()
     val layout = themedDialogView().apply {
-        addView(updateTitleRow("Update download ho raha hai"))
+        addView(updateTitleRow("App Update"))
+        addView(label(update.tag, if (isTv) 15 else 13, muted), LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(10)
+        })
         addView(progressBar, LinearLayout.LayoutParams(-1, dp(12)).apply {
             topMargin = dp(16)
         })
         addView(progressText, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(12)
         })
+        addView(actions, LinearLayout.LayoutParams(-1, -2))
     }
-    val dialog = showThemedDialog(layout, cancelable = false)
-    updateDownloadDialog = dialog
+    val dialog = trackUpdateDialog(showThemedDialog(layout, cancelable = false))
+
+    fun showAction(text: String, action: () -> Unit) {
+        dialog.setCancelable(true)
+        actions.removeAllViews()
+        val primary = updatePrimaryButton(text, action)
+        actions.addView(primary, LinearLayout.LayoutParams(-1, dp(if (isTv) 56 else 52)).apply {
+            topMargin = dp(16)
+        })
+        actions.addView(button("Baad mein") { dialog.dismiss() },
+            LinearLayout.LayoutParams(-1, dp(if (isTv) 56 else 52)).apply { topMargin = dp(8) })
+        primary.requestFocus()
+    }
+
     imports.execute {
         try {
-            val apk = UpdateChecker.downloadApk(this, update) { percent ->
+            val apk = UpdateChecker.downloadApk(this, update) { done, total ->
                 runOnUiThread {
-                    if (isDestroyed) return@runOnUiThread
-                    if (percent >= 0) {
+                    if (isDestroyed || !dialog.isShowing) return@runOnUiThread
+                    progressText.text = if (total > 0) {
+                        val percent = (done * 100 / total).toInt().coerceIn(0, 100)
                         progressBar.progress = percent
-                        progressText.text = "Download ho raha hai… $percent%"
+                        val sizes = "${formatSize(done)} / ${formatSize(total)} · $percent%"
+                        if (done >= total) "$sizes\nAPK verify ho rahi hai…" else sizes
+                    } else {
+                        progressBar.isIndeterminate = true
+                        "${formatSize(done)} download ho gayi"
                     }
                 }
             }
             runOnUiThread {
-                if (!isDestroyed) {
-                    dialog.dismiss()
-                    updateDownloadDialog = null
+                if (isDestroyed || !dialog.isShowing) return@runOnUiThread
+                progressBar.isIndeterminate = false
+                progressBar.progress = 100
+                progressText.text = "${formatSize(apk.length())} · Install ke liye tayyar"
+                showAction("Install") {
                     try {
                         UpdateChecker.installApk(this, apk)
-                    } catch (error: ActivityNotFoundException) {
-                        toast("Installer nahi mila.")
+                        dialog.dismiss()
+                    } catch (_: ActivityNotFoundException) {
+                        progressText.text = "Android installer nahi mila."
+                    } catch (_: SecurityException) {
+                        progressText.text = "Installer ko APK kholne ki ijazat nahi mili."
                     }
                 }
             }
-        } catch (error: IOException) {
+        } catch (_: IOException) {
             runOnUiThread {
-                if (!isDestroyed) {
+                if (isDestroyed || !dialog.isShowing) return@runOnUiThread
+                progressBar.visibility = View.GONE
+                progressText.text = "Update download nahi hui. Dobara koshish karein."
+                showAction("Retry") {
                     dialog.dismiss()
-                    updateDownloadDialog = null
-                    toast("Download fail ho gaya: ${error.message}")
+                    downloadAndInstallUpdate(update)
                 }
             }
         }

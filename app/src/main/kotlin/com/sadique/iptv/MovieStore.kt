@@ -60,6 +60,7 @@ internal class MovieStore(context: Context) {
     fun saveProgress(entry: ContinueEntry) {
         if (entry.subjectId.isEmpty()) return
         if (entry.durationMs > 0 && entry.positionMs >= entry.durationMs * 95 / 100) {
+            markEpisodeWatched(entry.subjectId, entry.season, entry.episode)
             if (continueList.removeAll { it.subjectId == entry.subjectId }) persistContinue()
             return
         }
@@ -74,6 +75,20 @@ internal class MovieStore(context: Context) {
     @Synchronized
     fun removeContinue(subjectId: String) {
         if (continueList.removeAll { it.subjectId == subjectId }) persistContinue()
+    }
+
+    @Synchronized
+    fun watchedEpisodes(subjectId: String, season: Int): Set<String> =
+        prefs.getStringSet("watched:$subjectId:$season", emptySet()).orEmpty().toSet()
+
+    @Synchronized
+    fun markEpisodeWatched(subjectId: String, season: Int, episode: Int) {
+        if (subjectId.isBlank() || season <= 0 || episode <= 0) return
+        val key = "watched:$subjectId:$season"
+        val watched = prefs.getStringSet(key, emptySet()).orEmpty()
+        if (episode.toString() !in watched) {
+            prefs.edit().putStringSet(key, watched + episode.toString()).apply()
+        }
     }
 
     @Synchronized

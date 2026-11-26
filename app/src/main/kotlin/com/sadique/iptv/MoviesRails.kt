@@ -69,10 +69,14 @@ internal fun MainActivity.posterCard(movie: MovieBox.Movie, backgroundLoad: Bool
         id = View.generateViewId()
         isFocusable = true
         isClickable = true
+        tag = "poster:${movie.subjectId}"
         setPadding(dp(4), dp(4), dp(4), dp(4))
         background = rowBackground(false)
         setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
-        setOnClickListener { openMovieDetails(movie) }
+        setOnClickListener {
+            rememberMovieBrowsePosition(this)
+            openMovieDetails(movie)
+        }
     }
     card.addView(
         posterTile(movie.posterUrl, movie.title, backgroundLoad),
