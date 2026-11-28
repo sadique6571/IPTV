@@ -173,11 +173,9 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     detailsHeading.addView(movieDetailsMeta)
     movieDetailsDesc = TextView(this).apply {
         textSize = if (isTv) 16f else 14f
-        setTextColor(if (isTv) textColor else muted)
-        if (isTv) {
-            maxLines = 3
-            ellipsize = TextUtils.TruncateAt.END
-        }
+        setTextColor(textColor)
+        maxLines = 3
+        ellipsize = TextUtils.TruncateAt.END
     }
     detailsInner.addView(movieDetailsDesc, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(8)
@@ -191,10 +189,8 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     detailsInner.addView(movieDetailsMoreButton, LinearLayout.LayoutParams(-2, -2).apply {
         bottomMargin = dp(12)
     })
-    if (isTv) {
-        movieDetailsDesc.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            updateMovieSynopsisButton()
-        }
+    movieDetailsDesc.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+        updateMovieSynopsisButton()
     }
     // No Audio row here (v2.0.5): audio/dub selection lives in the
     // player (Audio button), so the details screen stays clean.
@@ -234,7 +230,7 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     })
     moviePlayButton = Button(this).apply {
         text = "Play"
-        setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_play, 0, 0, 0)
+        setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_play, 0, 0, 0)
         compoundDrawablePadding = dp(8)
         compoundDrawableTintList = ColorStateList.valueOf(Color.WHITE)
         isAllCaps = false
@@ -243,11 +239,13 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
         textSize = if (isTv) 18f else 16f
         minimumHeight = dp(if (isTv) 56 else 52)
         background = StateListDrawable().apply {
-            addState(intArrayOf(-android.R.attr.state_enabled), shape(glass, glassStroke, 28, 1))
-            addState(intArrayOf(android.R.attr.state_focused), glassShape(28, cyan, 3))
-            addState(intArrayOf(android.R.attr.state_pressed), glassShape(28, cyan, 2))
-            addState(intArrayOf(), gradientPill(28))
+            addState(intArrayOf(-android.R.attr.state_enabled), shape(glass, glassStroke, componentRadiusDp, 1))
+            addState(intArrayOf(android.R.attr.state_focused), glassShape(componentRadiusDp, cyan, 3))
+            addState(intArrayOf(android.R.attr.state_pressed), glassShape(componentRadiusDp, cyan, 2))
+            addState(intArrayOf(), gradientPill(componentRadiusDp))
         }
+        setPaddingRelative(dp(16), dp(8), dp(16), dp(8))
+        centerControlText()
         isEnabled = false
         setOnClickListener { playSelectedMovie() }
     }
@@ -256,22 +254,21 @@ internal fun MainActivity.buildMoviesView(): LinearLayout {
     })
     val actionsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
     movieDownloadButton = button("Download") { startMovieDownload() }
-    actionsRow.addView(movieDownloadButton, LinearLayout.LayoutParams(-2, dp(44)).apply {
-        marginEnd = dp(6)
-    })
-    movieFavButton = button("Favorite", R.drawable.ic_favorite_outline) { toggleFavoriteMovie() }
-    actionsRow.addView(movieFavButton, LinearLayout.LayoutParams(-2, dp(44)).apply {
-        marginEnd = dp(6)
-    })
-    actionsRow.addView(button("Back", R.drawable.ic_arrow_back) { showMoviesList() },
-        LinearLayout.LayoutParams(-2, dp(44)))
-    detailsActions.addView(HorizontalScrollView(this).apply {
-        isHorizontalScrollBarEnabled = false
-        addView(actionsRow)
-    }, LinearLayout.LayoutParams(-1, -2).apply {
+    movieFavButton = button("Favorite") { toggleFavoriteMovie() }
+    val back = button("Back") { showMoviesList() }
+    for ((index, action) in listOf(movieDownloadButton, movieFavButton, back).withIndex()) {
+        action.minWidth = 0
+        action.minimumWidth = 0
+        action.textSize = if (isTv) 14f else 13f
+        action.setPadding(dp(4), dp(6), dp(4), dp(6))
+        actionsRow.addView(action, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+            if (index < 2) marginEnd = dp(5)
+        })
+    }
+    detailsActions.addView(actionsRow, LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(8)
     })
-    detailsInner.addView(detailsActions, 3, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+    detailsInner.addView(detailsActions, 1, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
     moviesDetailsPane.addView(movieDetailsScroll, LinearLayout.LayoutParams(-1, -1))
     view.addView(moviesDetailsPane, LinearLayout.LayoutParams(-1, 0, 1f))
     return view
@@ -490,9 +487,19 @@ internal fun MainActivity.searchMovies() {
     // from it reaches the tabs. showMovieResults moves focus to the
     // first row when results arrive.
     movieSearchInput.requestFocus()
+    val knownTitles = movieFeedNew + movieFeedRecommended + movieFeedSeries + movieStore.favoritesList() +
+        movieStore.continueWatching().map { entry ->
+            MovieBox.Movie(
+                subjectId = entry.subjectId,
+                title = entry.title,
+                posterUrl = entry.posterUrl,
+                isHindi = isHindiMovieTitle(entry.title),
+                isSeries = entry.isSeries,
+            )
+        }
     imports.execute {
         try {
-            val results = movieBox.search(query)
+            val results = movieBox.search(query, knownTitles)
             runOnUiThread {
                 if (isDestroyed || !movieResultsAreSearch || request != movieSearchRequest) return@runOnUiThread
                 movieProgress.visibility = View.GONE
@@ -665,7 +672,7 @@ internal fun MainActivity.posterTile(posterUrl: String, title: String, backgroun
         setTypeface(null, Typeface.BOLD)
         setTextColor(Color.WHITE)
         gravity = Gravity.CENTER
-        background = shape(glassHi, glassHi, 12)
+        background = shape(glassHi, glassHi)
     }
     tileView.addView(initial, FrameLayout.LayoutParams(-1, -1))
     if (posterUrl.isNotEmpty()) {
@@ -688,7 +695,7 @@ internal fun MainActivity.iconButton(iconRes: Int, tint: Int = muted, action: (I
         minimumWidth = dp(44)
         minimumHeight = dp(44)
         setPadding(dp(10), dp(10), dp(10), dp(10))
-        background = glassStateList(12)
+        background = glassStateList(componentRadiusDp)
         setOnClickListener { action(this) }
     }
 
@@ -706,12 +713,9 @@ internal fun MainActivity.toggleFavoriteMovie() {
 internal fun MainActivity.updateMovieFavButton() {
     val movie = currentMovieDetails?.movie
     val fav = movie != null && movieStore.isFavorite(movie)
-    movieFavButton.text = "Favorite"
-    movieFavButton.setCompoundDrawablesWithIntrinsicBounds(
-        if (fav) R.drawable.ic_favorite else R.drawable.ic_favorite_outline, 0, 0, 0,
-    )
-    movieFavButton.compoundDrawableTintList =
-        ColorStateList.valueOf(if (fav) liveRed else textColor)
+    movieFavButton.text = if (fav) "Saved" else "Favorite"
+    movieFavButton.contentDescription = if (fav) "Remove from favorites" else "Add to favorites"
+    movieFavButton.setTextColor(if (fav) cyan else textColor)
 }
 
 
@@ -771,7 +775,7 @@ internal fun MainActivity.movieRow(movie: MovieBox.Movie, backgroundLoad: Boolea
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             setPadding(dp(10), dp(4), dp(10), dp(4))
-            background = shape(cyan, cyan, 8, 0)
+            background = shape(cyan, cyan, strokeDp = 0)
         })
     }
     if (movie.isSeries && !(isTv && movieResultsAreSearch)) {
@@ -782,7 +786,7 @@ internal fun MainActivity.movieRow(movie: MovieBox.Movie, backgroundLoad: Boolea
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             setPadding(dp(10), dp(4), dp(10), dp(4))
-            background = shape(purple, purple, 8, 0)
+            background = shape(purple, purple, strokeDp = 0)
         }, LinearLayout.LayoutParams(-2, -2).apply {
             marginStart = dp(8)
         })

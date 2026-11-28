@@ -1,6 +1,5 @@
 package com.sadique.iptv
 
-import android.content.res.ColorStateList
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
@@ -30,15 +29,9 @@ internal fun MainActivity.buildMovieSearchInput(): EditText {
         inputType = InputType.TYPE_CLASS_TEXT
         imeOptions = EditorInfo.IME_ACTION_SEARCH
         hint = "Movie ka naam…"
-        setHintTextColor(muted2)
-        setTextColor(textColor)
         textSize = if (isTv) 17f else 15f
         minimumHeight = dp(if (isTv) 56 else 52)
-        setPadding(dp(18), dp(8), dp(18), dp(8))
-        setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_search, 0, 0, 0)
-        compoundDrawablePadding = dp(10)
-        compoundDrawableTintList = ColorStateList.valueOf(muted)
-        background = glassStateList(28)
+        styleSearchField()
         setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
                 searchMovies()

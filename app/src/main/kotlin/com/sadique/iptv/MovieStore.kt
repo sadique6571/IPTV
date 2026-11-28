@@ -185,6 +185,7 @@ internal class MovieStore(context: Context) {
                     posterUrl = o.optString("poster", ""),
                     isHindi = o.optBoolean("hindi", false),
                     isSeries = o.optBoolean("series", false),
+                    releaseDate = o.optString("releaseDate", ""),
                 )
             }
         } catch (_: Exception) {
@@ -205,6 +206,7 @@ internal class MovieStore(context: Context) {
                         put("poster", m.posterUrl)
                         put("hindi", m.isHindi)
                         put("series", m.isSeries)
+                        put("releaseDate", m.releaseDate)
                     },
                 )
             }

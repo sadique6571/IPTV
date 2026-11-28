@@ -33,8 +33,10 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
+import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.JavascriptInterface
@@ -96,7 +98,8 @@ class MainActivity : Activity() {
     // into in TV mini-player mode (seek row on top, chips below).
     // Created with the bar; attached only in that mode.
     private lateinit var chipsRow: LinearLayout
-    private var miniBarTwoRow = false
+    private var miniBarTwoRow: Boolean? = null
+    private var barStyledForFullscreen = false
     internal lateinit var status: TextView
     internal lateinit var buffering: ProgressBar
     internal lateinit var numberOverlay: TextView
@@ -116,7 +119,9 @@ class MainActivity : Activity() {
     private lateinit var moviesHeaderButton: Button
     private lateinit var toggleListButton: Button
     internal lateinit var goLiveButton: Button
-    private lateinit var controlsScroll: HorizontalScrollView
+    private lateinit var compactControls: LinearLayout
+    private lateinit var compactTransport: LinearLayout
+    internal lateinit var compactOptions: LinearLayout
     internal lateinit var centerPlayButton: ImageButton
     internal var liveCaptions = false
     // Network speed + today's usage label (v2.0.44, header right end):
@@ -486,15 +491,22 @@ class MainActivity : Activity() {
         headerView = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = brightGlassShape(20)
+            background = brightGlassShape()
             setPadding(dp(10), dp(5), dp(8), dp(5))
         }
-        headerView.addView(ImageView(this).apply {
+        val narrowPhoneHeader = !isTv && resources.configuration.screenWidthDp in 1..389
+        val headerBar = if (narrowPhoneHeader) LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            headerView.orientation = LinearLayout.VERTICAL
+            headerView.addView(this, LinearLayout.LayoutParams(-1, -2))
+        } else headerView
+        headerBar.addView(ImageView(this).apply {
             setImageResource(R.drawable.iptv_icon)
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = "IPTV"
         }, LinearLayout.LayoutParams(dp(32), dp(32)))
-        headerView.addView(label("IPTV", if (isTv) 20 else 16, textColor).apply {
+        headerBar.addView(label("IPTV", if (isTv) 20 else 16, textColor).apply {
             setTypeface(null, Typeface.BOLD)
             setPadding(dp(6), 0, dp(4), 0)
         })
@@ -522,39 +534,67 @@ class MainActivity : Activity() {
             browseHidden = !browseHidden
             updateMiniPlayerLayout()
         }
-        val actions = listOf(
-            backToTvButton, moviesHeaderButton, toggleListButton,
-            topPillButton(R.drawable.ic_download, "Open M3U") { choosePlaylist() },
-            topPillButton(R.drawable.ic_list, "Playlists") { showPlaylists() },
-            topPillButton(R.drawable.ic_tv, "Xtream") { askXtream() },
-            topPillButton(R.drawable.ic_upload, "Update") { checkForUpdateManually() },
-        )
-        actions.forEach { action ->
-            action.background = navItemBackground()
-            navigation.addView(action, LinearLayout.LayoutParams(-2, dp(42)).apply { marginStart = dp(5) })
+        if (isTv) {
+            val actions = listOf(
+                backToTvButton, moviesHeaderButton, toggleListButton,
+                topPillButton(R.drawable.ic_download, "Open M3U") { choosePlaylist() },
+                topPillButton(R.drawable.ic_list, "Playlists") { showPlaylists() },
+                topPillButton(R.drawable.ic_tv, "Xtream") { askXtream() },
+                topPillButton(R.drawable.ic_upload, "Update") { checkForUpdateManually() },
+            )
+            actions.forEach { action ->
+                action.background = navItemBackground()
+                navigation.addView(action, LinearLayout.LayoutParams(-2, dp(42)).apply { marginStart = dp(5) })
+            }
+            headerBar.addView(HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(navigation)
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+        } else {
+            for (tab in listOf(backToTvButton, moviesHeaderButton)) {
+                tab.contentDescription = tab.text
+                tab.text = ""
+                tab.minWidth = 0
+                tab.minimumWidth = 0
+                tab.compoundDrawablePadding = 0
+                tab.setPadding(dp(12), 0, dp(12), 0)
+                headerBar.addView(tab, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginStart = dp(7) })
+            }
         }
-        headerView.addView(HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(navigation)
-        }, LinearLayout.LayoutParams(0, -2, 1f))
-        networkLabel = label("0.0 Mbps / 0 B", 12, muted2).apply {
+        backToTvButton.background = navItemBackground()
+        moviesHeaderButton.background = navItemBackground()
+        networkLabel = label("0.0 Mbps / 0 B", if (isTv) 12 else 11, muted2).apply {
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
-            maxLines = 1
+            maxLines = if (isTv) 1 else 2
         }
-        headerView.addView(networkLabel, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
-        headerView.addView(ImageButton(this).apply {
+        if (narrowPhoneHeader) {
+            headerBar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        } else {
+            headerBar.addView(networkLabel, LinearLayout.LayoutParams(if (isTv) -2 else 0, -2, if (isTv) 0f else 1f).apply {
+                marginStart = dp(6)
+            })
+        }
+        if (!isTv) headerBar.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_more)
+            imageTintList = ColorStateList.valueOf(textColor)
+            background = overlayButtonBackground()
+            contentDescription = "More options"
+            setOnClickListener { showMobileHeaderMenu(this) }
+        }, LinearLayout.LayoutParams(dp(44), dp(48)).apply { marginStart = dp(4) })
+        headerBar.addView(ImageButton(this).apply {
             setImageResource(R.drawable.ic_close)
             imageTintList = ColorStateList.valueOf(textColor)
             background = overlayButtonBackground()
             contentDescription = "Close App"
             setOnClickListener { closeApp() }
-        }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(5) })
+        }, LinearLayout.LayoutParams(dp(44), dp(if (isTv) 44 else 48)).apply { marginStart = dp(4) })
+        if (narrowPhoneHeader) headerView.addView(networkLabel, LinearLayout.LayoutParams(-1, -2))
         rootView.addView(headerView, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
         splitPane = LinearLayout(this).apply {
             orientation = if (sideBySide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         }
         rootView.addView(splitPane, LinearLayout.LayoutParams(-1, 0, 1f))
-        libraryPane = column().apply { background = brightGlassShape(16) }
+        libraryPane = column().apply { background = brightGlassShape() }
         val left = column().also { channelLibrary = it }.apply {
             setPadding(dp(8), dp(8), dp(8), dp(6))
         }
@@ -646,10 +686,10 @@ class MainActivity : Activity() {
         // next, volume slider, mute, fullscreen toggle) sit bottom-right
         // ON the video.
         screen = FrameLayout(this).apply {
-            setBackgroundColor(0xff060b28.toInt())
+            setBackgroundColor(WINDOWED_PLAYER_BACKGROUND)
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
-                    outline.setRoundRect(0, 0, view.width, view.height, dp(24).toFloat())
+                    outline.setRoundRect(0, 0, view.width, view.height, dp(componentRadiusDp).toFloat())
                 }
             }
             clipToOutline = true
@@ -670,7 +710,7 @@ class MainActivity : Activity() {
                 // Slightly stronger ring than the generic stroke so the
                 // video card reads as a raised panel.
                 setStroke(dp(1), 0x6696acff.toInt())
-                cornerRadius = dp(24).toFloat()
+                cornerRadius = dp(componentRadiusDp).toFloat()
             }
         }
         screen.addView(screenBorder, FrameLayout.LayoutParams(-1, -1))
@@ -679,7 +719,7 @@ class MainActivity : Activity() {
         // the player (v2.0.34). Hidden until something plays, and hidden
         // in fullscreen; applyControlVisibility owns the visibility.
         metaChip = column().apply {
-            background = shape(overlayDark, 0x1affffff.toInt(), 18, 1)
+            background = shape(overlayDark, 0x1affffff.toInt(), strokeDp = 1)
             setPadding(dp(16), dp(12), dp(16), dp(12))
             visibility = View.GONE
         }
@@ -722,7 +762,7 @@ class MainActivity : Activity() {
             setTextColor(textColor)
             gravity = Gravity.CENTER
             setPadding(dp(16), dp(8), dp(16), dp(8))
-            background = shape(overlayDark, cyan, 16, 1)
+            background = shape(overlayDark, cyan, strokeDp = 1)
             visibility = View.GONE
         }
         screen.addView(numberOverlay, FrameLayout.LayoutParams(
@@ -738,7 +778,7 @@ class MainActivity : Activity() {
             // it does through the subtitle box. The demo's glass is
             // neutral, not the app's blue glassShape or the old flat
             // navy fill, which both read as solid cards over video.
-            background = shape(0x99000000.toInt(), 0x40ffffff.toInt(), 24, 1)
+            background = shape(0xe6121216.toInt(), 0x44ffffff.toInt(), strokeDp = 1)
             // Demo match (v2.0.15): slimmer bar — the demo's bar is
             // compact, so less padding leaves more room for the seek
             // bar. TV gets the same slim bar now (was phone-only).
@@ -762,23 +802,25 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        controlsScroll = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(chipsRow)
+        compactControls = column()
+        compactTransport = chipsRow
+        compactOptions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
+        compactControls.addView(compactTransport, LinearLayout.LayoutParams(-1, -2))
+        compactControls.addView(compactOptions, LinearLayout.LayoutParams(-1, -2))
         playPauseButton = overlayButton(R.drawable.ic_play) {
             togglePlayerPlayback()
         }
         playPauseButton.id = View.generateViewId()
         playPauseButton.contentDescription = "Play / pause"
-        // Demo UI: white disc with a dark glyph (the demo's pause
-        // button) instead of the transparent pill button.
-        playPauseButton.background = playPauseCircleBackground()
+        playPauseButton.background = playPauseButtonBackground()
         playPauseButton.imageTintList = ColorStateList.valueOf(0xff111111.toInt())
         centerPlayButton = ImageButton(this).apply {
             setImageResource(R.drawable.ic_play)
             imageTintList = ColorStateList.valueOf(Color.WHITE)
-            background = shape(0x99000000.toInt(), 0x40ffffff.toInt(), 36, 1)
+            background = shape(0x99000000.toInt(), 0x40ffffff.toInt(), componentRadiusDp, 1)
             contentDescription = "Resume playback"
             isFocusable = false
             visibility = View.GONE
@@ -995,7 +1037,11 @@ class MainActivity : Activity() {
         // Demo match (v2.0.15): the time readout was 13sp with 4dp of
         // vertical padding from label() — bigger than the demo's small
         // readout, and it ate seek-bar room. 12sp, no extra padding.
-        seekLabel = label("0:00 / 0:00", 12, Color.WHITE).apply { setPadding(0, 0, 0, 0) }
+        seekLabel = label("0:00 / 0:00", 12, 0xffd1d5de.toInt()).apply {
+            setPadding(dp(4), 0, 0, 0)
+            maxLines = 1
+            includeFontPadding = false
+        }
         remainingLabel = label("−0:00", 13, Color.WHITE).apply { visibility = View.GONE }
         seekRow.addView(seekBar, LinearLayout.LayoutParams(0, dp(if (isTv) 40 else 36), 1f))
         seekRow.addView(seekLabel)
@@ -1166,7 +1212,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             // Neutral black glass like the bottom bar (v2.0.17) —
             // the old navy fill read as a solid card over video.
-            background = shape(0x99000000.toInt(), 0x40ffffff.toInt(), 16, 1)
+            background = shape(0x99000000.toInt(), 0x40ffffff.toInt(), strokeDp = 1)
             setPadding(dp(10), dp(10), dp(14), dp(10))
             elevation = dp(6).toFloat()
             visibility = View.GONE
@@ -1203,7 +1249,7 @@ class MainActivity : Activity() {
         // keep it off the screen edge on either side.
         seekIndicator = label("", 16, Color.WHITE).apply {
             visibility = View.GONE
-            background = shape(overlayDark, 0x1affffff.toInt(), 24, 1)
+            background = shape(overlayDark, 0x1affffff.toInt(), strokeDp = 1)
             setPadding(dp(16), dp(10), dp(16), dp(10))
             elevation = dp(6).toFloat()
         }
@@ -1225,9 +1271,9 @@ class MainActivity : Activity() {
             minimumHeight = 0
             setPadding(0, 0, 0, 0)
             background = StateListDrawable().apply {
-                addState(intArrayOf(android.R.attr.state_focused), glassShape(24, cyan, 2))
-                addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 24))
-                addState(intArrayOf(), glassShape(24))
+                addState(intArrayOf(android.R.attr.state_focused), glassShape(componentRadiusDp, cyan, 2))
+                addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, componentRadiusDp))
+                addState(intArrayOf(), glassShape(componentRadiusDp))
             }
             visibility = View.GONE
             setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
@@ -1278,7 +1324,7 @@ class MainActivity : Activity() {
         // text cleared, even in fullscreen (the watcher overrode the
         // fullscreen GONE). As an overlay it can never resize the video.
         status = label("", if (isTv) 15 else 13, accent).apply {
-            background = shape(overlayDark, 0x1affffff.toInt(), 18, 1)
+            background = shape(overlayDark, 0x1affffff.toInt(), strokeDp = 1)
             setPadding(dp(16), dp(8), dp(16), dp(8))
             isFocusable = false
             addTextChangedListener(object : TextWatcher {
@@ -1293,7 +1339,7 @@ class MainActivity : Activity() {
         screen.addView(status, FrameLayout.LayoutParams(
             -2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL,
         ).apply {
-            topMargin = dp(12)
+            topMargin = dp(if (isTv) 12 else 54)
         })
         if (sideBySide) {
             playerPane.addView(screen, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -1355,6 +1401,7 @@ class MainActivity : Activity() {
                         playPauseButton.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
                         if (isPlaying && playerController?.isTimeShifting != true) status.text = ""
                         applyControlVisibility()
+                        if (isPlaying) scheduleHideControls()
                     }
                 }
                 override fun onTracksChanged(
@@ -1394,6 +1441,10 @@ class MainActivity : Activity() {
         movieStore = MovieStore(applicationContext)
         contentFrame = FrameLayout(this)
         contentFrame.addView(rootView, FrameLayout.LayoutParams(-1, -1))
+        contentFrame.setOnApplyWindowInsetsListener { _, insets ->
+            updateFullscreenBarMargins(insets)
+            insets
+        }
         setContentView(contentFrame)
         updateMiniPlayerLayout()
         catalogTitle.text = "Loading channels…"
@@ -1470,8 +1521,8 @@ class MainActivity : Activity() {
             else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
         updateFullscreenUi()
-        applyControlVisibility()
         updateMiniPlayerLayout()
+        showPlayerControls()
         if (enabled) {
             // Going fullscreen closes the Movies browser (the movie
             // keeps playing).
@@ -1546,8 +1597,8 @@ class MainActivity : Activity() {
      * [applyFullScreen] and from onCreate when restoring after a process death.
      * Touch devices get real fullscreen: immersive system UI, and only the
      * player on screen (the landscape layout already lets it fill the pane).
-     * The on-video overlay — including the fullscreen toggle — stays visible
-     * so the user can exit from the video itself; Back also exits.
+     * The fullscreen toggle is available in the on-video overlay.
+     * Back also exits fullscreen.
      * On TV there is no rotation or system UI to hide, but fullscreen is
      * still real fullscreen: the browse pane, header and name chip all
      * hide and the paddings go to zero, so the player pane (weight 1)
@@ -1558,13 +1609,9 @@ class MainActivity : Activity() {
         fullscreenIcon.expanded = fullScreen
         fullscreenIcon.invalidateSelf()
         fullscreenButton.contentDescription = if (fullScreen) "Exit fullscreen" else "Fullscreen"
-        // Fullscreen: square corners edge to edge — the 24dp rounding is
-        // a windowed card look, and rounded corners on a fullscreen video
-        // just waste the screen corners. The border ring squares too.
-        // (Setting a new outline provider re-clips the video at once.)
-        // The mini player is square-cornered too (docked, not a card) —
-        // updateMiniPlayerLayout re-applies this after this function.
-        setScreenCorners(if (fullScreen) 0f else dp(24).toFloat())
+        screenBorder.visibility = if (fullScreen) View.GONE else View.VISIBLE
+        screen.setBackgroundColor(if (fullScreen) Color.BLACK else WINDOWED_PLAYER_BACKGROUND)
+        screen.clipToOutline = !fullScreen
         if (isTv) {
             if (fullScreen) {
                 headerView.visibility = View.GONE
@@ -1579,6 +1626,13 @@ class MainActivity : Activity() {
                 playerPane.setPadding(paneGapPx, 0, 0, 0)
             }
             return
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = if (fullScreen)
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+            }
         }
         if (fullScreen) {
             hideSystemUi()
@@ -1622,70 +1676,153 @@ class MainActivity : Activity() {
      * mode the bar becomes two rows: seek + time on top, chips below,
      * slimmer (4dp vertical padding, 32dp disc/seek) so it fits the
      * short player. Phone keeps the single row (full width fits). */
-    private fun setMiniPlayerBar(twoRow: Boolean) {
-        if (!::overlayBar.isInitialized || !::chipsRow.isInitialized) return
-        if (twoRow == miniBarTwoRow) return
-        miniBarTwoRow = twoRow
-        // Slimmer sizes in mini mode (restored below for the single row).
-        playPauseButton.layoutParams = LinearLayout.LayoutParams(
-            dp(if (twoRow) 32 else if (isTv) 40 else 34),
-            dp(if (twoRow) 32 else if (isTv) 40 else 34),
+    private fun setMiniPlayerBar(compact: Boolean) {
+        if (compact == miniBarTwoRow && fullScreen == barStyledForFullscreen) return
+        miniBarTwoRow = compact
+        barStyledForFullscreen = fullScreen
+        val chipRadius = if (fullScreen) 6 else componentRadiusDp
+        val chipInset = dp(if (fullScreen) 8 else 6)
+        overlayBar.background = shape(0xe6121216.toInt(), 0x44ffffff.toInt(),
+            if (fullScreen) 30 else componentRadiusDp, 1)
+        playPauseButton.background = playPauseButtonBackground(circle = fullScreen)
+        val transport = listOf(playPauseButton, seekBackButton, seekForwardButton)
+        val options = listOf(
+            movieStopButton, moviePrevButton, movieNextButton, movieAudioButton,
+            movieCCButton, movieQualityButton, goLiveButton, fullscreenButton,
         )
-        seekBar.layoutParams = LinearLayout.LayoutParams(
-            0, dp(if (twoRow) 32 else if (isTv) 40 else 36), 1f,
-        )
-        if (twoRow) {
-            // Chips move into chipsRow; seekRow becomes the top row.
-            overlayBar.orientation = LinearLayout.VERTICAL
-            overlayBar.removeView(seekRow)
-            val chips = listOf(
-                playPauseButton, movieStopButton, seekBackButton, seekForwardButton,
-                moviePrevButton, movieNextButton, movieAudioButton,
-                movieCCButton, movieQualityButton, goLiveButton, fullscreenButton,
-            )
-            for (chip in chips) {
-                overlayBar.removeView(chip)
-                chipsRow.addView(chip, LinearLayout.LayoutParams(-2, dp(42)).apply { marginEnd = dp(4) })
-            }
-            overlayBar.addView(seekRow, LinearLayout.LayoutParams(-1, -2))
-            overlayBar.addView(controlsScroll, LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(4)
-            })
-            overlayBar.setPadding(dp(14), dp(4), dp(14), dp(4))
-        } else {
-            overlayBar.removeView(controlsScroll)
-            overlayBar.removeView(seekRow)
-            chipsRow.removeAllViews()
-            overlayBar.orientation = LinearLayout.HORIZONTAL
-            overlayBar.addView(playPauseButton)
-            overlayBar.addView(movieStopButton)
-            overlayBar.addView(seekBackButton)
-            overlayBar.addView(seekForwardButton)
-            overlayBar.addView(seekRow, LinearLayout.LayoutParams(0, -2, 1f))
-            overlayBar.addView(moviePrevButton)
-            overlayBar.addView(movieNextButton)
-            overlayBar.addView(movieAudioButton)
-            overlayBar.addView(movieCCButton)
-            overlayBar.addView(movieQualityButton)
-            overlayBar.addView(goLiveButton)
-            overlayBar.addView(fullscreenButton)
-            overlayBar.setPadding(
-                dp(if (isTv) 14 else 10), dp(if (isTv) 10 else 9),
-                dp(if (isTv) 14 else 10), dp(if (isTv) 10 else 9),
-            )
+        (transport + options + seekRow + compactControls).forEach { view ->
+            (view.parent as? ViewGroup)?.removeView(view)
         }
-        // Re-sync visibility + focus after the move (IDs are unchanged,
-        // so the D-pad chain in applyControlVisibility still fits).
-        applyControlVisibility()
+
+        for (control in listOf(seekBackButton, seekForwardButton) + options.filterIsInstance<Button>()) {
+            val seekStep = control === seekBackButton || control === seekForwardButton
+            control.gravity = Gravity.CENTER
+            control.includeFontPadding = false
+            control.isSingleLine = true
+            control.minWidth = 0
+            control.minimumWidth = 0
+            control.letterSpacing = 0f
+            control.background = if (seekStep) overlayButtonBackground() else
+                android.graphics.drawable.InsetDrawable(rowChipBackground(chipRadius), 0, chipInset, 0, chipInset)
+            val padding = dp(if (compact) 3 else 9)
+            control.setPadding(padding, 0, padding, 0)
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                if (compact && !seekStep) {
+                    control.setAutoSizeTextTypeUniformWithConfiguration(9, 12, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+                } else {
+                    control.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_NONE)
+                }
+            }
+            control.textSize = if (compact && !seekStep) 12f else 13f
+        }
+        playPauseButton.setPadding(dp(11), dp(11), dp(11), dp(11))
+        fullscreenButton.background = android.graphics.drawable.InsetDrawable(
+            rowChipBackground(chipRadius), 0, chipInset, 0, chipInset,
+        )
+        fullscreenButton.setPadding(dp(9), dp(9), dp(9), dp(9))
+        seekBar.layoutParams = LinearLayout.LayoutParams(0, dp(if (compact) 32 else 40), 1f)
+
+        if (compact) {
+            overlayBar.orientation = LinearLayout.VERTICAL
+            overlayBar.setPadding(dp(9), dp(4), dp(9), dp(4))
+            overlayBar.addView(compactControls, LinearLayout.LayoutParams(-1, -2))
+            for (control in transport) {
+                compactTransport.addView(control,
+                    LinearLayout.LayoutParams(dp(if (control === playPauseButton) 46 else 40), dp(46)))
+            }
+            compactTransport.addView(seekRow, LinearLayout.LayoutParams(0, -2, 1f))
+            for (control in options) {
+                compactOptions.addView(control, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                    marginStart = dp(2)
+                    marginEnd = dp(2)
+                })
+            }
+        } else {
+            overlayBar.orientation = LinearLayout.HORIZONTAL
+            val verticalPadding = dp(if (fullScreen) 7 else 5)
+            overlayBar.setPadding(dp(12), verticalPadding, dp(12), verticalPadding)
+            val route = listOf(playPauseButton, movieStopButton, seekBackButton, seekForwardButton, seekRow,
+                moviePrevButton, movieNextButton, movieAudioButton, movieCCButton, movieQualityButton,
+                goLiveButton, fullscreenButton)
+            for (control in route) {
+                val params = when (control) {
+                    seekRow -> LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(8) }
+                    playPauseButton -> LinearLayout.LayoutParams(dp(46), dp(46))
+                    fullscreenButton -> LinearLayout.LayoutParams(dp(40), dp(44)).apply { marginStart = dp(4) }
+                    else -> LinearLayout.LayoutParams(-2, dp(44)).apply { marginStart = dp(4) }
+                }
+                overlayBar.addView(control, params)
+            }
+        }
     }
 
-    private fun setScreenCorners(radius: Float) {
-        screen.outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(0, 0, view.width, view.height, radius)
+    private fun placePlayerControls(outsideVideo: Boolean) {
+        val parent = if (outsideVideo) playerPane else screen
+        if (overlayBar.parent !== parent) {
+            (overlayBar.parent as? ViewGroup)?.removeView(overlayBar)
+            if (outsideVideo) {
+                playerPane.addView(overlayBar, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+            } else {
+                screen.addView(overlayBar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
             }
         }
-        (screenBorder.background as? GradientDrawable)?.cornerRadius = radius
+        updateFullscreenBarMargins(screen.rootWindowInsets)
+    }
+
+    private fun updateFullscreenBarMargins(insets: WindowInsets?) {
+        val params = overlayBar.layoutParams as? FrameLayout.LayoutParams ?: return
+        var sides = dp(if (fullScreen) 14 else 8)
+        var bottom = sides
+        if (!isTv && fullScreen && android.os.Build.VERSION.SDK_INT >= 28) {
+            insets?.displayCutout?.let { cutout ->
+                sides = maxOf(sides, cutout.safeInsetLeft, cutout.safeInsetRight)
+                bottom = maxOf(bottom, cutout.safeInsetBottom)
+            }
+        }
+        if (params.marginStart == sides && params.marginEnd == sides && params.bottomMargin == bottom) return
+        params.marginStart = sides
+        params.marginEnd = sides
+        params.bottomMargin = bottom
+        overlayBar.layoutParams = params
+    }
+
+    internal fun updatePlayerPanelVisibility() {
+        val idleMovieOnPortrait = !isTv && !isLandscape && !fullScreen &&
+            moviesOpen && playingMovie == null && !browseHidden
+        playerPane.visibility = if (idleMovieOnPortrait) View.GONE else View.VISIBLE
+    }
+
+    private fun showMobileHeaderMenu(anchor: View) {
+        val actions = listOf(
+            Triple(R.drawable.ic_list, if (browseHidden) "Show List" else "Hide List") {
+                browseHidden = !browseHidden
+                updateMiniPlayerLayout()
+            },
+            Triple(R.drawable.ic_download, "Open M3U") { choosePlaylist() },
+            Triple(R.drawable.ic_playlist, "Playlists") { showPlaylists() },
+            Triple(R.drawable.ic_tv, "Xtream") { askXtream() },
+            Triple(R.drawable.ic_upload, "Check for updates") { checkForUpdateManually() },
+        )
+        val panel = column().apply {
+            setBackgroundResource(R.drawable.dialog_surface)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+        val width = minOf(dp(260), resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(1))
+        val popup = android.widget.PopupWindow(panel, width, -2, true).apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            isOutsideTouchable = true
+            elevation = dp(10).toFloat()
+        }
+        for ((icon, title, action) in actions) {
+            val row = navItem(title, icon) {
+                popup.dismiss()
+                action()
+            }
+            panel.addView(row, LinearLayout.LayoutParams(-1, dp(48)).apply {
+                if (panel.childCount > 0) topMargin = dp(4)
+            })
+        }
+        popup.showAsDropDown(anchor, 0, dp(5), Gravity.END)
     }
 
     internal fun updateMiniPlayerLayout() {
@@ -1710,13 +1847,13 @@ class MainActivity : Activity() {
         }
         val gap = if (wide && !fullScreen && !browseHidden) paneGapPx else 0
         playerPane.setPadding(gap, 0, 0, 0)
-        setScreenCorners(if (fullScreen) 0f else dp(18).toFloat())
         headerView.visibility = if (fullScreen) View.GONE else View.VISIBLE
         backToTvButton.isSelected = !moviesOpen
         moviesHeaderButton.isSelected = moviesOpen
         toggleListButton.text = if (browseHidden) "Show List" else "Hide List"
-        if (!fullScreen) controlsVisible = true
+        if (!canAutoHidePlayerControls()) controlsVisible = true
         setMiniPlayerBar(!wide || (!fullScreen && !isTv))
+        placePlayerControls(!wide && !fullScreen)
         updateBrowseVisibility()
         applyControlVisibility()
     }
@@ -2136,6 +2273,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val STATE_FULLSCREEN = "fullscreen"
+        private val WINDOWED_PLAYER_BACKGROUND = 0xff060b28.toInt()
         // YouTube live re-resolve poll: while a yt-live channel plays,
         // re-check /live this often and rejoin when the video ID changes
         // (the broadcaster restarted the stream).

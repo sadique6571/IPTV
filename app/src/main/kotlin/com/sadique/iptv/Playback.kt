@@ -147,21 +147,25 @@ internal fun MainActivity.firstOverlayControlId(): Int {
 }
 
 
+internal fun MainActivity.canAutoHidePlayerControls(): Boolean =
+    fullScreen && selected?.web != true
+
 internal fun MainActivity.applyControlVisibility() {
     val movie = playingMovie != null
     val channel = selected != null && !movie
     val live = channel && selected?.web == false
-    val visible = controlsVisible || !fullScreen || selected?.web == true
+    val visible = controlsVisible || !canAutoHidePlayerControls()
+    updatePlayerPanelVisibility()
     centerPlayButton.visibility = if ((movie || live) && playerController?.hasPlayer() == true &&
         playerController?.wantsPlayback == false
     ) View.VISIBLE else View.GONE
-    overlayBar.visibility = if (visible) View.VISIBLE else View.GONE
+    overlayBar.visibility = if (visible && (movie || channel)) View.VISIBLE else View.GONE
     metaChip.visibility = View.GONE
     favButton.visibility = if (channel && !fullScreen) View.VISIBLE else View.GONE
     if (overlayBar.layoutParams.width != -1) overlayBar.layoutParams = overlayBar.layoutParams.apply { width = -1 }
 
     playPauseButton.visibility = if (movie || live) View.VISIBLE else View.GONE
-    movieStopButton.visibility = if (movie) View.VISIBLE else View.GONE
+    movieStopButton.visibility = if (movie && !fullScreen) View.VISIBLE else View.GONE
     val canSeek = (movie || live) && seekable
     seekRow.visibility = if (canSeek) View.VISIBLE else View.GONE
     seekBackButton.visibility = seekRow.visibility
@@ -177,20 +181,26 @@ internal fun MainActivity.applyControlVisibility() {
     movieCCButton.visibility = if (movie && currentSubtitle != null ||
         live && playerController?.hasCaptionTracks() == true
     ) View.VISIBLE else View.GONE
-    if (movie) updateCCButton() else movieCCButton.setTextColor(if (liveCaptions) cyan else Color.WHITE)
+    if (movie) updateCCButton() else {
+        movieCCButton.isSelected = liveCaptions
+        movieCCButton.contentDescription = if (liveCaptions) "Subtitles on" else "Subtitles off"
+    }
     val movieQualities = movie && currentMovieStreams.map { it.resolution }.filter { it > 0 }.distinct().size >= 2
     movieQualityButton.visibility = if ((movie || live) && videoOptions.isNotEmpty() ||
         movieQualities || playerController?.isTimeShifting == true
     ) View.VISIBLE else View.GONE
     goLiveButton.visibility = if (live) View.VISIBLE else View.GONE
     goLiveButton.text = if (playerController?.isTimeShifting == true) "Go Live" else "Live"
+    compactOptions.visibility = if ((0 until compactOptions.childCount).any {
+        compactOptions.getChildAt(it).visibility == View.VISIBLE
+    }) View.VISIBLE else View.GONE
     topBar.visibility = if ((movie || channel) && visible || moviesOpen) View.VISIBLE else View.GONE
     topBackButton.visibility = if (movie && fullScreen) View.VISIBLE else View.GONE
     topTitleLabel.text = if (movie) topBarTitle() else selected?.name ?: if (moviesOpen) {
         currentPlayTitle.ifBlank { "Movies & Series" }
     } else ""
     if (movie && topTitleLabel.text.isBlank()) fetchTopBarTitle(playingMovie?.subjectId.orEmpty())
-    playerController?.setSubtitleControlsVisible(visible && (movie || live))
+    playerController?.setSubtitleControlsVisible(visible && (movie || live) && overlayBar.parent === screen)
 
     val buttons = listOf(
         playPauseButton, movieStopButton, seekBackButton, seekForwardButton,
@@ -234,14 +244,14 @@ internal fun MainActivity.showPlayerControls() {
 }
 
 internal fun MainActivity.hidePlayerControls() {
-    if (!fullScreen || scrubbing || selected?.web == true || playerController?.wantsPlayback != true) return
+    if (!canAutoHidePlayerControls() || scrubbing || playerController?.isPlaying() != true) return
     controlsVisible = false
     applyControlVisibility()
 }
 
 internal fun MainActivity.scheduleHideControls() {
-    if (!fullScreen || selected?.web == true) return
     mainHandler.removeCallbacks(hideControlsRunnable)
+    if (!canAutoHidePlayerControls() || !controlsVisible) return
     mainHandler.postDelayed(hideControlsRunnable, CONTROLS_HIDE_DELAY_MS)
 }
 

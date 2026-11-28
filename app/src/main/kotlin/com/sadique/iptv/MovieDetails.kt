@@ -337,7 +337,6 @@ private fun MainActivity.renderMovieDetailsExtra(details: MovieBox.Details) {
 private fun MainActivity.renderMovieSynopsis(text: String) {
     movieDetailsDesc.text = text
     movieDetailsDesc.visibility = if (text.isBlank()) View.GONE else View.VISIBLE
-    if (!isTv) return
     movieDetailsDesc.maxLines = 3
     movieDetailsMoreButton.text = "More"
     movieDetailsMoreButton.visibility = View.GONE
@@ -867,13 +866,7 @@ internal fun MainActivity.updateCCButton() {
     // Demo UI: the CC chip is muted teal with WHITE text while
     // subtitles are on (the demo's CC is deep teal, not bright cyan),
     // a plain grey chip while off.
-    if (subtitlesEnabled) {
-        movieCCButton.background = shape(teal, teal, 6, 0)
-        movieCCButton.setTextColor(Color.WHITE)
-    } else {
-        movieCCButton.background = rowChipBackground()
-        movieCCButton.setTextColor(Color.WHITE)
-    }
+    movieCCButton.isSelected = subtitlesEnabled
     movieCCButton.contentDescription =
         if (subtitlesEnabled) "Subtitles on" else "Subtitles off"
 }
@@ -915,11 +908,7 @@ internal class PlayerPopupMenu(private val activity: MainActivity, private val a
     private var firstRow: View? = null
     private var popup: PopupWindow? = null
     private val box = activity.column().apply {
-        background = GradientDrawable().apply {
-            setColor(0xe6000000.toInt())
-            cornerRadius = activity.dp(10).toFloat()
-            setStroke(activity.dp(1), 0x26ffffff.toInt())
-        }
+        setBackgroundResource(R.drawable.dialog_surface)
         setPadding(activity.dp(6), activity.dp(6), activity.dp(6), activity.dp(6))
         minimumWidth = activity.dp(200)
     }
@@ -947,7 +936,7 @@ internal class PlayerPopupMenu(private val activity: MainActivity, private val a
                 animateFocusScale(this, hasFocus)
                 background = if (hasFocus) GradientDrawable().apply {
                     setColor(0x2affffff.toInt())
-                    cornerRadius = activity.dp(6).toFloat()
+                    cornerRadius = activity.dp(componentRadiusDp).toFloat()
                 } else null
             }
             addView(activity.label(text, 15, Color.WHITE), LinearLayout.LayoutParams(0, -2, 1f))
@@ -973,7 +962,7 @@ internal class PlayerPopupMenu(private val activity: MainActivity, private val a
                 animateFocusScale(this, hasFocus)
                 background = if (hasFocus) GradientDrawable().apply {
                     setColor(0x2affffff.toInt())
-                    cornerRadius = activity.dp(6).toFloat()
+                    cornerRadius = activity.dp(componentRadiusDp).toFloat()
                 } else null
             }
             addView(activity.label(label, 15, Color.WHITE), LinearLayout.LayoutParams(0, -2, 1f))
@@ -1013,7 +1002,10 @@ internal class PlayerPopupMenu(private val activity: MainActivity, private val a
         ).apply {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             isOutsideTouchable = true
-            setOnDismissListener { anchor.requestFocus() }
+            setOnDismissListener {
+                anchor.requestFocus()
+                activity.scheduleHideControls()
+            }
         }
         popup = window
         // Measure first so the box can sit above the anchor, centred
@@ -1027,6 +1019,7 @@ internal class PlayerPopupMenu(private val activity: MainActivity, private val a
         val x = (loc[0] + anchor.width / 2 - w / 2)
             .coerceIn(0, (metrics.widthPixels - w).coerceAtLeast(0))
         val y = (loc[1] - h - activity.dp(8)).coerceAtLeast(0)
+        activity.mainHandler.removeCallbacks(activity.hideControlsRunnable)
         window.showAtLocation(anchor, Gravity.NO_GRAVITY, x, y)
         if (activity.isTv) firstRow?.post { firstRow?.requestFocus() }
     }
@@ -1044,7 +1037,7 @@ internal fun MainActivity.showSubtitlePopup(anchor: View) {
         preview.textSize = subtitleSizeSp
         preview.background = if (subtitleBackground) GradientDrawable().apply {
             setColor(0x99000000.toInt())
-            cornerRadius = dp(4).toFloat()
+            cornerRadius = dp(componentRadiusDp).toFloat()
         } else null
     }
     // Live preview of the subtitle style (the demo's line).

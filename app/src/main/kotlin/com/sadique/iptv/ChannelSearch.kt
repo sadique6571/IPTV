@@ -1,6 +1,5 @@
 package com.sadique.iptv
 
-import android.content.res.ColorStateList
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
@@ -26,15 +25,9 @@ internal fun MainActivity.buildChannelSearchInput(): EditText {
         inputType = InputType.TYPE_CLASS_TEXT
         imeOptions = EditorInfo.IME_ACTION_SEARCH
         hint = "Search channels…"
-        setHintTextColor(muted2)
-        setTextColor(textColor)
         textSize = if (isTv) 15f else 14f
         minimumHeight = dp(if (isTv) 52 else 48)
-        setPadding(dp(16), dp(8), dp(16), dp(8))
-        setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_search, 0, 0, 0)
-        compoundDrawablePadding = dp(10)
-        compoundDrawableTintList = ColorStateList.valueOf(muted)
-        background = glassStateList(24)
+        styleSearchField()
         addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
