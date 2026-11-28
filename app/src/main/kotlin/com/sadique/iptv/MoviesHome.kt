@@ -57,11 +57,29 @@ internal fun MainActivity.renderMoviesHome() {
                     progress = (entry.progress * 100).toInt()
                     progressTintList = ColorStateList.valueOf(cyan)
                 }, LinearLayout.LayoutParams(cardWidth, dp(5)))
-                val remaining = if (entry.durationMs > 0) "${formatTime(entry.remainingMs)} left" else formatTime(entry.positionMs)
+                val remaining = when {
+                    entry.durationMs > 0 -> "${formatTime(entry.remainingMs)} left"
+                    entry.isSeries && entry.positionMs == 0L -> "Up next"
+                    else -> formatTime(entry.positionMs)
+                }
                 addView(label(listOf(entry.episodeLabel, remaining).filter { it.isNotEmpty() }.joinToString(" · "), 12, muted),
                     LinearLayout.LayoutParams(cardWidth, -2))
             }
-            cards.addView(card, LinearLayout.LayoutParams(-2, -2).apply {
+            val item = if (isTv && entry.isSeries) column().apply {
+                addView(card)
+                val episodes = button("Episodes") {
+                    rememberMovieBrowsePosition(card)
+                    openMovieDetails(MovieBox.Movie(subjectId = entry.subjectId, title = entry.title,
+                        posterUrl = entry.posterUrl, isSeries = true))
+                }.apply {
+                    id = View.generateViewId()
+                    contentDescription = "Episodes of ${entry.title}"
+                    nextFocusUpId = card.id
+                }
+                card.nextFocusDownId = episodes.id
+                addView(episodes, LinearLayout.LayoutParams(-1, dp(44)))
+            } else card
+            cards.addView(item, LinearLayout.LayoutParams(-2, -2).apply {
                 marginEnd = dp(8)
             })
         }

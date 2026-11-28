@@ -117,7 +117,7 @@ class MainActivity : Activity() {
     // "Back to TV" added, the header's children overflow the 960dp TV
     // width and the weighted network label collapses to 0 width.
     private lateinit var moviesHeaderButton: Button
-    private lateinit var toggleListButton: Button
+    internal var categoryButton: Button? = null
     internal lateinit var goLiveButton: Button
     private lateinit var compactControls: LinearLayout
     private lateinit var compactTransport: LinearLayout
@@ -430,13 +430,12 @@ class MainActivity : Activity() {
                     if (playingMovie != null) checkUpNext(position, duration)
                 }
                 // Save the playing movie's position every ~10 seconds so
-                // Continue Watching stays fresh without touching the player
-                // thread — the store write itself runs on `imports`.
+                // Continue Watching stays fresh between lifecycle callbacks.
                 if (playingMovie != null) {
                     movieProgressTick++
                     if (movieProgressTick >= MOVIE_PROGRESS_SAVE_TICKS) {
                         movieProgressTick = 0
-                        this@MainActivity.saveMovieProgress(async = true)
+                        this@MainActivity.saveMovieProgress()
                     }
                 }
                 mainHandler.postDelayed(this, 500)
@@ -491,7 +490,7 @@ class MainActivity : Activity() {
         headerView = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = brightGlassShape()
+            background = if (isTv) glassShape() else brightGlassShape()
             setPadding(dp(10), dp(5), dp(8), dp(5))
         }
         val narrowPhoneHeader = !isTv && resources.configuration.screenWidthDp in 1..389
@@ -510,10 +509,6 @@ class MainActivity : Activity() {
             setTypeface(null, Typeface.BOLD)
             setPadding(dp(6), 0, dp(4), 0)
         })
-        val navigation = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
         backToTvButton = topPillButton(R.drawable.ic_tv, "Live TV") {
             if (moviesOpen) closeMovies(stopMovie = true)
             else {
@@ -530,26 +525,11 @@ class MainActivity : Activity() {
                 showMoviesList()
             }
         }
-        toggleListButton = topPillButton(R.drawable.ic_list, "Hide List") {
-            browseHidden = !browseHidden
-            updateMiniPlayerLayout()
-        }
         if (isTv) {
-            val actions = listOf(
-                backToTvButton, moviesHeaderButton, toggleListButton,
-                topPillButton(R.drawable.ic_download, "Open M3U") { choosePlaylist() },
-                topPillButton(R.drawable.ic_list, "Playlists") { showPlaylists() },
-                topPillButton(R.drawable.ic_tv, "Xtream") { askXtream() },
-                topPillButton(R.drawable.ic_upload, "Update") { checkForUpdateManually() },
-            )
-            actions.forEach { action ->
-                action.background = navItemBackground()
-                navigation.addView(action, LinearLayout.LayoutParams(-2, dp(42)).apply { marginStart = dp(5) })
+            for (tab in listOf(backToTvButton, moviesHeaderButton)) {
+                tab.isSingleLine = true
+                headerBar.addView(tab, LinearLayout.LayoutParams(-2, dp(42)).apply { marginStart = dp(6) })
             }
-            headerBar.addView(HorizontalScrollView(this).apply {
-                isHorizontalScrollBarEnabled = false
-                addView(navigation)
-            }, LinearLayout.LayoutParams(0, -2, 1f))
         } else {
             for (tab in listOf(backToTvButton, moviesHeaderButton)) {
                 tab.contentDescription = tab.text
@@ -570,16 +550,20 @@ class MainActivity : Activity() {
         if (narrowPhoneHeader) {
             headerBar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         } else {
-            headerBar.addView(networkLabel, LinearLayout.LayoutParams(if (isTv) -2 else 0, -2, if (isTv) 0f else 1f).apply {
+            headerBar.addView(networkLabel, LinearLayout.LayoutParams(0, -2, 1f).apply {
                 marginStart = dp(6)
             })
         }
-        if (!isTv) headerBar.addView(ImageButton(this).apply {
+        if (isTv) {
+            headerBar.addView(label(UpdateChecker.installedVersionLabel(this), 13, textColor),
+                LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(12) })
+        }
+        headerBar.addView(ImageButton(this).apply {
             setImageResource(R.drawable.ic_more)
             imageTintList = ColorStateList.valueOf(textColor)
             background = overlayButtonBackground()
             contentDescription = "More options"
-            setOnClickListener { showMobileHeaderMenu(this) }
+            setOnClickListener { showHeaderMenu(this) }
         }, LinearLayout.LayoutParams(dp(44), dp(48)).apply { marginStart = dp(4) })
         headerBar.addView(ImageButton(this).apply {
             setImageResource(R.drawable.ic_close)
@@ -594,7 +578,7 @@ class MainActivity : Activity() {
             orientation = if (sideBySide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         }
         rootView.addView(splitPane, LinearLayout.LayoutParams(-1, 0, 1f))
-        libraryPane = column().apply { background = brightGlassShape() }
+        libraryPane = column().apply { background = if (isTv) glassShape() else brightGlassShape() }
         val left = column().also { channelLibrary = it }.apply {
             setPadding(dp(8), dp(8), dp(8), dp(6))
         }
@@ -604,26 +588,46 @@ class MainActivity : Activity() {
         channelSearchInput = buildChannelSearchInput()
         val channelSearchRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         channelSearchRow.addView(channelSearchInput, LinearLayout.LayoutParams(0, -2, 1f))
-        channelSearchRow.addView(button("Arrange") { showChannelOrder() })
-        left.addView(channelSearchRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
         val filters = listOf("All", "Favs", "General", "Islamic", "Kids", "News", "Sports", "Recent", "M3U")
-        for (names in filters.chunked(if (sideBySide) 4 else filters.size)) {
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            for (name in names) {
-                val control = chip(if (name == "Favs") "Favorites" else name) {
-                    filter = name
-                    query = ""
-                    populate()
-                    setBrowseLevel(BrowseLevel.CHANNELS)
-                }
-                control.id = View.generateViewId()
-                filterChips[name] = control
-                row.addView(control, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(4) })
+        if (isTv) {
+            val names = filters.map { if (it == "Favs") "Favorites" else it }.toTypedArray()
+            categoryButton = button("All ▾") {
+                AlertDialog.Builder(this).setTitle("Channel category")
+                    .setSingleChoiceItems(names, filters.indexOf(filter)) { dialog, index ->
+                        filter = filters[index]
+                        query = ""
+                        dialog.dismiss()
+                        populate()
+                        setBrowseLevel(BrowseLevel.CHANNELS)
+                    }.show()
+            }.apply {
+                minWidth = 0
+                setPadding(dp(8), 0, dp(8), 0)
             }
-            left.addView(HorizontalScrollView(this).apply {
-                isHorizontalScrollBarEnabled = false
-                addView(row)
-            }, LinearLayout.LayoutParams(-1, -2))
+            channelSearchRow.addView(categoryButton, LinearLayout.LayoutParams(-2, dp(44)))
+        } else {
+            channelSearchRow.addView(button("Arrange") { showChannelOrder() })
+        }
+        left.addView(channelSearchRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(4) })
+        if (!isTv) {
+            for (names in filters.chunked(if (sideBySide) 4 else filters.size)) {
+                val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                for (name in names) {
+                    val control = chip(if (name == "Favs") "Favorites" else name) {
+                        filter = name
+                        query = ""
+                        populate()
+                        setBrowseLevel(BrowseLevel.CHANNELS)
+                    }
+                    control.id = View.generateViewId()
+                    filterChips[name] = control
+                    row.addView(control, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(4) })
+                }
+                left.addView(HorizontalScrollView(this).apply {
+                    isHorizontalScrollBarEnabled = false
+                    addView(row)
+                }, LinearLayout.LayoutParams(-1, -2))
+            }
         }
         if (sideBySide) {
             splitPane.addView(libraryPane, LinearLayout.LayoutParams(dp(libraryWidthDp), -1))
@@ -1370,9 +1374,7 @@ class MainActivity : Activity() {
                 }
                 override fun onEnded() {
                     if (isDestroyed) return
-                    playingMovie?.let {
-                        movieStore.markEpisodeWatched(it.subjectId, playingEpisodeSeason, playingEpisodeEpisode)
-                    }
+                    saveMovieProgress(ended = true)
                     // Up Next was counting down and the episode ended
                     // before it fired (e.g. a seek into the last
                     // seconds): go to the next episode instead of the
@@ -1386,7 +1388,6 @@ class MainActivity : Activity() {
                     // A finished movie leaves Continue Watching by itself.
                     val movie = playingMovie
                     if (movie != null && movie.subjectId.isNotEmpty()) {
-                        movieStore.removeContinue(movie.subjectId)
                         if (moviesOpen && !movieResultsAreSearch) renderCurrentMoviesTab()
                     }
                     // A finished movie is not playing anymore — the browse
@@ -1488,7 +1489,7 @@ class MainActivity : Activity() {
         super.onSaveInstanceState(outState)
         outState.putBoolean(STATE_FULLSCREEN, fullScreen)
         // A process death must not lose the movie's place in Continue Watching.
-        saveMovieProgress(async = false)
+        saveMovieProgress()
         // Save a playing movie (URL + headers + position) so a process
         // death resumes it. (Rotation no longer recreates the activity —
         // see onConfigurationChanged — but a killed process still needs
@@ -1530,11 +1531,11 @@ class MainActivity : Activity() {
             if (playingMovie != null || selected?.web == false) playPauseButton.requestFocus()
             else if (fullscreenButton.isShown) fullscreenButton.requestFocus()
         } else if (playingMovie != null) {
-            // Back from a fullscreen movie: the mini player — the small
-            // player stays on top and the Movies browser opens below it
-            // (the playing title's details when rendered, else the list).
-            if (currentMovieDetails != null && movieDetailsRendered) openMoviesToDetails()
-            else openMovies()
+            // TV returns to the full-width catalog. Phones keep their mini player.
+            val lastMovieId = playingMovie?.subjectId
+            val returnToDetails = currentMovieDetails != null && movieDetailsRendered
+            if (isTv) stopCurrentPlayback()
+            if (returnToDetails) openMoviesToDetails(lastMovieId) else openMovies()
         } else {
             focusBrowse()
         }
@@ -1787,22 +1788,24 @@ class MainActivity : Activity() {
     }
 
     internal fun updatePlayerPanelVisibility() {
+        val tvCatalog = isTv && moviesOpen && !fullScreen
         val idleMovieOnPortrait = !isTv && !isLandscape && !fullScreen &&
             moviesOpen && playingMovie == null && !browseHidden
-        playerPane.visibility = if (idleMovieOnPortrait) View.GONE else View.VISIBLE
+        playerPane.visibility = if (tvCatalog || idleMovieOnPortrait) View.GONE else View.VISIBLE
     }
 
-    private fun showMobileHeaderMenu(anchor: View) {
-        val actions = listOf(
-            Triple(R.drawable.ic_list, if (browseHidden) "Show List" else "Hide List") {
+    private fun showHeaderMenu(anchor: View) {
+        val actions = buildList<Triple<Int, String, () -> Unit>> {
+            if (!isTv || !moviesOpen) add(Triple(R.drawable.ic_list, if (browseHidden) "Show List" else "Hide List") {
                 browseHidden = !browseHidden
                 updateMiniPlayerLayout()
-            },
-            Triple(R.drawable.ic_download, "Open M3U") { choosePlaylist() },
-            Triple(R.drawable.ic_playlist, "Playlists") { showPlaylists() },
-            Triple(R.drawable.ic_tv, "Xtream") { askXtream() },
-            Triple(R.drawable.ic_upload, "Check for updates") { checkForUpdateManually() },
-        )
+            })
+            if (isTv && !moviesOpen) add(Triple(R.drawable.ic_list, "Arrange channels") { showChannelOrder() })
+            add(Triple(R.drawable.ic_download, "Open M3U") { choosePlaylist() })
+            add(Triple(R.drawable.ic_playlist, "Playlists") { showPlaylists() })
+            add(Triple(R.drawable.ic_tv, "Xtream") { askXtream() })
+            add(Triple(R.drawable.ic_upload, "Check for updates") { checkForUpdateManually() })
+        }
         val panel = column().apply {
             setBackgroundResource(R.drawable.dialog_surface)
             setPadding(dp(8), dp(8), dp(8), dp(8))
@@ -1823,6 +1826,7 @@ class MainActivity : Activity() {
             })
         }
         popup.showAsDropDown(anchor, 0, dp(5), Gravity.END)
+        if (isTv) panel.getChildAt(0)?.requestFocus()
     }
 
     internal fun updateMiniPlayerLayout() {
@@ -1835,9 +1839,9 @@ class MainActivity : Activity() {
         }
         if (wide) {
             val available = resources.displayMetrics.widthPixels - 2 * rootPaddingPx
-            val width = (available * if (moviesOpen) 0.32f else 0.28f).toInt()
+            val width = (available * if (moviesOpen) 0.32f else if (isTv) 0.31f else 0.28f).toInt()
                 .coerceIn(dp(if (isTv) 250 else 205), dp(if (isTv) 420 else 335))
-            libraryPane.layoutParams = LinearLayout.LayoutParams(width, -1)
+            libraryPane.layoutParams = LinearLayout.LayoutParams(if (isTv && moviesOpen) -1 else width, -1)
             playerPane.layoutParams = LinearLayout.LayoutParams(0, -1, 1f)
             screen.layoutParams = LinearLayout.LayoutParams(-1, -1)
         } else {
@@ -1850,7 +1854,6 @@ class MainActivity : Activity() {
         headerView.visibility = if (fullScreen) View.GONE else View.VISIBLE
         backToTvButton.isSelected = !moviesOpen
         moviesHeaderButton.isSelected = moviesOpen
-        toggleListButton.text = if (browseHidden) "Show List" else "Hide List"
         if (!canAutoHidePlayerControls()) controlsVisible = true
         setMiniPlayerBar(!wide || (!fullScreen && !isTv))
         placePlayerControls(!wide && !fullScreen)
@@ -1948,7 +1951,7 @@ class MainActivity : Activity() {
                     episodeNumber = playingEpisodeEpisode,
                 )
             } else {
-                selected?.let(::play)
+                selected?.let { play(it) }
             }
         }
         startNetworkTicker()
@@ -1969,7 +1972,7 @@ class MainActivity : Activity() {
         // Capture the movie position BEFORE stopPlayback releases the player,
         // so coming back from background resumes the movie where it left off.
         if (playingMovie != null) savedMoviePosition = playerController?.position() ?: savedMoviePosition
-        saveMovieProgress(async = false)
+        saveMovieProgress()
         stopPlayback()
         stoppedForBackground = true
         super.onStop()
@@ -2021,7 +2024,7 @@ class MainActivity : Activity() {
      * when the user leaves the Movies section while a movie plays in
      * the mini player. */
     internal fun stopCurrentPlayback() {
-        saveMovieProgress(async = false)
+        saveMovieProgress()
         stopPlayback()
         selected = null
         playingMovie = null
@@ -2077,15 +2080,17 @@ class MainActivity : Activity() {
         }
     }
 
-    /** D-pad intercepts that must run before any view sees the key.
-     * UP/DOWN zap channels — but ONLY in fullscreen (the user's order
-     * 2026-11-19): in the list, up/down just moves the selection and
-     * OK plays, so a channel never starts without OK. The intercept
-     * lives here, not in onKeyDown, because in fullscreen the hidden
-     * list ScrollView swallowed the keys whenever it could still
-     * scroll, which is why zapping worked only sometimes.
-     * Movie buttons navigate horizontally. Only the focused timeline seeks. */
+    /** Handle channel keys before a player control or WebView can consume them. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val vertical = event.keyCode == KeyEvent.KEYCODE_DPAD_UP || event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+        val watchingChannel = !moviesOpen && playingMovie == null && selected != null &&
+            (fullScreen || isTv && (playerPane.hasFocus() || browseHidden && currentFocus == null))
+        if (vertical && watchingChannel) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                stepChannel(if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP) -1 else 1)
+            }
+            return true
+        }
         // Focus safety net (v2.0.27): if D-pad focus was ever lost
         // (currentFocus null — e.g. the focused row went away while
         // the list rebuilt), up/down did nothing at all and
@@ -2118,18 +2123,6 @@ class MainActivity : Activity() {
                     }
                 }
             }
-        }
-        if (event.action == KeyEvent.ACTION_DOWN &&
-            (event.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
-                event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) &&
-            !moviesOpen && currentFocus !is EditText &&
-            channelSwitchKeysActive() && !controlsVisible
-        ) {
-            // Held keys stay consumed (no focus jump) but zap once.
-            if (event.repeatCount == 0) {
-                stepChannel(if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP) -1 else 1)
-            }
-            return true
         }
         val code = event.keyCode
         if (code == wakeKey) {

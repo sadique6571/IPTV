@@ -93,7 +93,7 @@ internal fun MainActivity.seekMovieBy(deltaMs: Long) {
  * streams are resolved fresh from the subjectId (and season/episode
  * for series), then it plays at the saved position — the same quality
  * as before when it is still available. */
-internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscreenOnSuccess: Boolean = false) {
+internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscreenOnSuccess: Boolean = isTv) {
     val request = ++movieResumeRequest
     ensureMoviesView()
     val fromDetails = moviesOpen && moviesDetailsPane.isShown
@@ -174,21 +174,14 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscree
 }
 
 
-/**
- * Saves the playing movie's position to Continue Watching. The
- * position is read here on the main thread (ExoPlayer's thread); the
- * store write runs on `imports` for the periodic tick (async) and
- * synchronously for lifecycle hooks that run right before the player
- * is released (sync) — either way the player is never blocked. A
- * movie past 95% is finished: the store drops it instead of saving.
- */
-internal fun MainActivity.saveMovieProgress(async: Boolean) {
+/** Snapshot on the player thread; the store persists with SharedPreferences.apply(). */
+internal fun MainActivity.saveMovieProgress(ended: Boolean = false) {
     val movie = playingMovie ?: return
-    if (movie.subjectId.isEmpty()) return
+    if (movie.subjectId.isEmpty() || movieEnded) return
     val controller = playerController ?: return
     val position = controller.position()
     val duration = controller.duration()
-    if (duration <= 0 || position < MIN_SAVE_POSITION_MS) return
+    if (!ended && (duration <= 0 || position < MIN_SAVE_POSITION_MS)) return
     val entry = MovieStore.ContinueEntry(
         subjectId = movie.subjectId,
         title = movie.title,
@@ -201,11 +194,8 @@ internal fun MainActivity.saveMovieProgress(async: Boolean) {
         episode = playingEpisodeEpisode,
         isSeries = movie.isSeries,
     )
-    if (async) {
-        imports.execute { movieStore.saveProgress(entry) }
-    } else {
-        movieStore.saveProgress(entry)
-    }
+    val completed = ended || duration > 0 && position >= duration * 95 / 100
+    movieStore.saveProgress(entry, completed, playingSeriesSeasons)
 }
 
 
@@ -319,7 +309,8 @@ internal fun MainActivity.showSeriesDetails(details: MovieBox.Details) {
     metaParts += "Series"
     movieDetailsMeta.text = metaParts.joinToString(" · ")
     renderMovieDetailsExtra(details)
-    loadSeriesSeasons()
+    val saved = movieStore.continueWatching().firstOrNull { it.subjectId == selectedDubId }
+    loadSeriesSeasons(preferredSeason = saved?.season ?: 0)
 }
 
 private fun MainActivity.renderMovieDetailsExtra(details: MovieBox.Details) {
@@ -357,7 +348,8 @@ internal fun MainActivity.refreshMovieResume(details: MovieBox.Details) {
     movieResumeButton.visibility = if (entry == null) View.GONE else View.VISIBLE
     movieResumeButton.isEnabled = true
     if (entry != null) {
-        movieResumeButton.text = if (entry.isSeries) "Resume S${entry.season} E${entry.episode}" else "Resume"
+        val action = if (entry.positionMs == 0L) "Play" else "Resume"
+        movieResumeButton.text = listOf(action, entry.episodeLabel).filter { it.isNotEmpty() }.joinToString(" ")
         movieResumeButton.setOnClickListener { resumeMovie(entry) }
         if (movieFavButton.hasFocus()) movieResumeButton.requestFocus()
     }
@@ -666,6 +658,7 @@ internal fun MainActivity.playSelectedMovie() {
         dubs = details.audioDubs(),
         seriesSeasons = currentSeriesSeasons.takeIf { isSeries }.orEmpty(),
     )
+    if (isTv) applyFullScreen(true)
     showPlayerControls()
 }
 
@@ -693,7 +686,7 @@ internal fun MainActivity.playMovieStream(
     playingDubs = dubs
     // A new movie replaces the old one — save the old movie's place
     // in Continue Watching before the player switches streams.
-    saveMovieProgress(async = false)
+    saveMovieProgress()
     movieProgressTick = 0
     stopWeb()
     selected = null
@@ -1172,9 +1165,12 @@ internal fun MainActivity.restoreMoviePlayback(saved: Bundle?) {
 
 
 internal fun MainActivity.updateMovieTimes(position: Long, duration: Long) {
-    // Demo UI: one combined readout right of the bar
-    // ("24:31 / 1:58:00"); the remaining-time label is hidden.
-    seekLabel.text = "${formatTime(position.coerceAtLeast(0L))} / ${formatTime(duration.coerceAtLeast(0L))}"
+    seekLabel.text = if (selected != null && isTv) {
+        val behind = (duration - position).coerceAtLeast(0L)
+        if (behind < 1_000L) "LIVE" else "−${formatTime(behind)}"
+    } else {
+        "${formatTime(position.coerceAtLeast(0L))} / ${formatTime(duration.coerceAtLeast(0L))}"
+    }
 }
 
 /** Demo UI (v2.0.11): title for the top player bar — "The Body •
