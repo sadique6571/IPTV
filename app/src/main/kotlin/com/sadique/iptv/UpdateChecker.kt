@@ -171,6 +171,7 @@ internal object UpdateChecker {
                     val buffer = ByteArray(8192)
                     var downloaded = 0L
                     while (true) {
+                        if (Thread.currentThread().isInterrupted) throw java.io.InterruptedIOException()
                         val read = input.read(buffer)
                         if (read < 0) break
                         hash.update(buffer, 0, read)

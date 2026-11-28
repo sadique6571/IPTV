@@ -112,6 +112,7 @@ internal fun MainActivity.downloadFile(entry: DownloadedMovie, stream: MovieBox.
             connection.inputStream.use { input ->
                 val buffer = ByteArray(64 * 1024)
                 while (true) {
+                    if (Thread.currentThread().isInterrupted) throw java.io.InterruptedIOException()
                     if (downloadCancelFlag.get()) {
                         runOnUiThread {
                             downloadActive = false

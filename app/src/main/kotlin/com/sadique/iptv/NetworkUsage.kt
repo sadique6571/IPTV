@@ -20,7 +20,7 @@ internal object NetworkUsage {
         lastTickMs = -1L
     }
 
-    /** One tick: returns "500 Kbps/30 MB". Call once per second. */
+    /** One tick: returns "1.4 Mbps / 400 MB". Call once per second. */
     internal fun tick(context: Context): String {
         val uid = Process.myUid()
         val rx = TrafficStats.getUidRxBytes(uid)
@@ -29,7 +29,7 @@ internal object NetworkUsage {
             context.getSharedPreferences("iptv_uid_usage", Context.MODE_PRIVATE)).also { tracker = it }
         if (rx < 0 || tx < 0) {
             reset()
-            return "—/${formatData(usage.sample(-1L))}"
+            return "— / ${formatData(usage.sample(-1L))}"
         }
         val total = rx + tx
         val daily = usage.sample(total)
@@ -41,16 +41,11 @@ internal object NetworkUsage {
         }
         lastTotal = total
         lastTickMs = now
-        return "${formatSpeed(speedBps)}/${formatData(daily)}"
+        return "${formatSpeed(speedBps)} / ${formatData(daily)}"
     }
 
     private fun formatSpeed(bytesPerSec: Long): String {
-        val bits = bytesPerSec * 8
-        return if (bits >= 1_000_000) {
-            String.format(Locale.US, "%.1f Mbps", bits / 1_000_000.0)
-        } else {
-            "${bits / 1000} Kbps"
-        }
+        return String.format(Locale.US, "%.1f Mbps", bytesPerSec * 8 / 1_000_000.0)
     }
 
     private fun formatData(bytes: Long): String {

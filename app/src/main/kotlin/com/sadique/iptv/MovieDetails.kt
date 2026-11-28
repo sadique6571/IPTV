@@ -70,7 +70,7 @@ import java.util.concurrent.Executors
  * after). */
 internal fun MainActivity.seekMovieBy(deltaMs: Long) {
     val controller = playerController ?: return
-    if (playingMovie == null) return
+    if (!seekable) return
     val duration = controller.duration()
     val target = if (duration > 0) {
         (controller.position() + deltaMs).coerceIn(0L, duration)
@@ -93,7 +93,7 @@ internal fun MainActivity.seekMovieBy(deltaMs: Long) {
  * streams are resolved fresh from the subjectId (and season/episode
  * for series), then it plays at the saved position — the same quality
  * as before when it is still available. */
-internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscreenOnSuccess: Boolean = true) {
+internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscreenOnSuccess: Boolean = false) {
     val request = ++movieResumeRequest
     ensureMoviesView()
     val fromDetails = moviesOpen && moviesDetailsPane.isShown
@@ -147,7 +147,6 @@ internal fun MainActivity.resumeMovie(entry: MovieStore.ContinueEntry, fullscree
                 if (entry.isSeries && !fromDetails) currentSeriesSeasons = seasons
                 selectedQuality = stream.resolution
                 currentSubtitle = subtitleForStream(stream, details)
-                closeMovies()
                 playMovieStream(
                     // Stored Continue Watching titles can be blank
                     // (old entries); the details title is right here,
@@ -251,10 +250,8 @@ internal fun MainActivity.openMovieDetails(movie: MovieBox.Movie) {
     renderMovieSynopsis("")
     movieResumeButton.visibility = View.GONE
     movieDetailsPoster.removeAllViews()
-    if (isTv) {
-        movieDetailsPoster.addView(posterTile(movie.posterUrl, movie.title))
-        movieDetailsPoster.visibility = View.VISIBLE
-    }
+    movieDetailsPoster.addView(posterTile(movie.posterUrl, movie.title))
+    movieDetailsPoster.visibility = View.VISIBLE
     movieSeasonRow.removeAllViews()
     movieEpisodeColumn.removeAllViews()
     movieSeasonLabel.visibility = View.GONE
@@ -334,7 +331,7 @@ private fun MainActivity.renderMovieDetailsExtra(details: MovieBox.Details) {
         if (details.stars.isNotBlank()) add("Cast: ${details.stars}")
     }
     renderMovieSynopsis(synopsis.joinToString("\n\n"))
-    if (isTv) refreshMovieResume(details)
+    refreshMovieResume(details)
 }
 
 private fun MainActivity.renderMovieSynopsis(text: String) {
@@ -356,7 +353,6 @@ internal fun MainActivity.updateMovieSynopsisButton() {
 }
 
 internal fun MainActivity.refreshMovieResume(details: MovieBox.Details) {
-    if (!isTv) return
     val subjects = details.audioDubs().map { it.subjectId }.toSet()
     val entry = movieStore.continueWatching().firstOrNull { it.subjectId in subjects }
     movieResumeButton.visibility = if (entry == null) View.GONE else View.VISIBLE
@@ -653,7 +649,6 @@ internal fun MainActivity.playSelectedMovie() {
     val streams = currentMovieStreams
     if (streams.isEmpty()) return
     val stream = streams.firstOrNull { it.resolution == selectedQuality } ?: streams.first()
-    closeMovies()
     // The played subject is the SELECTED DUB (a dub is a different
     // subject with its own files) — Continue Watching must resume the
     // same audio the user actually played, not the original.
@@ -672,7 +667,7 @@ internal fun MainActivity.playSelectedMovie() {
         dubs = details.audioDubs(),
         seriesSeasons = currentSeriesSeasons.takeIf { isSeries }.orEmpty(),
     )
-    applyFullScreen(true)
+    showPlayerControls()
 }
 
 

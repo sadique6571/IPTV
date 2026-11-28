@@ -68,7 +68,7 @@ internal fun MainActivity.play(channel: Channel) {
     movieResumeRequest++
     // A second OK expands a channel only while its player exists.
     if (channel.key == selected?.key &&
-        ((channel.web && web != null) || playerController?.isPlaying() == true)) {
+        ((channel.web && web != null) || playerController?.canKeepCurrentStream() == true)) {
         focusChannel(channel)
         if (!fullScreen) applyFullScreen(true)
         return
@@ -109,7 +109,10 @@ internal fun MainActivity.play(channel: Channel) {
         }
         else -> {
             status.text = "Connecting to stream…"
-            playerController?.play(channel.url, live = true, backup = channelBackups[channel.key])
+            val preferred = getSharedPreferences("iptv_live_quality", Context.MODE_PRIVATE)
+                .getString(channel.qualityPreferenceKey(), null)
+            playerController?.setLiveCaptions(liveCaptions)
+            playerController?.play(channel.url, live = true, backup = channelBackups[channel.key], liveQuality = preferred)
         }
     }
     // PlayerView (and the WebView) are added to the screen after the
@@ -136,7 +139,6 @@ internal fun MainActivity.firstOverlayControlId(): Int {
         }
     }
     return when {
-        qualityButton.visibility == View.VISIBLE -> qualityButton.id
         favButton.visibility == View.VISIBLE -> favButton.id
         // Nothing on screen (no channel playing yet) — the pill is
         // gone, so FocusFinder falls back to geometry; any id works.
@@ -146,205 +148,102 @@ internal fun MainActivity.firstOverlayControlId(): Int {
 
 
 internal fun MainActivity.applyControlVisibility() {
-    // A web channel plays in a WebView, so the ExoPlayer controls
-    // (play/pause, volume, speed, seek) stay hidden for it — the
-    // WebView consumes its own touches.
-    val webChannel = selected?.web == true
-    // A channel plays on a clean screen: no overlay pill — the video
-    // is just the video. Movies keep their controls (play/pause,
-    // seek). The name chip (top-left) shows whenever anything plays
-    // windowed, and never in fullscreen.
-    val channelPlaying = selected != null && playingMovie == null
-    val hideForInactivity = !controlsVisible && (playingMovie != null || !isTv)
-    overlayBar.visibility = if (channelPlaying || hideForInactivity) View.GONE else View.VISIBLE
-    val somethingPlaying = selected != null || playingMovie != null
-    // Demo UI: the top title bar now carries the movie title, so the
-    // name chip stays hidden while a movie plays (channels only).
-    metaChip.visibility =
-        if (fullScreen || !somethingPlaying || playingMovie != null) View.GONE else View.VISIBLE
-    playPauseButton.visibility = if (webChannel) View.GONE else View.VISIBLE
-    val showQuality = channelPlaying && !fullScreen && !webChannel && videoOptions.size >= 2
-    qualityButton.visibility = if (showQuality) View.VISIBLE else View.GONE
-    favButton.visibility = if (channelPlaying && !fullScreen) View.VISIBLE else View.GONE
     val movie = playingMovie != null
-    val width = if (movie) android.view.ViewGroup.LayoutParams.MATCH_PARENT else android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-    val params = overlayBar.layoutParams
-    if (params.width != width) {
-        params.width = width
-        overlayBar.layoutParams = params
-    }
-    seekRow.visibility = if (movie && seekable) View.VISIBLE else View.GONE
-    val seekTarget = if (movie && seekable) seekBar.id else View.NO_ID
-    // Movies: quality button in the controls row — adaptive tracks
-    // (videoOptions) or the resolved stream list (one MP4 per quality).
-    // Channels keep the corner button; movies play fullscreen, where
-    // the corner button is hidden, so the row is the only place it
-    // can live.
-    val streamResolutions = if (movie) {
-        currentMovieStreams.map { it.resolution }.filter { it > 0 }.distinct()
-    } else {
-        emptyList()
-    }
-    val showMovieQuality = movie && (videoOptions.size >= 2 || streamResolutions.size >= 2)
-    movieQualityButton.visibility = if (showMovieQuality) View.VISIBLE else View.GONE
-    // Demo UI: the chip always reads "Quality" (the demo's label).
-    // The current quality stays visible as the checked item in the
-    // Quality menu, so showing "1080p" here only broke the demo match.
-    if (showMovieQuality) {
-        movieQualityButton.text = "Quality"
-    }
-    // Audio is always offered while a movie/series plays (like Quality):
-    // the dialog lists the audio tracks + dubs that exist.
-    val audio = movie
-    movieAudioButton.visibility = if (audio) View.VISIBLE else View.GONE
-    // Series navigation follows the loaded episode numbers across seasons.
+    val channel = selected != null && !movie
+    val live = channel && selected?.web == false
+    val visible = controlsVisible || !fullScreen || selected?.web == true
+    centerPlayButton.visibility = if ((movie || live) && playerController?.hasPlayer() == true &&
+        playerController?.wantsPlayback == false
+    ) View.VISIBLE else View.GONE
+    overlayBar.visibility = if (visible) View.VISIBLE else View.GONE
+    metaChip.visibility = View.GONE
+    favButton.visibility = if (channel && !fullScreen) View.VISIBLE else View.GONE
+    if (overlayBar.layoutParams.width != -1) overlayBar.layoutParams = overlayBar.layoutParams.apply { width = -1 }
+
+    playPauseButton.visibility = if (movie || live) View.VISIBLE else View.GONE
+    movieStopButton.visibility = if (movie) View.VISIBLE else View.GONE
+    val canSeek = (movie || live) && seekable
+    seekRow.visibility = if (canSeek) View.VISIBLE else View.GONE
+    seekBackButton.visibility = seekRow.visibility
+    seekForwardButton.visibility = seekRow.visibility
     val episode = playingEpisodeEpisode
     val showPrev = movie && (adjacentEpisode(playingSeriesSeasons, playingEpisodeSeason, episode, -1) != null ||
         (playingEpisodeSeason > 0 && episode > 1 && playingSeriesSeasons.none { it.number == playingEpisodeSeason }))
-    val showNext = movie && nextMovieEpisode() != null
-    moviePrevButton.visibility = if (showPrev) View.VISIBLE else View.GONE
-    movieNextButton.visibility = if (showNext) View.VISIBLE else View.GONE
-    // CC (English subtitles only): shown when this title has one.
-    val showCC = movie && currentSubtitle != null
-    movieCCButton.visibility = if (showCC) View.VISIBLE else View.GONE
-    if (showCC) updateCCButton()
-    // Demo UI: top title bar (movies only, same show/hide as the
-    // bottom controls) and the -10s/+10s seek buttons (seekable
-    // movies only).
-    topTitleLabel.text = topBarTitle()
-    // v2.0.16: heal a blank title at display time — the play-time
-    // fill misses whatever blanks it after play start on TV, so the
-    // bar re-fetches whenever it is drawn without a title.
+    moviePrevButton.visibility = if (channel || showPrev) View.VISIBLE else View.GONE
+    movieNextButton.visibility = if (channel || movie && nextMovieEpisode() != null) View.VISIBLE else View.GONE
+    moviePrevButton.contentDescription = if (channel) "Previous channel" else "Previous episode"
+    movieNextButton.contentDescription = if (channel) "Next channel" else "Next episode"
+    movieAudioButton.visibility = if (movie) View.VISIBLE else View.GONE
+    movieCCButton.visibility = if (movie && currentSubtitle != null ||
+        live && playerController?.hasCaptionTracks() == true
+    ) View.VISIBLE else View.GONE
+    if (movie) updateCCButton() else movieCCButton.setTextColor(if (liveCaptions) cyan else Color.WHITE)
+    val movieQualities = movie && currentMovieStreams.map { it.resolution }.filter { it > 0 }.distinct().size >= 2
+    movieQualityButton.visibility = if ((movie || live) && videoOptions.isNotEmpty() ||
+        movieQualities || playerController?.isTimeShifting == true
+    ) View.VISIBLE else View.GONE
+    goLiveButton.visibility = if (live) View.VISIBLE else View.GONE
+    goLiveButton.text = if (playerController?.isTimeShifting == true) "Go Live" else "Live"
+    topBar.visibility = if ((movie || channel) && visible || moviesOpen) View.VISIBLE else View.GONE
+    topBackButton.visibility = if (movie && fullScreen) View.VISIBLE else View.GONE
+    topTitleLabel.text = if (movie) topBarTitle() else selected?.name ?: if (moviesOpen) {
+        currentPlayTitle.ifBlank { "Movies & Series" }
+    } else ""
     if (movie && topTitleLabel.text.isBlank()) fetchTopBarTitle(playingMovie?.subjectId.orEmpty())
-    topBar.visibility = if (movie && !hideForInactivity) View.VISIBLE else View.GONE
-    // Subtitles lift above the bottom bar while the controls show,
-    // and drop back when they hide (movies only — channels have no
-    // subtitles, and their bar is hidden anyway).
-    playerController?.setSubtitleControlsVisible(
-        overlayBar.visibility == View.VISIBLE && movie,
-    )
-    val seekCluster = movie && seekable
-    seekBackButton.visibility = if (seekCluster) View.VISIBLE else View.GONE
-    seekForwardButton.visibility = if (seekCluster) View.VISIBLE else View.GONE
-    // Stop (v2.0.25): always offered while a movie plays, even while
-    // buffering (not seekable yet) — stopping needs no duration.
-    movieStopButton.visibility = if (movie) View.VISIBLE else View.GONE
-    // D-pad chain across the visible row buttons, in visual order.
-    // Demo order: Prev, Next, Audio, CC, Quality, fullscreen.
-    // v2.0.26: the first row button's left is the last visible
-    // transport button (Stop while a movie plays but is not seekable
-    // yet — the disc used to be skipped over).
-    val rowButtons = listOf(
-        moviePrevButton, movieNextButton, movieAudioButton,
-        movieCCButton, movieQualityButton, fullscreenButton,
+    playerController?.setSubtitleControlsVisible(visible && (movie || live))
+
+    val buttons = listOf(
+        playPauseButton, movieStopButton, seekBackButton, seekForwardButton,
+        moviePrevButton, movieNextButton, movieAudioButton, movieCCButton,
+        movieQualityButton, goLiveButton, fullscreenButton,
     ).filter { it.visibility == View.VISIBLE }
-    for (i in rowButtons.indices) {
-        val button = rowButtons[i]
-        button.nextFocusLeftId = if (i == 0) {
-            if (movie) {
-                if (seekCluster) seekForwardButton.id else movieStopButton.id
-            } else {
-                View.NO_ID
-            }
-        } else {
-            rowButtons[i - 1].id
-        }
-        button.nextFocusRightId = if (i == rowButtons.lastIndex) View.NO_ID else rowButtons[i + 1].id
-        button.nextFocusUpId = seekTarget
+    for ((index, button) in buttons.withIndex()) {
+        button.nextFocusLeftId = buttons.getOrNull(index - 1)?.id ?: View.NO_ID
+        button.nextFocusRightId = buttons.getOrNull(index + 1)?.id ?: View.NO_ID
+        button.nextFocusUpId = if (canSeek) seekBar.id else if (topBackButton.isShown) topBackButton.id else View.NO_ID
     }
-    // Demo UI: the -10s/+10s cluster sits between play/pause and the
-    // row buttons; the top bar sits above the seek bar.
-    // v2.0.26: the transport cluster is one linear chain in visual
-    // order (disc — Stop — -10 — +10 — row buttons). It used to hub
-    // through the disc (-10's right and +10's left both pointed at
-    // it), so from -10 the pointer looped back to the disc and +10
-    // and everything right of it was unreachable.
-    seekBackButton.nextFocusRightId = seekForwardButton.id
-    seekBackButton.nextFocusLeftId = if (movie) movieStopButton.id else View.NO_ID
-    seekBackButton.nextFocusUpId = seekTarget
-    seekForwardButton.nextFocusLeftId = seekBackButton.id
-    seekForwardButton.nextFocusRightId =
-        if (rowButtons.isNotEmpty()) rowButtons.first().id else View.NO_ID
-    seekForwardButton.nextFocusUpId = seekTarget
-    playPauseButton.nextFocusLeftId = View.NO_ID
-    // Stop (v2.0.25) is the disc's right neighbour while a movie
-    // plays; from Stop, right goes to -10 (seekable) or the first
-    // row button, like the disc used to.
-    playPauseButton.nextFocusRightId =
-        if (movie) {
-            movieStopButton.id
-        } else if (seekCluster) {
-            seekForwardButton.id
-        } else if (movie && rowButtons.isNotEmpty()) {
-            rowButtons.first().id
-        } else {
-            View.NO_ID
-        }
-    playPauseButton.nextFocusUpId = seekTarget
-    movieStopButton.nextFocusLeftId = playPauseButton.id
-    movieStopButton.nextFocusRightId =
-        if (seekCluster) {
-            seekBackButton.id
-        } else if (rowButtons.isNotEmpty()) {
-            rowButtons.first().id
-        } else {
-            View.NO_ID
-        }
-    movieStopButton.nextFocusUpId = seekTarget
-    seekBar.nextFocusDownId = playPauseButton.id
-    seekBar.nextFocusUpId = if (movie) topBackButton.id else View.NO_ID
-    topBackButton.nextFocusDownId =
-        if (movie && seekable) seekBar.id else if (movie) playPauseButton.id else View.NO_ID
-    topBackButton.nextFocusLeftId = View.NO_ID
-    topBackButton.nextFocusRightId = View.NO_ID
-    topBackButton.nextFocusUpId = View.NO_ID
-    // Up Next card (when visible) sits above the row's right end.
+    seekBar.nextFocusDownId = buttons.firstOrNull()?.id ?: View.NO_ID
+    seekBar.nextFocusUpId = if (topBackButton.isShown) topBackButton.id else View.NO_ID
+    topBackButton.nextFocusDownId = if (canSeek) seekBar.id else playPauseButton.id
     if (upNextCard.visibility == View.VISIBLE) {
         fullscreenButton.nextFocusUpId = upNextCard.id
         upNextCard.nextFocusDownId = fullscreenButton.id
-        upNextCard.nextFocusLeftId = View.NO_ID
-        upNextCard.nextFocusRightId = View.NO_ID
-        upNextCard.nextFocusUpId = View.NO_ID
-    } else {
-        fullscreenButton.nextFocusUpId = seekTarget
     }
+    if (!visible) overlayBar.visibility = View.GONE
     syncRowFocusTargets()
 }
 
+internal fun MainActivity.togglePlayerPlayback() {
+    val controller = playerController ?: return
+    val resume = controller.togglePlayPause()
+    if (playingMovie == null && selected?.web == false) {
+        status.text = when {
+            resume -> ""
+            controller.isTimeShifting -> "Paused · saving live TV"
+            else -> "Paused · live window only"
+        }
+    }
+    showPlayerControls()
+}
 
-/** Reveal movie controls and restart the inactivity timer. */
 internal fun MainActivity.showPlayerControls() {
-    if (isTv && playingMovie == null) return
     mainHandler.removeCallbacks(hideControlsRunnable)
     controlsVisible = true
     applyControlVisibility()
     scheduleHideControls()
 }
 
-
-/** Hides the on-video controls. Never hides while the user
- * is scrubbing, and never hides for web channels — a WebView consumes
- * its own touches, so a tap could not bring the controls back. */
 internal fun MainActivity.hidePlayerControls() {
-    if ((isTv && playingMovie == null) || scrubbing || selected?.web == true) return
-    // Mini player (v2.0.23): the controls stay pinned on the player —
-    // no auto-hide — so fullscreen is always one tap away.
-    if (isMiniPlayer()) return
+    if (!fullScreen || scrubbing || selected?.web == true || playerController?.wantsPlayback != true) return
     controlsVisible = false
-    overlayBar.visibility = View.GONE
-    topBar.visibility = View.GONE
-    playerController?.setSubtitleControlsVisible(false)
+    applyControlVisibility()
 }
 
-
 internal fun MainActivity.scheduleHideControls() {
-    if ((isTv && playingMovie == null) || selected?.web == true) return
-    // Mini player (v2.0.23): the controls stay pinned on the player.
-    if (isMiniPlayer()) return
+    if (!fullScreen || selected?.web == true) return
     mainHandler.removeCallbacks(hideControlsRunnable)
     mainHandler.postDelayed(hideControlsRunnable, CONTROLS_HIDE_DELAY_MS)
 }
-
 
 internal fun MainActivity.togglePlayerControls() {
     if (controlsVisible) {
@@ -356,14 +255,16 @@ internal fun MainActivity.togglePlayerControls() {
 }
 
 
-/** Keeps the on-video quality button's label in sync with the
- * selected track ("720p", or "Quality" for Auto). */
-internal fun MainActivity.setQualityText(label: String) {
-    qualityButton.text = label
-}
-
-
 internal fun MainActivity.showQualityPopup(anchor: View) {
+    val channel = selected?.takeIf { playingMovie == null }
+    val controller = playerController
+    if (channel != null && controller?.isTimeShifting == true) {
+        val popup = PlayerPopupMenu(this, anchor)
+        popup.row(controller.bufferedQualityLabel?.takeIf { it.isNotBlank() } ?: "Buffered quality", { true }) {}
+        popup.row("Go Live to change quality", { false }) { controller.goLive() }
+        popup.show()
+        return
+    }
     // Movies with single-file streams (one MP4 per quality) report a
     // single track, so track switching has nothing to pick — switch
     // the stream URL instead, resuming at the current position.
@@ -382,20 +283,33 @@ internal fun MainActivity.showQualityPopup(anchor: View) {
         }
     }
     val popup = PlayerPopupMenu(this, anchor)
-    popup.row("Auto", { selectedVideoIndex !in videoOptions.indices }) {
-        playerController?.selectTrack(null)
+    val options = videoOptions.toList()
+    if (options.size > 1) popup.row("Auto", {
+        if (channel != null) controller?.liveQualityKey == null else selectedVideoIndex !in options.indices
+    }) {
+        if (channel != null) {
+            controller?.setLiveQuality(null)
+            getSharedPreferences("iptv_live_quality", Context.MODE_PRIVATE).edit()
+                .remove(channel.qualityPreferenceKey()).apply()
+        } else controller?.selectTrack(null)
         selectedVideoIndex = -1
-        setQualityText("Quality")
     }
-    for ((index, option) in videoOptions.withIndex()) {
-        popup.row(option.label, { selectedVideoIndex == index }) {
-            playerController?.selectTrack(option)
+    for ((index, option) in options.withIndex().sortedWith(compareBy({ it.value.height }, { it.value.bitrate }))) {
+        popup.row(option.label, { options.size == 1 || selectedVideoIndex == index }) {
+            if (channel != null) {
+                controller?.setLiveQuality(option)
+                getSharedPreferences("iptv_live_quality", Context.MODE_PRIVATE).edit()
+                    .putString(channel.qualityPreferenceKey(), option.qualityKey).apply()
+            } else controller?.selectTrack(option)
             selectedVideoIndex = index
-            setQualityText(option.label)
         }
     }
     popup.show()
 }
+
+private fun Channel.qualityPreferenceKey(): String =
+    java.security.MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
 
 
 internal fun MainActivity.startSeekUpdates() {
@@ -716,6 +630,8 @@ internal fun MainActivity.stopWeb() {
 /** Shows the playing channel in the on-video meta chip (top-left). */
 internal fun MainActivity.setChannelMeta(channel: Channel?) {
     val name = channel?.name ?: "Select a channel"
+    playingChannelLabel.text = if (channel != null) "Playing: $name" else ""
+    playingChannelLabel.visibility = if (channel != null) View.VISIBLE else View.GONE
     metaName.text = name
     val category = channel?.group.orEmpty()
     metaCategory.text = category
@@ -734,6 +650,7 @@ internal fun MainActivity.setChannelMeta(channel: Channel?) {
  * was invisible over the video, while the bottom bar (raised here)
  * showed fine. */
 internal fun MainActivity.bringPlayerOverlaysToFront() {
+    centerPlayButton.bringToFront()
     screenBorder.bringToFront()
     metaChip.bringToFront()
     seekIndicator.bringToFront()
@@ -741,7 +658,6 @@ internal fun MainActivity.bringPlayerOverlaysToFront() {
     topBar.bringToFront()
     upNextCard.bringToFront()
     favButton.bringToFront()
-    qualityButton.bringToFront()
     numberOverlay.bringToFront()
     status.bringToFront()
     buffering.bringToFront()

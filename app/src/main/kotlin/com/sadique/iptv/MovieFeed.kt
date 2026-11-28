@@ -30,7 +30,7 @@ internal fun MainActivity.loadMovieFeed() {
             movieFeedNew = fresh.filter { it.subjectId !in pickIds }
                 .sortedByDescending { it.year.toIntOrNull() ?: 0 }
             movieFeedSeries = series
-            if (moviesOpen && !movieResultsAreSearch) renderCurrentMoviesTab()
+            if (moviesOpen && !movieResultsAreSearch && moviesListPane.isShown) renderCurrentMoviesTab()
         }
     }
 }

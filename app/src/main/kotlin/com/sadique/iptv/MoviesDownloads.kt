@@ -40,7 +40,6 @@ import java.io.IOException
  * fresh, picks the selected quality (direct mp4 only), checks free
  * space, then downloads on the dedicated executor. */
 internal fun MainActivity.startMovieDownload() {
-    if (isTv) return
     val details = currentMovieDetails
     if (details == null) {
         toast("Details abhi load ho rahe hain — thori dair baad try karein.")
