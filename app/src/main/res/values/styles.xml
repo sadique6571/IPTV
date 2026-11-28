@@ -4,5 +4,13 @@
          while the activity inflates, instead of a black screen. -->
     <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:alertDialogTheme">@style/IptvDialogTheme</item>
+    </style>
+
+    <style name="IptvDialogTheme" parent="android:Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_window_background</item>
+        <item name="android:colorAccent">#22D9EE</item>
+        <item name="android:textColorPrimary">#F2F6FF</item>
+        <item name="android:textColorSecondary">#A6B6CE</item>
     </style>
 </resources>

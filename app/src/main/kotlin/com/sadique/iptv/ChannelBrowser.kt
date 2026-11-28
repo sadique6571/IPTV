@@ -392,7 +392,7 @@ internal fun MainActivity.channelRow(channel: Channel): View {
         setTypeface(null, Typeface.BOLD)
         setTextColor(Color.WHITE)
         gravity = Gravity.CENTER
-        background = shape(glassHi, glassHi, 12)
+        background = shape(glassHi, glassHi)
     }
     tileView.addView(initial, FrameLayout.LayoutParams(-1, -1))
     if (channel.logo.isNotEmpty()) {
@@ -457,7 +457,7 @@ internal fun MainActivity.channelRow(channel: Channel): View {
         minimumWidth = 0
         minimumHeight = 0
         setPadding(0, 0, 0, 0)
-        background = shape(0x9904081a.toInt(), 0x1affffff.toInt(), 18, 1)
+        background = shape(0x9904081a.toInt(), 0x1affffff.toInt(), componentRadiusDp, 1)
         setOnClickListener { toggleFavoriteFor(channel) }
     }
     val heartSize = dp(if (isTv) 36 else 48)

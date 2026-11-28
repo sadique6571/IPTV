@@ -90,53 +90,51 @@ internal fun MainActivity.choosePlaylist() {
 
 
 internal fun MainActivity.askAddress(title: String, hint: String, action: (String) -> Unit) {
-    val input = EditText(this).apply {
+    val dialog = AlertDialog.Builder(this)
+    val input = EditText(dialog.context).apply {
         isSingleLine = true
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         this.hint = hint
     }
-    AlertDialog.Builder(this).setTitle(title).setView(input).setNegativeButton("Cancel", null)
+    dialog.setTitle(title).setView(dialogFields(input)).setNegativeButton("Cancel", null)
         .setPositiveButton("OK") { _, _ -> action(input.text.toString().trim()) }.show()
 }
 
 
 internal fun MainActivity.askText(title: String, hint: String, initial: String = "", action: (String) -> Unit) {
-    val input = EditText(this).apply {
+    val dialog = AlertDialog.Builder(this)
+    val input = EditText(dialog.context).apply {
         isSingleLine = true
         inputType = InputType.TYPE_CLASS_TEXT
         this.hint = hint
         setText(initial)
         setSelection(initial.length)
     }
-    AlertDialog.Builder(this).setTitle(title).setView(input).setNegativeButton("Cancel", null)
+    dialog.setTitle(title).setView(dialogFields(input)).setNegativeButton("Cancel", null)
         .setPositiveButton("OK") { _, _ -> action(input.text.toString().trim()) }.show()
 }
 
 
 internal fun MainActivity.askXtream() {
-    val serverInput = EditText(this).apply {
+    val dialog = AlertDialog.Builder(this)
+    val serverInput = EditText(dialog.context).apply {
         isSingleLine = true
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         hint = "https://server:8080"
     }
-    val userInput = EditText(this).apply {
+    val userInput = EditText(dialog.context).apply {
         isSingleLine = true
         inputType = InputType.TYPE_CLASS_TEXT
         hint = "Username"
     }
-    val passInput = EditText(this).apply {
+    val passInput = EditText(dialog.context).apply {
         isSingleLine = true
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         hint = "Password"
     }
-    val layout = column().apply {
-        setPadding(dp(16), dp(8), dp(16), dp(8))
-        addView(label("HTTP sends your login without encryption. Use HTTPS when supported.", 14, muted))
-        addView(serverInput)
-        addView(userInput)
-        addView(passInput)
-    }
-    AlertDialog.Builder(this).setTitle("Xtream Codes login").setView(layout)
+    val warning = label("HTTP sends your login without encryption. Use HTTPS when supported.", 14, muted)
+    val layout = dialogFields(warning, serverInput, userInput, passInput)
+    dialog.setTitle("Xtream Codes login").setView(layout)
         .setNegativeButton("Cancel", null)
         .setPositiveButton("Connect") { _, _ ->
             connectXtream(
@@ -147,6 +145,19 @@ internal fun MainActivity.askXtream() {
         }.show()
 }
 
+private fun MainActivity.dialogFields(vararg fields: View): LinearLayout = column().apply {
+    setPadding(dp(20), dp(4), dp(20), dp(4))
+    for (field in fields) {
+        val params = LinearLayout.LayoutParams(-1, -2)
+        if (field is EditText) {
+            field.background = glassStateList(componentRadiusDp)
+            field.minHeight = dp(48)
+            field.setPaddingRelative(dp(12), dp(8), dp(12), dp(8))
+            params.topMargin = dp(6)
+        }
+        addView(field, params)
+    }
+}
 
 internal fun MainActivity.connectXtream(server: String, username: String, password: String) {
     toast("Connecting to Xtream…")

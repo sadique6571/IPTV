@@ -60,6 +60,7 @@ internal class MovieBox(context: Context) {
         val posterUrl: String = "",
         val isHindi: Boolean = false,
         val isSeries: Boolean = false,
+        val releaseDate: String = "",
     )
 
     /** One season of a series, with its episodes (titles when the API gives them). */
@@ -132,22 +133,41 @@ internal class MovieBox(context: Context) {
 
     // ---- Public API (all blocking) ----
 
-    fun search(query: String, page: Int = 1): List<Movie> {
-        // The API ranks exact matches first and pages at 15: a related
-        // title ("Sardar Ji" for "sardar") can sit on page 2-3, so fetch
-        // up to 3 pages, dedupe, and rank substring matches first
-        // (stable — the API order survives inside each group).
-        val seen = mutableSetOf<String>()
+    fun search(query: String, knownTitles: List<Movie>): List<Movie> {
+        val term = movieSearchTerm(query)
+        val matcher = MovieTitleSearch(term)
+        val knownMatches = knownTitles.filter { matcher.relevance(it.title) > 0 }
         val all = mutableListOf<Movie>()
-        for (p in page..page + 2) {
-            val batch = searchPage(query, p)
-            for (movie in batch) {
-                if (seen.add(movie.subjectId)) all += movie
+        for (page in 1..3) {
+            val batch = try {
+                searchPage(term, page)
+            } catch (error: IOException) {
+                if (all.isEmpty() && knownMatches.isEmpty()) throw error
+                break
             }
+            all += batch
             if (batch.size < 15) break
         }
-        val q = query.lowercase()
-        return all.sortedWith(compareByDescending { it.title.lowercase().contains(q) })
+        if ((all + knownMatches).none { matcher.relevance(it.title) >= CLOSE_TITLE_MATCH }) {
+            for (related in matcher.relatedTerms()) {
+                all += searchSupplement(related).filter { matcher.relevance(it.title) > 0 }
+                if (all.any { matcher.relevance(it.title) >= CLOSE_TITLE_MATCH }) break
+            }
+        }
+        val closest = matcher.rank(all + knownMatches).firstOrNull()
+            ?.takeIf { matcher.relevance(it.title) == CLOSE_TITLE_MATCH }
+        val hindiTerm = movieSearchTerm(closest?.title ?: term)
+        if (hindiTerm.isNotBlank() && !hindiTerm.equals("hindi", ignoreCase = true) &&
+            (all + knownMatches).none { it.isHindi && matcher.relevance(it.title) >= CLOSE_TITLE_MATCH }) {
+            all += searchSupplement("$hindiTerm Hindi").filter { matcher.relevance(it.title) > 0 }
+        }
+        return matcher.rank(all + knownMatches)
+    }
+
+    private fun searchSupplement(query: String): List<Movie> = try {
+        searchPage(query, 1)
+    } catch (_: IOException) {
+        emptyList()
     }
 
     private fun searchPage(query: String, page: Int): List<Movie> {
@@ -214,8 +234,9 @@ internal class MovieBox(context: Context) {
                 title = title,
                 year = extractYear(subject.optString("releaseDate", subject.optString("year", ""))),
                 posterUrl = poster.orEmpty(),
-                isHindi = title.contains("hindi", ignoreCase = true),
+                isHindi = hasHindiAudio(subject, title),
                 isSeries = stype == 2L,
+                releaseDate = subject.optString("releaseDate"),
             ),
             description = subject.optString("description", subject.optString("intro", "")),
             rating = rating,
@@ -434,10 +455,19 @@ internal class MovieBox(context: Context) {
             title = title,
             year = year,
             posterUrl = poster.orEmpty(),
-            isHindi = title.contains("hindi", ignoreCase = true),
+            isHindi = hasHindiAudio(s, title),
             isSeries = stype == 2L,
+            releaseDate = s.optString("releaseDate"),
         )
     }
+
+    private fun hasHindiAudio(subject: JSONObject, title: String): Boolean =
+        isHindiMovieTitle(title) || listOf("audioLanguage", "language", "lanName").any { key ->
+            stringList(subject, key).any { language ->
+                language.equals("Hindi", ignoreCase = true) || language.equals("hi", ignoreCase = true) ||
+                    language.equals("hin", ignoreCase = true) || language == "हिंदी" || language == "हिन्दी"
+            }
+        }
 
     private fun parseDetectorItem(item: JSONObject?): MovieStream? {
         if (item == null) return null

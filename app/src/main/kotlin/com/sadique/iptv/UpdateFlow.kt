@@ -105,16 +105,8 @@ internal fun MainActivity.checkForUpdateManually() {
 }
 
 
-/** Themed dialog shell (v2.0.26): neutral black glass like the
- * player popup, capsule corners, compact padding — the old navy
- * gradient did not match the app's theme. The window background
- * goes transparent so the card's own corners show. */
 internal fun MainActivity.themedDialogView(): LinearLayout = column().apply {
-    background = GradientDrawable().apply {
-        setColor(0xe6000000.toInt())
-        cornerRadius = dp(28).toFloat()
-        setStroke(dp(1), 0x26ffffff.toInt())
-    }
+    setBackgroundResource(R.drawable.dialog_surface)
     setPadding(dp(20), dp(16), dp(20), dp(16))
 }
 
@@ -143,7 +135,7 @@ private fun MainActivity.updateTitleRow(text: String): LinearLayout {
         setImageResource(R.drawable.ic_update_download)
         imageTintList = ColorStateList.valueOf(cyan)
         setPadding(dp(9), dp(9), dp(9), dp(9))
-        background = shape(0x2022d9ee, glassStroke, 14, 1)
+        background = shape(0x2022d9ee, glassStroke, strokeDp = 1)
         layoutParams = LinearLayout.LayoutParams(dp(if (isTv) 48 else 42), dp(if (isTv) 48 else 42))
     })
     row.addView(label(text, if (isTv) 20 else 18, cyan).apply {
@@ -170,11 +162,11 @@ private fun MainActivity.updatePrimaryButton(text: String, action: () -> Unit): 
         background = StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_focused),
                 GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(cyan, blue)).apply {
-                    cornerRadius = dp(25).toFloat()
+                    cornerRadius = dp(componentRadiusDp).toFloat()
                     setStroke(dp(2), Color.WHITE)
                 })
-            addState(intArrayOf(android.R.attr.state_pressed), shape(blue, cyan, 25))
-            addState(intArrayOf(), gradientPill(25))
+            addState(intArrayOf(android.R.attr.state_pressed), shape(blue, cyan, componentRadiusDp))
+            addState(intArrayOf(), gradientPill(componentRadiusDp))
         }
         setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
     }
@@ -192,16 +184,7 @@ internal fun MainActivity.showUpdateDialog(update: UpdateChecker.Update) {
         dialog?.dismiss()
         downloadAndInstallUpdate(update)
     }
-    // Capsule like Download (v2.0.26) — the default button() shape
-    // is only 10dp.
-    val laterButton = button("Baad mein") { dialog?.dismiss() }.apply {
-        background = StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused),
-                glassShape(25, cyan, if (isTv) 3 else 2))
-            addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 25))
-            addState(intArrayOf(), glassShape(25))
-        }
-    }
+    val laterButton = button("Baad mein") { dialog?.dismiss() }
     // v2.0.28: big, wide, full-width buttons stacked — the old
     // side-by-side wrap-content pair was too small.
     val buttons = LinearLayout(this).apply {

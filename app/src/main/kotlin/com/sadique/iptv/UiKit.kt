@@ -88,6 +88,7 @@ internal val purple = 0xff8b5cff.toInt()
 internal val liveRed = 0xffbc334b.toInt()
 internal val overlayDark = 0x99060a1e.toInt() // Qwen meta chip / overlay pill
 internal val accent = cyan // focus strokes, status text, list counts
+internal const val componentRadiusDp = 10
 
 internal fun formatTime(valueMs: Long): String {
     val totalSeconds = valueMs / 1000
@@ -126,7 +127,7 @@ internal fun Context.column() = LinearLayout(this).apply { orientation = LinearL
  * categories pane. */
 internal fun Context.glassPanel(paddingDp: Int = 12) = LinearLayout(this).apply {
     orientation = LinearLayout.VERTICAL
-    background = glassShape(20)
+    background = glassShape()
     setPadding(dp(paddingDp), dp(paddingDp), dp(paddingDp), dp(paddingDp))
 }
 
@@ -142,7 +143,7 @@ internal fun Context.glassPanel(paddingDp: Int = 12) = LinearLayout(this).apply 
  * (real frosted glass, like the mockups), with a lighter top
  * sheen and a 2dp cyan stroke at ~55% alpha. Small controls keep
  * the subtler glassShape — only the big panels use this. */
-internal fun Context.brightGlassShape(radiusDp: Int = 20) =
+internal fun Context.brightGlassShape(radiusDp: Int = componentRadiusDp) =
     GradientDrawable(
         GradientDrawable.Orientation.TOP_BOTTOM,
         intArrayOf(0xb3547faa.toInt(), 0x993a5a80.toInt(), 0x992c4a6e.toInt()),
@@ -158,7 +159,7 @@ internal fun Context.brightGlassShape(radiusDp: Int = 20) =
  * background instead of melting into it. */
 internal fun Context.brightGlassPanel(paddingDp: Int = 12) = LinearLayout(this).apply {
     orientation = LinearLayout.VERTICAL
-    background = brightGlassShape(20)
+    background = brightGlassShape()
     setPadding(dp(paddingDp), dp(paddingDp), dp(paddingDp), dp(paddingDp))
 }
 
@@ -168,6 +169,34 @@ internal fun Context.label(value: String, size: Int, color: Int) = TextView(this
     textSize = size.toFloat()
     setTextColor(color)
     setPadding(0, dp(4), 0, dp(4))
+}
+
+/** Centers the label within the whole control while leaving room for its icon. */
+internal fun TextView.centerControlText() {
+    gravity = Gravity.CENTER
+    includeFontPadding = false
+    val icons = compoundDrawablesRelative
+    val startWidth = icons[0]?.bounds?.width()?.plus(compoundDrawablePadding) ?: 0
+    val endWidth = icons[2]?.bounds?.width()?.plus(compoundDrawablePadding) ?: 0
+    setPaddingRelative(
+        paddingStart + (endWidth - startWidth).coerceAtLeast(0),
+        paddingTop,
+        paddingEnd + (startWidth - endWidth).coerceAtLeast(0),
+        paddingBottom,
+    )
+}
+
+internal fun EditText.styleSearchField() {
+    setHintTextColor(muted2)
+    setTextColor(textColor)
+    val side = context.dp(12)
+    val vertical = context.dp(8)
+    setPaddingRelative(side, vertical, side, vertical)
+    setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_search, 0, 0, 0)
+    compoundDrawablePadding = vertical
+    compoundDrawableTintList = ColorStateList.valueOf(muted)
+    background = context.glassStateList(componentRadiusDp)
+    centerControlText()
 }
 
 
@@ -190,18 +219,19 @@ internal fun Context.button(
     val sidePadding = dp(if (isTvDevice()) 14 else 10)
     setPadding(sidePadding, dp(8), sidePadding, dp(8))
     if (iconRes != 0) {
-        if (iconEnd) setCompoundDrawablesWithIntrinsicBounds(0, 0, iconRes, 0)
-        else setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
+        if (iconEnd) setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, iconRes, 0)
+        else setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0)
         compoundDrawablePadding = dp(8)
         compoundDrawableTintList = ColorStateList.valueOf(textColor)
     }
     background = StateListDrawable().apply {
         addState(intArrayOf(android.R.attr.state_focused),
-            glassShape(10, cyan, if (isTvDevice()) 3 else 2))
+            glassShape(componentRadiusDp, cyan, if (isTvDevice()) 3 else 2))
         // Pressed state: without it taps on a phone gave no feedback.
-        addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 10))
-        addState(intArrayOf(), glassShape(10))
+        addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, componentRadiusDp))
+        addState(intArrayOf(), glassShape(componentRadiusDp))
     }
+    centerControlText()
     setOnClickListener { action() }
 }
 
@@ -219,10 +249,11 @@ internal fun Context.topPillButton(iconRes: Int, title: String, action: () -> Un
         minimumWidth = 0
         minimumHeight = dp(48)
         setPadding(dp(18), dp(8), dp(18), dp(8))
-        setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
+        setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0)
         compoundDrawablePadding = dp(8)
         compoundDrawableTintList = ColorStateList.valueOf(textColor)
-        background = glassStateList(24)
+        background = glassStateList(componentRadiusDp)
+        centerControlText()
         setOnClickListener { action() }
     }
 
@@ -238,20 +269,21 @@ internal fun Context.chip(value: String, iconRes: Int = 0, action: () -> Unit) =
     minimumHeight = dp(if (isTvDevice()) 52 else 48)
     setPadding(dp(16), dp(12), dp(16), dp(12))
     if (iconRes != 0) {
-        setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
+        setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0)
         compoundDrawablePadding = dp(8)
         compoundDrawableTintList = ColorStateList.valueOf(muted)
     }
     background = StateListDrawable().apply {
-        addState(intArrayOf(android.R.attr.state_focused), glassShape(16, cyan, 2))
-        addState(intArrayOf(android.R.attr.state_selected), gradientPill(16))
-        addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 16))
-        addState(intArrayOf(), glassShape(16))
+        addState(intArrayOf(android.R.attr.state_focused), glassShape(componentRadiusDp, cyan, 2))
+        addState(intArrayOf(android.R.attr.state_selected), gradientPill(componentRadiusDp))
+        addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, componentRadiusDp))
+        addState(intArrayOf(), glassShape(componentRadiusDp))
     }
     setOnFocusChangeListener { _, hasFocus ->
         refreshFilterText(this)
         animateFocusScale(this, hasFocus)
     }
+    centerControlText()
     setOnClickListener { action() }
 }
 
@@ -269,15 +301,16 @@ internal fun Context.episodeNumberButton(value: String, action: () -> Unit) = Bu
     minimumHeight = dp(if (isTvDevice()) 48 else 44)
     setPadding(dp(10), dp(8), dp(10), dp(8))
     background = StateListDrawable().apply {
-        addState(intArrayOf(android.R.attr.state_focused), glassShape(12, cyan, 2))
-        addState(intArrayOf(android.R.attr.state_selected), gradientPill(12))
-        addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 12))
-        addState(intArrayOf(), glassShape(12))
+        addState(intArrayOf(android.R.attr.state_focused), glassShape(componentRadiusDp, cyan, 2))
+        addState(intArrayOf(android.R.attr.state_selected), gradientPill(componentRadiusDp))
+        addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, componentRadiusDp))
+        addState(intArrayOf(), glassShape(componentRadiusDp))
     }
     setOnFocusChangeListener { _, hasFocus ->
         refreshFilterText(this)
         animateFocusScale(this, hasFocus)
     }
+    centerControlText()
     setOnClickListener { action() }
 }
 
@@ -324,13 +357,13 @@ internal fun Context.seekThumb() = GradientDrawable().apply {
 /** Channel-card background: glass at rest, the bright cyan→blue
  * gradient while this row is playing (v2.0.38, mockup). */
 internal fun Context.rowBackground(playing: Boolean) = StateListDrawable().apply {
-    addState(intArrayOf(android.R.attr.state_focused), glassShape(16, cyan, 2))
-    addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan, 16))
-    addState(intArrayOf(), if (playing) gradientPill(16) else glassShape(16))
+    addState(intArrayOf(android.R.attr.state_focused), glassShape(componentRadiusDp, cyan, 2))
+    addState(intArrayOf(android.R.attr.state_pressed), shape(glassHi, cyan))
+    addState(intArrayOf(), if (playing) gradientPill() else glassShape())
 }
 
 
-internal fun Context.shape(color: Int, stroke: Int, radiusDp: Int = 10, strokeDp: Int = 2) =
+internal fun Context.shape(color: Int, stroke: Int, radiusDp: Int = componentRadiusDp, strokeDp: Int = 2) =
     GradientDrawable().apply {
         setColor(color)
         setStroke(dp(strokeDp), stroke)
@@ -373,7 +406,7 @@ internal fun Context.dp(value: Int) = (value * resources.displayMetrics.density 
  * function feeds every box (rowBackground, button, chip,
  * glassStateList, navItemBackground), so all of them turn glassy
  * together. */
-internal fun Context.glassShape(radiusDp: Int = 22, strokeColor: Int = 0x4096acff.toInt(), strokeDp: Int = 1) =
+internal fun Context.glassShape(radiusDp: Int = componentRadiusDp, strokeColor: Int = 0x4096acff.toInt(), strokeDp: Int = 1) =
     GradientDrawable(
         GradientDrawable.Orientation.TOP_BOTTOM,
         intArrayOf(0xa63a5a80.toInt(), 0x9922354e.toInt(), 0x99172539.toInt()),
@@ -440,7 +473,7 @@ internal fun Context.demoBackground(): LayerDrawable {
 /** Bright cyan → blue horizontal gradient (v2.0.38 — the mockup's
  * bright selected item, not the old dark teal). Active nav item /
  * chip / primary button. */
-internal fun Context.gradientPill(radiusDp: Int = 25) =
+internal fun Context.gradientPill(radiusDp: Int = componentRadiusDp) =
     GradientDrawable(
         GradientDrawable.Orientation.LEFT_RIGHT,
         intArrayOf(cyan, blue),
@@ -460,11 +493,11 @@ internal fun Context.glassStateList(radiusDp: Int) = StateListDrawable().apply {
 /** TV category item: glass box at rest (v2.0.38, mockup — every
  * item is a visible box, not transparent), bright gradient when
  * selected (active filter), cyan ring when D-pad focused. */
-internal fun Context.navItemBackground() = StateListDrawable().apply {
-    addState(intArrayOf(android.R.attr.state_focused), glassShape(16, cyan, 2))
-    addState(intArrayOf(android.R.attr.state_selected), gradientPill(16))
-    addState(intArrayOf(android.R.attr.state_pressed), glassShape(16, strokeHi, 1))
-    addState(intArrayOf(), glassShape(16))
+internal fun Context.navItemBackground(radiusDp: Int = componentRadiusDp) = StateListDrawable().apply {
+    addState(intArrayOf(android.R.attr.state_focused), glassShape(radiusDp, cyan, 2))
+    addState(intArrayOf(android.R.attr.state_selected), gradientPill(radiusDp))
+    addState(intArrayOf(android.R.attr.state_pressed), glassShape(radiusDp, strokeHi, 1))
+    addState(intArrayOf(), glassShape(radiusDp))
 }
 
 
@@ -473,18 +506,18 @@ internal fun Context.navItem(labelText: String, iconRes: Int = 0, action: () -> 
     isAllCaps = false
     setTextColor(muted)
     textSize = 16f
-    gravity = Gravity.START or Gravity.CENTER_VERTICAL
     minimumWidth = 0
     minimumHeight = dp(if (isTvDevice()) 52 else 48)
     setPadding(dp(16), dp(12), dp(16), dp(12))
     if (iconRes != 0) {
-        setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
+        setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0)
         compoundDrawablePadding = dp(8)
         // Tinted to the rest color; refreshFilterText re-tints it white
         // on focus/selection, like the chip icons.
         compoundDrawableTintList = ColorStateList.valueOf(muted)
     }
     background = navItemBackground()
+    centerControlText()
     setOnFocusChangeListener { _, hasFocus ->
         refreshFilterText(this)
         animateFocusScale(this, hasFocus)
@@ -492,45 +525,30 @@ internal fun Context.navItem(labelText: String, iconRes: Int = 0, action: () -> 
     setOnClickListener { action() }
 }
 
-/** Round button inside the on-video overlay pill: transparent at rest
- * (the pill is the dark background), cyan ring on D-pad focus. */
-/** Icon-button background for the on-video buttons (back arrow,
- * -10/+10, fullscreen): clear at rest, neutral black glass + cyan
- * ring on D-pad focus. The old navy fills read blue against the
- * video; the demo's glass is neutral black. */
+/** The back, seek and header icon buttons show a cyan ring on focus. */
 internal fun Context.overlayButtonBackground() = StateListDrawable().apply {
-    addState(intArrayOf(android.R.attr.state_focused), shape(0xcc000000.toInt(), cyan, 24, 2))
-    addState(intArrayOf(android.R.attr.state_pressed), shape(0x99000000.toInt(), cyan, 24, 1))
-    addState(intArrayOf(), shape(Color.TRANSPARENT, Color.TRANSPARENT, 24, 0))
+    addState(intArrayOf(android.R.attr.state_focused), shape(0xcc000000.toInt(), cyan, componentRadiusDp, 2))
+    addState(intArrayOf(android.R.attr.state_pressed), shape(0x99000000.toInt(), cyan, componentRadiusDp, 1))
+    addState(intArrayOf(), shape(Color.TRANSPARENT, Color.TRANSPARENT, componentRadiusDp, 0))
 }
 
 /** Small frosted-grey glass chip for the on-video row buttons
  * (demo UI): the demo's chips are grey pills — lighter than the
- * dark bar, so they read as grey in any scene — with soft 6dp
+ * dark bar, so they read as grey in any scene — with soft
  * corners, not near-pill round. Cyan ring on D-pad focus. */
-internal fun Context.rowChipBackground() = StateListDrawable().apply {
-    addState(intArrayOf(android.R.attr.state_focused), shape(0xcc000000.toInt(), cyan, 6, 2))
-    addState(intArrayOf(android.R.attr.state_pressed), shape(0x99000000.toInt(), cyan, 6, 1))
-    addState(intArrayOf(), shape(0xe63a3a3e.toInt(), 0x26ffffff.toInt(), 6, 1))
+internal fun Context.rowChipBackground(radiusDp: Int = componentRadiusDp) = StateListDrawable().apply {
+    addState(intArrayOf(android.R.attr.state_focused, android.R.attr.state_selected), shape(teal, cyan, radiusDp, 2))
+    addState(intArrayOf(android.R.attr.state_focused), shape(0xff37373c.toInt(), cyan, radiusDp, 2))
+    addState(intArrayOf(android.R.attr.state_pressed), shape(0xff45454a.toInt(), cyan, radiusDp, 1))
+    addState(intArrayOf(android.R.attr.state_selected), shape(teal, teal, radiusDp, 0))
+    addState(intArrayOf(), shape(0xd9343439.toInt(), 0x12ffffff, radiusDp, 1))
 }
 
-/** White disc for the play/pause button (demo UI): the demo's pause
- * button is a white circle with a dark glyph. Cyan ring on focus. */
-internal fun Context.playPauseCircleBackground(): StateListDrawable {
-    val rest = GradientDrawable().apply {
-        shape = GradientDrawable.OVAL
-        setColor(Color.WHITE)
-    }
-    val focused = GradientDrawable().apply {
-        shape = GradientDrawable.OVAL
-        setColor(Color.WHITE)
-        setStroke(dp(2), cyan)
-    }
-    return StateListDrawable().apply {
-        addState(intArrayOf(android.R.attr.state_focused), focused)
-        addState(intArrayOf(android.R.attr.state_pressed), focused)
-        addState(intArrayOf(), rest)
-    }
+internal fun Context.playPauseButtonBackground(circle: Boolean = false) = StateListDrawable().apply {
+    val radius = if (circle) 23 else componentRadiusDp
+    addState(intArrayOf(android.R.attr.state_focused), shape(Color.WHITE, cyan, radius, 2))
+    addState(intArrayOf(android.R.attr.state_pressed), shape(Color.WHITE, cyan, radius, 1))
+    addState(intArrayOf(), shape(Color.WHITE, Color.TRANSPARENT, radius, 0))
 }
 
 
@@ -567,5 +585,5 @@ internal fun Context.liveBadge() = TextView(this).apply {
     setTextColor(Color.WHITE)
     gravity = Gravity.CENTER
     setPadding(dp(11), dp(4), dp(11), dp(4))
-    background = shape(liveRed, liveRed, 8, 0)
+    background = shape(liveRed, liveRed, strokeDp = 0)
 }
