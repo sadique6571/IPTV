@@ -98,7 +98,7 @@ internal fun MainActivity.focusPlayingRowOrFirst(preferChannel: Channel? = selec
 /** Focuses the first available browse target below the search field. */
 internal fun MainActivity.focusChannelSearchContent(): Boolean {
     if (isTv && browseLevel == BrowseLevel.CATEGORIES) {
-        return filterChips[filter]?.requestFocus() == true
+        return categoryButton?.requestFocus() == true
     }
     for (index in 0 until list.childCount) {
         val row = list.getChildAt(index)
@@ -358,8 +358,8 @@ internal fun MainActivity.channelRow(channel: Channel): View {
         isClickable = true
         // 48dp+ touch target on phones; padded rounded cards on TV
         // (v2.0.38, mockup) — roomier rows, plenty still fit.
-        minimumHeight = dp(if (isTv) 52 else 48)
-        setPadding(dp(16), dp(if (isTv) 6 else 8), dp(16), dp(if (isTv) 6 else 8))
+        minimumHeight = dp(48)
+        setPadding(dp(if (isTv) 8 else 16), dp(if (isTv) 3 else 8), dp(if (isTv) 8 else 16), dp(if (isTv) 3 else 8))
         tag = channel.key
         contentDescription = listOf(channel.name, channel.group).filter { it.isNotBlank() }.joinToString(", ")
         background = rowBackground(isPlaying)
@@ -376,7 +376,7 @@ internal fun MainActivity.channelRow(channel: Channel): View {
         // applyControlVisibility re-syncs it on every playback change.
         nextFocusRightId = firstOverlayControlId()
     }
-    val tileSize = dp(if (isTv) 40 else 44)
+    val tileSize = dp(if (isTv) 34 else 44)
     val tileView = FrameLayout(this)
     // Round icon tile (v2.0.37): the logo (or its letter tile) shows
     // as a round icon, like the approved TV mockup.
@@ -570,6 +570,11 @@ internal fun MainActivity.syncRowFocusTargets() {
 
 
 internal fun MainActivity.markActiveFilter() {
+    categoryButton?.apply {
+        val name = if (filter == "Favs") "Favorites" else filter
+        text = "$name ▾"
+        contentDescription = "Channel category: $name"
+    }
     for ((name, chipView) in filterChips) {
         chipView.isSelected = name == filter
         refreshFilterText(chipView)

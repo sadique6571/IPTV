@@ -64,7 +64,7 @@ import java.util.concurrent.Executors
  */
 
 
-internal fun MainActivity.play(channel: Channel) {
+internal fun MainActivity.play(channel: Channel, focusRow: Boolean = true) {
     movieResumeRequest++
     // A second OK expands a channel only while its player exists.
     if (channel.key == selected?.key &&
@@ -75,7 +75,7 @@ internal fun MainActivity.play(channel: Channel) {
     }
     // Switching to a channel must not lose the movie's place in
     // Continue Watching — save it before the movie state is cleared.
-    saveMovieProgress(async = false)
+    saveMovieProgress()
     stopWeb()
     selected = channel
     playingMovie = null
@@ -86,7 +86,7 @@ internal fun MainActivity.play(channel: Channel) {
     val matchIndex = currentMatches.indexOfFirst { it.key == channel.key }
     // In fullscreen the list is hidden — pulling focus onto a hidden
     // row leaves OK doing nothing; focus stays where it is instead.
-    if (matchIndex >= 0 && !fullScreen) focusChannel(channel)
+    if (focusRow && matchIndex >= 0 && !fullScreen) focusChannel(channel)
     store.addRecent(channel)
     store.lastChannel = channel
     setChannelMeta(channel)
@@ -190,7 +190,7 @@ internal fun MainActivity.applyControlVisibility() {
         movieQualities || playerController?.isTimeShifting == true
     ) View.VISIBLE else View.GONE
     goLiveButton.visibility = if (live) View.VISIBLE else View.GONE
-    goLiveButton.text = if (playerController?.isTimeShifting == true) "Go Live" else "Live"
+    goLiveButton.text = if (playerController?.isTimeShifting == true) "Go Live" else "LIVE"
     compactOptions.visibility = if ((0 until compactOptions.childCount).any {
         compactOptions.getChildAt(it).visibility == View.VISIBLE
     }) View.VISIBLE else View.GONE
@@ -376,20 +376,6 @@ internal fun MainActivity.jumpToNumber() {
 }
 
 
-/** Up/down switch channels ONLY in fullscreen (the user's order
- * 2026-11-19): in the list, up/down just moves the selection and OK
- * plays — a channel must never start without OK. Before this, the
- * list zapped on every press (the v22 remote channel +/-), which is
- * what the user asked to stop. Movies never zap — their up/down
- * belongs to the player controls. Consulted from
- * dispatchKeyEvent (see there for why onKeyDown can never see
- * these keys in fullscreen). */
-internal fun MainActivity.channelSwitchKeysActive(): Boolean {
-    if (playingMovie != null || selected == null) return false
-    return fullScreen
-}
-
-
 internal fun MainActivity.stepChannel(delta: Int) {
     // One (or zero) matches: there is nowhere to zap to — and
     // zapping to the same channel would hit play()'s second-OK
@@ -400,7 +386,7 @@ internal fun MainActivity.stepChannel(delta: Int) {
     val current = currentMatches.indexOfFirst { it.key == selected?.key }
     val next = if (current < 0) 0
         else (current + delta + currentMatches.size) % currentMatches.size
-    play(currentMatches[next])
+    play(currentMatches[next], focusRow = false)
 }
 
 

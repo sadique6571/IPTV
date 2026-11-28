@@ -58,7 +58,7 @@ internal fun MainActivity.buildMoviesTabsRow(): LinearLayout {
 internal fun MainActivity.setFirstContentBackLink(view: View?) {
     if (view == null) return
     val target = firstMoviesTabChipId()
-    if (isTv) view.nextFocusLeftId = target else view.nextFocusUpId = target
+    view.nextFocusUpId = target
 }
 
 /** Switches the Movies tab and renders its content. Clears any search
@@ -160,8 +160,7 @@ internal fun MainActivity.renderMoviesGenres() {
         chipView.id = View.generateViewId()
         chipView.isSelected = genre == moviesGenre
         refreshFilterText(chipView)
-        if (isTv) chipView.nextFocusLeftId = firstMoviesTabChipId()
-        else chipView.nextFocusUpId = firstMoviesTabChipId()
+        chipView.nextFocusUpId = firstMoviesTabChipId()
         movieGenreRow.addView(chipView, LinearLayout.LayoutParams(-2, -2).apply {
             marginEnd = dp(8)
         })
@@ -181,7 +180,6 @@ internal fun MainActivity.renderMoviesGenres() {
     for (term in listOf("Marvel", "DC", "Bollywood", "Punjabi", "Action", "Comedy")) {
         val quickChip = chip(term) { quickSearchMovie(term) }
         quickChip.id = View.generateViewId()
-        if (isTv) quickChip.nextFocusLeftId = firstMoviesTabChipId()
         movieGenreQuickRow.addView(quickChip, LinearLayout.LayoutParams(-2, -2).apply {
             marginEnd = dp(8)
         })
@@ -292,11 +290,10 @@ internal fun MainActivity.linkMoviesTabFocus() {
     val firstId = first?.id ?: View.NO_ID
     for (i in 0 until moviesTabRow.childCount) {
         val child = moviesTabRow.getChildAt(i) ?: continue
-        if (isTv) child.nextFocusRightId = firstId else child.nextFocusDownId = firstId
+        child.nextFocusDownId = firstId
     }
     if (first != null) {
-        if (isTv) first.nextFocusLeftId = firstMoviesTabChipId()
-        else first.nextFocusUpId = firstMoviesTabChipId()
+        first.nextFocusUpId = moviesTabRow.findViewWithTag<View>(moviesTab)?.id ?: firstMoviesTabChipId()
     }
 }
 
@@ -305,7 +302,8 @@ internal fun MainActivity.linkMoviesTabFocus() {
 internal fun MainActivity.firstFocusableDeep(group: ViewGroup): View? {
     for (i in 0 until group.childCount) {
         val child = group.getChildAt(i) ?: continue
-        if (child.isFocusable) return child
+        if (child.visibility != View.VISIBLE) continue
+        if (child.isFocusable && child !is HorizontalScrollView) return child
         if (child is ViewGroup) {
             firstFocusableDeep(child)?.let { return it }
         }

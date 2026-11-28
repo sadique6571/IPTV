@@ -22,4 +22,13 @@ class SeriesNavigationTest {
         assertNull(adjacentEpisode(seasons, 3, 2, 1))
         assertNull(adjacentEpisode(emptyList(), 1, 1, 1))
     }
+
+    @Test fun continueWatchingAdvancesAtSeasonBoundaryAndClearsFinishedSeries() {
+        val saved = MovieStore.ContinueEntry("show", "Show", "", 58000, 60000, 720, 123, 1, 4, true)
+        val next = saved.afterCompletion(seasons)
+        assertEquals(saved.copy(season = 3, episode = 2, positionMs = 0, durationMs = 0), next)
+        assertNull(next!!.afterCompletion(seasons))
+        assertEquals(saved, saved.afterCompletion(emptyList()))
+        assertNull(saved.copy(isSeries = false).afterCompletion(seasons))
+    }
 }

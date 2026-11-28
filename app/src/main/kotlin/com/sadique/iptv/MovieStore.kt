@@ -13,8 +13,7 @@ import org.json.JSONObject
  * NEVER stored here: MovieBox links are signed and expire within hours,
  * so a resume re-resolves the movie from its subjectId at tap time.
  *
- * All public methods are synchronized: progress saves come from the UI
- * thread (lifecycle hooks) and the `imports` executor (periodic tick).
+ * Changes are visible in memory immediately and written to disk with apply().
  */
 internal class MovieStore(context: Context) {
     data class ContinueEntry(
@@ -50,23 +49,22 @@ internal class MovieStore(context: Context) {
     @Synchronized
     fun continueWatching(): List<ContinueEntry> = continueList.toList()
 
-    /**
-     * Upserts a position (newest first, capped). A movie past 95% counts
-     * as finished and leaves Continue Watching instead of being saved.
-     * A position under 5 seconds never overwrites an older entry — a
-     * fresh start is not "continue watching".
-     */
+    /** One card per title. Completing an episode moves the card to its successor. */
     @Synchronized
-    fun saveProgress(entry: ContinueEntry) {
+    fun saveProgress(entry: ContinueEntry, completed: Boolean, seasons: List<MovieBox.Season>) {
         if (entry.subjectId.isEmpty()) return
-        if (entry.durationMs > 0 && entry.positionMs >= entry.durationMs * 95 / 100) {
+        if (completed) {
             markEpisodeWatched(entry.subjectId, entry.season, entry.episode)
-            if (continueList.removeAll { it.subjectId == entry.subjectId }) persistContinue()
+        } else if (entry.positionMs < MIN_SAVE_MS) {
             return
         }
-        if (entry.positionMs < MIN_SAVE_MS) return
+        val saved = if (completed) entry.afterCompletion(seasons) else entry
+        if (saved == null) {
+            removeContinue(entry.subjectId)
+            return
+        }
         continueList.removeAll { it.subjectId == entry.subjectId }
-        continueList.add(0, entry)
+        continueList.add(0, saved)
         continueList.sortByDescending { it.updatedAt }
         while (continueList.size > MAX_CONTINUE) continueList.removeAt(continueList.lastIndex)
         persistContinue()
@@ -223,4 +221,12 @@ internal class MovieStore(context: Context) {
         private const val KEY_CONTINUE = "continue_watching"
         private const val KEY_FAVORITES = "fav_movies"
     }
+}
+
+/** If episode metadata was unavailable at resume time, keep the series accessible. */
+internal fun MovieStore.ContinueEntry.afterCompletion(seasons: List<MovieBox.Season>): MovieStore.ContinueEntry? {
+    if (!isSeries) return null
+    if (seasons.none { it.number == season && it.episodes.any { ep -> ep.number == episode } }) return this
+    val next = adjacentEpisode(seasons, season, episode, 1) ?: return null
+    return copy(season = next.season, episode = next.episode.number, positionMs = 0, durationMs = 0)
 }

@@ -24,9 +24,9 @@ internal fun MainActivity.buildChannelSearchInput(): EditText {
         isSingleLine = true
         inputType = InputType.TYPE_CLASS_TEXT
         imeOptions = EditorInfo.IME_ACTION_SEARCH
-        hint = "Search channels…"
+        hint = if (isTv) "Search" else "Search channels…"
         textSize = if (isTv) 15f else 14f
-        minimumHeight = dp(if (isTv) 52 else 48)
+        minimumHeight = dp(if (isTv) 44 else 48)
         styleSearchField()
         addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}

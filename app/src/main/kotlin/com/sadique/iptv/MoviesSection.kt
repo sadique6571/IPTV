@@ -333,7 +333,7 @@ internal fun MainActivity.openMovies() {
  * same focus trap as openMovies(); nothing is reloaded. The Now
  * Playing bar shows while a movie plays (mini player): its Player
  * button is the way back to fullscreen. */
-internal fun MainActivity.openMoviesToDetails() {
+internal fun MainActivity.openMoviesToDetails(playingSubject: String? = playingMovie?.subjectId) {
     ensureMoviesView()
     // A channel must not keep playing behind the Movies browser.
     stopPlayingChannel()
@@ -346,7 +346,6 @@ internal fun MainActivity.openMoviesToDetails() {
     val details = currentMovieDetails
     if (details != null) {
         refreshMovieResume(details)
-        val playingSubject = playingMovie?.subjectId
         if (isTv && playingEpisodeSeason > 0 && playingEpisodeEpisode > 0 &&
             details.audioDubs().any { it.subjectId == playingSubject } &&
             playingSeriesSeasons.any { it.number == playingEpisodeSeason }
@@ -368,6 +367,7 @@ internal fun MainActivity.openMoviesToDetails() {
 
 
 internal fun MainActivity.closeMovies(stopMovie: Boolean = false) {
+    if (stopMovie) movieResumeRequest++
     if (stopMovie && playingMovie != null) {
         // Leaving the Movies section while a movie plays in the mini
         // player stops it — otherwise it would keep playing in the
@@ -566,10 +566,6 @@ private fun MainActivity.showMovieResults(moveFocus: Boolean = true) {
 internal fun MainActivity.linkMovieRowActions(rows: List<View>) {
     for (i in rows.indices) {
         val row = rows[i] as? LinearLayout ?: continue
-        // LEFT from any row reaches the sidebar navigation (v2.0.28):
-        // geometry alone is unreliable across the scroller boundary,
-        // so rows past the first had no way back to the tabs.
-        if (isTv) row.nextFocusLeftId = firstMoviesTabChipId()
         val action = (0 until row.childCount).mapNotNull { row.getChildAt(it) }
             .firstOrNull { it.tag == "rowAction" } ?: continue
         if (i > 0) action.nextFocusUpId = rows[i - 1].id
