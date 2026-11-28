@@ -21,6 +21,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsManifest
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -50,9 +51,14 @@ internal class PlayerController(
         fun onPlayingChanged(isPlaying: Boolean)
         fun onTracksChanged(options: List<VideoOption>, selectedIndex: Int)
         fun onSeekableChanged(seekable: Boolean, durationMs: Long)
+        fun onLiveBufferChanged(message: String)
     }
 
-    data class VideoOption(val label: String, val groupIndex: Int, val trackIndex: Int)
+    data class VideoOption(
+        val label: String, val groupIndex: Int, val trackIndex: Int, val height: Int, val bitrate: Int,
+    ) {
+        val qualityKey get() = "$height:$bitrate"
+    }
 
     private var player: ExoPlayer? = null
     private var playerView: PlayerView? = null
@@ -65,9 +71,22 @@ internal class PlayerController(
     // player; plain channel switches (no headers) reuse the same player.
     private var currentHeaders: Map<String, String> = emptyMap()
     private var liveChannel = false
+    private var timeShift: LiveTimeShift? = null
+    private var bufferUri: Uri? = null
+    private var wantsBufferedPlayback = false
+    private var timeShiftGeneration = 0
+    private var nativeLiveError = false
+    private var wantedLiveQuality: String? = null
+    private var liveCaptionsEnabled = false
+    internal val isTimeShifting get() = timeShift != null
+    internal val liveQualityKey get() = wantedLiveQuality
+    internal var bufferedQualityLabel: String? = null
+        private set
     private var backupUrl: String? = null
     private val bufferTimeout = Runnable {
-        if (player?.playbackState == Player.STATE_BUFFERING && player?.playWhenReady == true) useBackup()
+        if (!isTimeShifting && player?.playbackState == Player.STATE_BUFFERING &&
+            player?.playWhenReady == true
+        ) useBackup()
     }
     private var bufferEvents = 0
     private val stablePlayback = Runnable {
@@ -85,7 +104,7 @@ internal class PlayerController(
             when (state) {
                 Player.STATE_BUFFERING -> {
                     events.onBuffering(true)
-                    if (backupUrl != null) {
+                    if (backupUrl != null && !isTimeShifting && player?.playWhenReady == true) {
                         bufferEvents++
                         // Fail over after 15s of buffering (was 20s).
                         // 10s would race the v34 10s buffer-for-playback
@@ -101,8 +120,14 @@ internal class PlayerController(
                 }
                 Player.STATE_ENDED -> {
                     events.onBuffering(false)
-                    if (liveChannel && player?.playWhenReady == true) {
-                        if (!useBackup()) reconnectLive()
+                    if (isTimeShifting) {
+                        events.onLiveBufferChanged("Saved video ended. Select Go Live to reconnect.")
+                    } else if (liveChannel) {
+                        if (player?.playWhenReady == true) {
+                            if (!useBackup()) reconnectLive()
+                        } else {
+                            nativeLiveError = true
+                        }
                     } else events.onEnded()
                 }
                 Player.STATE_IDLE -> events.onBuffering(false)
@@ -115,6 +140,10 @@ internal class PlayerController(
 
         override fun onTracksChanged(tracks: Tracks) {
             reportTracks(tracks)
+        }
+
+        override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+            if (liveChannel) reportSeekable()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -223,15 +252,24 @@ internal class PlayerController(
     fun hasPlayer(): Boolean = player != null
 
     fun isPlaying(): Boolean = player?.isPlaying == true
+    fun canKeepCurrentStream(): Boolean = isTimeShifting || player?.let {
+        it.playerError == null && it.playbackState != Player.STATE_IDLE
+    } == true
 
-    fun play(url: String, headers: Map<String, String> = emptyMap(), live: Boolean = false, backup: String? = null, subtitle: MediaItem.SubtitleConfiguration? = null) {
+    fun play(
+        url: String, headers: Map<String, String> = emptyMap(), live: Boolean = false,
+        backup: String? = null, subtitle: MediaItem.SubtitleConfiguration? = null,
+        liveQuality: String? = null,
+    ) {
         retryHandler.removeCallbacksAndMessages(null)
+        stopTimeShift()
         if (headers != currentHeaders) {
             currentHeaders = headers
             stop()
         }
         bufferEvents = 0
         liveChannel = live
+        wantedLiveQuality = liveQuality
         backupUrl = backup
         currentUrl = url
         retryCount = 0
@@ -241,7 +279,7 @@ internal class PlayerController(
         ensurePlayer(live)
         val active = player ?: return
         selectTrack(null)
-        applySubtitlesEnabled(subtitlesEnabled)
+        if (live) setLiveCaptions(liveCaptionsEnabled) else applySubtitlesEnabled(subtitlesEnabled)
         active.setMediaItem(mediaItemFor(url))
         active.prepare()
         active.playWhenReady = true
@@ -254,6 +292,13 @@ internal class PlayerController(
         retryCount = 0
         triedHlsFallback = false
         val active = player ?: return
+        if (isTimeShifting) {
+            if (bufferUri != null) {
+                active.prepare()
+                active.play()
+            }
+            return
+        }
         active.setMediaItem(mediaItemFor(url))
         active.prepare()
         active.playWhenReady = true
@@ -264,8 +309,91 @@ internal class PlayerController(
      * resume until the first frame renders). */
     fun togglePlayPause(): Boolean {
         val active = player ?: return false
-        if (active.playWhenReady) active.pause() else active.play()
+        if (!liveChannel) {
+            if (active.playWhenReady) active.pause() else active.play()
+            return active.playWhenReady
+        }
+        if (timeShift != null && bufferUri == null) {
+            wantsBufferedPlayback = !wantsBufferedPlayback
+            return wantsBufferedPlayback
+        }
+        if (active.playWhenReady) {
+            active.pause()
+            retryHandler.removeCallbacks(bufferTimeout)
+            if (timeShift == null) beginTimeShift(active)
+        } else {
+            active.play()
+            if (nativeLiveError) {
+                nativeLiveError = false
+                reconnectLive()
+            }
+        }
         return active.playWhenReady
+    }
+
+    private fun beginTimeShift(active: ExoPlayer) {
+        val generation = ++timeShiftGeneration
+        val manifest = active.currentManifest as? HlsManifest
+        val url = currentUrl ?: return
+        val session = if (manifest != null) LiveTimeShift.begin(
+            context, url, manifest, active.currentPosition, currentHeaders, active.audioFormat?.language,
+            onReady = { uri, position ->
+                retryHandler.post {
+                    if (player !== active || timeShift == null || bufferUri != null ||
+                        generation != timeShiftGeneration
+                    ) return@post
+                    bufferUri = uri
+                    selectTrack(null)
+                    val item = MediaItem.Builder().setUri(uri).setMimeType(MimeTypes.APPLICATION_M3U8)
+                        .setLiveConfiguration(MediaItem.LiveConfiguration.Builder()
+                            .setMinPlaybackSpeed(1f).setMaxPlaybackSpeed(1f).build())
+                        .build()
+                    active.setMediaItem(item, position)
+                    active.prepare()
+                    active.playWhenReady = wantsBufferedPlayback
+                    retryCount = 0
+                    events.onLiveBufferChanged(if (wantsBufferedPlayback) "Playing saved live TV" else "Paused · saving live TV")
+                }
+            },
+            onStatus = { message ->
+                retryHandler.post {
+                    if (player === active && timeShift != null && generation == timeShiftGeneration) {
+                        events.onLiveBufferChanged(message)
+                    }
+                }
+            },
+        ) else null
+        timeShift = session
+        if (session != null) bufferedQualityLabel = active.videoFormat?.let(::videoQualityLabel)
+        if (session == null) events.onLiveBufferChanged("This channel supports only its live window.")
+    }
+
+    fun goLive() {
+        val active = player ?: return
+        val url = currentUrl ?: return
+        if (!liveChannel) return
+        retryHandler.removeCallbacksAndMessages(null)
+        val wasBuffered = isTimeShifting
+        stopTimeShift()
+        retryCount = 0
+        if (wasBuffered || active.playerError != null || !active.isCurrentMediaItemLive) {
+            active.setMediaItem(mediaItemFor(url, triedHlsFallback))
+        } else {
+            active.seekToDefaultPosition()
+        }
+        active.prepare()
+        active.play()
+        events.onLiveBufferChanged("")
+    }
+
+    private fun stopTimeShift() {
+        timeShiftGeneration++
+        timeShift?.close()
+        timeShift = null
+        bufferUri = null
+        wantsBufferedPlayback = false
+        nativeLiveError = false
+        bufferedQualityLabel = null
     }
 
     fun setVolume(volume: Float) {
@@ -277,7 +405,8 @@ internal class PlayerController(
         player?.seekTo(positionMs)
     }
 
-    val wantsPlayback get() = player?.playWhenReady == true
+    val wantsPlayback get() = if (timeShift != null && bufferUri == null) wantsBufferedPlayback
+        else player?.playWhenReady == true
 
     data class AudioChoice(val label: String, val selected: Boolean, val override: TrackSelectionOverride)
 
@@ -324,9 +453,28 @@ internal class PlayerController(
         selector.setParameters(params.build())
     }
 
+    fun setLiveQuality(option: VideoOption?) {
+        if (isTimeShifting) return
+        wantedLiveQuality = option?.qualityKey
+        selectTrack(option)
+    }
+
+    fun setLiveCaptions(enabled: Boolean) {
+        liveCaptionsEnabled = enabled
+        val selector = trackSelector ?: return
+        selector.setParameters(selector.buildUponParameters()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled)
+            .setSelectUndeterminedTextLanguage(enabled))
+    }
+
+    fun hasCaptionTracks(): Boolean = player?.currentTracks?.groups.orEmpty().any {
+        it.type == C.TRACK_TYPE_TEXT && it.isSupported
+    }
+
     /** Releases the player and removes its view. Safe to call repeatedly. */
     fun stop() {
         retryHandler.removeCallbacksAndMessages(null)
+        stopTimeShift()
         liveChannel = false
         backupUrl = null
         player?.removeListener(playerListener)
@@ -438,6 +586,13 @@ internal class PlayerController(
         return builder.build()
     }
 
+    private fun videoQualityLabel(format: androidx.media3.common.Format): String {
+        val resolution = if (format.height > 0) "${format.height}p" else null
+        val rate = format.averageBitrate.takeIf { it > 0 } ?: format.bitrate
+        val bitrate = if (rate > 0) String.format(java.util.Locale.US, "%.1f Mbps", rate / 1_000_000.0) else null
+        return listOfNotNull(resolution, bitrate).joinToString(" · ")
+    }
+
     private fun reportTracks(tracks: Tracks) {
         currentTracks = tracks
         val options = mutableListOf<VideoOption>()
@@ -448,14 +603,22 @@ internal class PlayerController(
             for (trackIndex in 0 until group.length) {
                 if (!group.isTrackSupported(trackIndex)) continue
                 val format = group.getTrackFormat(trackIndex)
-                val label = when {
-                    format.height > 0 -> "${format.height}p"
-                    format.bitrate > 0 -> "${format.bitrate / 1000} kbps"
-                    else -> "Video ${options.size + 1}"
-                }
+                val label = videoQualityLabel(format).ifBlank { "Video ${options.size + 1}" }
                 if (group.isTrackSelected(trackIndex)) selected = options.size
-                options += VideoOption(label, groupIndex, trackIndex)
+                options += VideoOption(label, groupIndex, trackIndex, format.height, format.bitrate)
             }
+        }
+        if (liveChannel && !isTimeShifting) {
+            val preferred = wantedLiveQuality
+            val chosen = if (preferred == null) null else {
+                val height = preferred.substringBefore(':').toIntOrNull() ?: 0
+                val bitrate = preferred.substringAfter(':').toIntOrNull() ?: 0
+                options.firstOrNull { it.qualityKey == preferred }
+                    ?: options.filter { it.height in 1..height && it.bitrate in 1..bitrate }.maxByOrNull { it.bitrate }
+                    ?: options.minByOrNull { it.bitrate.takeIf { rate -> rate > 0 } ?: Int.MAX_VALUE }
+            }
+            if (chosen != null) selectTrack(chosen)
+            selected = if (chosen == null) -1 else options.indexOf(chosen)
         }
         events.onTracksChanged(options, selected)
     }
@@ -468,6 +631,7 @@ internal class PlayerController(
     }
 
     private fun useBackup(): Boolean {
+        if (isTimeShifting) return false
         val url = backupUrl ?: return false
         val active = player ?: return false
         retryHandler.removeCallbacksAndMessages(null)
@@ -494,6 +658,7 @@ internal class PlayerController(
         retryCount++
         events.onError("Reconnecting to live TV…")
         retryHandler.postDelayed({
+            if (player !== active || !active.playWhenReady || isTimeShifting) return@postDelayed
             if (active.isCurrentMediaItemLive && active.playbackState != Player.STATE_ENDED) active.seekToDefaultPosition()
             else currentUrl?.let { active.setMediaItem(mediaItemFor(it, triedHlsFallback)) }
             active.prepare()
@@ -506,6 +671,29 @@ internal class PlayerController(
         val url = currentUrl
         if (active == null || url == null) {
             events.onError(friendlyMessage(error))
+            return
+        }
+        if (liveChannel && isTimeShifting) {
+            if (bufferUri == null) return
+            if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && retryCount < MAX_RETRIES) {
+                retryCount++
+                active.seekTo(0)
+                active.prepare()
+                events.onLiveBufferChanged("Pause point expired. Using earliest saved video.")
+            } else if (retryCount < MAX_RETRIES && active.playWhenReady) {
+                val generation = timeShiftGeneration
+                val delay = minOf(RETRY_BASE_MS shl retryCount++, 16_000L)
+                events.onLiveBufferChanged("Buffer interrupted. Retrying from your saved position…")
+                retryHandler.postDelayed({
+                    if (player === active && generation == timeShiftGeneration && active.playWhenReady) active.prepare()
+                }, delay)
+            } else {
+                events.onLiveBufferChanged("Saved video could not play. Retry or select Go Live.")
+            }
+            return
+        }
+        if (liveChannel && !active.playWhenReady) {
+            nativeLiveError = true
             return
         }
         // Many IPTV feeds are HLS playlists served from extensionless URLs, which

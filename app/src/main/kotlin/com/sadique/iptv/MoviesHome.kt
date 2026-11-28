@@ -1,7 +1,10 @@
 package com.sadique.iptv
 
 import android.view.View
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.content.res.ColorStateList
 
 /**
  * Movies Home tab: Continue Watching + Favorites. The hero banner,
@@ -14,35 +17,67 @@ internal fun MainActivity.renderMoviesHome() {
     movieResults.removeAllViews()
     val continuing = movieStore.continueWatching()
     val favorites = movieStore.favoritesList()
-    val showContinuing = continuing.isNotEmpty() && (isTv || !isMiniPlayer())
-    movieStatus.text = when {
-        showContinuing && favorites.isNotEmpty() -> "Continue Watching · Favorites"
-        showContinuing -> "Continue Watching"
-        favorites.isNotEmpty() -> "Favorites"
-        else -> "Abhi koi movie nahi mili — search karke movie dekhein."
-    }
-    // Continue Watching keeps its rich rows (progress bar + remaining
-    // time) — a poster rail would lose that.
-    if (showContinuing) {
-        movieResults.addView(sectionLabel("▶ Continue Watching"))
-        val rows = mutableListOf<View>()
+    movieStatus.text = if (continuing.isEmpty() && favorites.isEmpty() && !movieFeedLoaded) {
+        "Search movies & series or browse the catalogue."
+    } else ""
+    movieStatus.visibility = if (movieStatus.text.isNotEmpty()) View.VISIBLE else View.GONE
+    if (continuing.isNotEmpty()) {
+        movieResults.addView(sectionLabel("Continue Watching"))
+        val cards = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         for (entry in continuing) {
-            val row = continueRow(entry)
-            rows += row
-            movieResults.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(4)
-                bottomMargin = dp(4)
+            val cardWidth = dp(if (isTv) 118 else 102)
+            val card = column().apply {
+                id = View.generateViewId()
+                tag = "continue:${entry.subjectId}"
+                isFocusable = true
+                setPadding(dp(5), dp(5), dp(5), dp(5))
+                background = rowBackground(false)
+                setOnFocusChangeListener { _, focused -> animateFocusScale(this, focused) }
+                setOnClickListener {
+                    rememberMovieBrowsePosition(this)
+                    resumeMovie(entry)
+                }
+                setOnLongClickListener {
+                    android.app.AlertDialog.Builder(this@renderMoviesHome)
+                        .setMessage("Remove from Continue Watching?")
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Remove") { _, _ ->
+                            movieStore.removeContinue(entry.subjectId)
+                            renderMoviesHome()
+                        }.show()
+                    true
+                }
+                addView(posterTile(entry.posterUrl, entry.title), LinearLayout.LayoutParams(cardWidth, cardWidth * 3 / 2))
+                addView(label(entry.title, 14, textColor).apply {
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                }, LinearLayout.LayoutParams(cardWidth, -2))
+                addView(ProgressBar(this@renderMoviesHome, null, android.R.attr.progressBarStyleHorizontal).apply {
+                    max = 100
+                    progress = (entry.progress * 100).toInt()
+                    progressTintList = ColorStateList.valueOf(cyan)
+                }, LinearLayout.LayoutParams(cardWidth, dp(5)))
+                val remaining = if (entry.durationMs > 0) "${formatTime(entry.remainingMs)} left" else formatTime(entry.positionMs)
+                addView(label(listOf(entry.episodeLabel, remaining).filter { it.isNotEmpty() }.joinToString(" · "), 12, muted),
+                    LinearLayout.LayoutParams(cardWidth, -2))
+            }
+            cards.addView(card, LinearLayout.LayoutParams(-2, -2).apply {
+                marginEnd = dp(8)
             })
         }
-        linkMovieRowActions(rows)
+        movieResults.addView(HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(cards)
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
     }
-    // Favorites: a poster rail of the user's own list (My List).
-    if (favorites.isNotEmpty()) {
-        movieResults.addView(
-            buildMoviesRail("♥ Favorites", favorites),
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) },
-        )
+    for ((title, titles) in listOf("Top Picks for You" to movieFeedRecommended, "New Releases" to movieFeedNew, "Favorites" to favorites)) {
+        if (titles.isNotEmpty()) {
+            movieResults.addView(buildMoviesRail(title, titles), LinearLayout.LayoutParams(-1, -2).apply {
+                bottomMargin = dp(8)
+            })
+        }
     }
+    if (!movieFeedLoaded) loadMovieFeed()
     linkMoviesTabFocus()
     movieResultsScroll.post { movieResultsScroll.scrollTo(0, 0) }
 }

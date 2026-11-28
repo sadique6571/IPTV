@@ -78,6 +78,7 @@ internal fun MainActivity.selectMoviesTab(tab: MoviesTab) {
  * current tab, or the See All list on top of it). Never changes the
  * tab — that is selectMoviesTab's job. */
 internal fun MainActivity.renderCurrentMoviesTab() {
+    movieStatus.visibility = View.VISIBLE
     movieProgress.visibility = View.GONE
     val seeAll = moviesSeeAll
     if (seeAll != null) {

@@ -76,11 +76,7 @@ internal fun MainActivity.setBrowseLevel(level: BrowseLevel, moveFocus: Boolean 
     if (!isTv) return
     browseLevel = level
     val showingCategories = level == BrowseLevel.CATEGORIES
-    categoryListScroll.visibility = if (showingCategories) View.VISIBLE else View.GONE
-    catalogTitle.visibility = if (showingCategories) View.GONE else View.VISIBLE
-    searchClearRow.visibility =
-        if (!showingCategories && query.isNotEmpty()) View.VISIBLE else View.GONE
-    listScroll.visibility = if (showingCategories) View.GONE else View.VISIBLE
+    searchClearRow.visibility = if (query.isNotEmpty()) View.VISIBLE else View.GONE
     if (!moveFocus) return
     if (showingCategories) {
         if (!focusChannelSearchContent()) channelSearchInput.requestFocus()
@@ -134,11 +130,19 @@ internal fun MainActivity.focusBrowse(preferChannel: Channel? = selected) {
  * keep it (you surf during those). Fullscreen owns visibility while
  * it lasts, so this is a no-op there. */
 internal fun MainActivity.updateBrowseVisibility() {
-    if (fullScreen) return
-    val visible = playingMovie == null || movieEnded || !(isTv || isLandscape)
-    libraryPane.visibility = if (visible) View.VISIBLE else View.GONE
+    libraryPane.visibility = if (fullScreen || browseHidden) View.GONE else View.VISIBLE
+    channelLibrary.visibility = if (moviesOpen) View.GONE else View.VISIBLE
 }
 
+internal fun MainActivity.showChannelOrder() {
+    val prefs = getSharedPreferences("iptv_layout", Context.MODE_PRIVATE)
+    AlertDialog.Builder(this).setTitle("Arrange channels")
+        .setSingleChoiceItems(arrayOf("Default", "Name A–Z", "Name Z–A"), prefs.getInt("channel_order", 0)) { dialog, choice ->
+            prefs.edit().putInt("channel_order", choice).apply()
+            populate(preserveScroll = true)
+            dialog.dismiss()
+        }.show()
+}
 
 /** Indian song/music channels by name (the M3U group is "General"
  * for most of them, so names are the only signal). */
@@ -220,8 +224,7 @@ internal fun MainActivity.populate(preserveScroll: Boolean = false) {
     // channels level (on the categories level it would be a stray row).
     if (query.isNotEmpty()) {
         searchClearLabel.text = "Search: \"$query\""
-        searchClearRow.visibility =
-            if (browseLevel == BrowseLevel.CHANNELS) View.VISIBLE else View.GONE
+        searchClearRow.visibility = View.VISIBLE
     } else {
         searchClearRow.visibility = View.GONE
     }
@@ -280,7 +283,11 @@ internal fun MainActivity.populate(preserveScroll: Boolean = false) {
                 },
         )
     }
-    currentMatches = matches
+    currentMatches = when (getSharedPreferences("iptv_layout", Context.MODE_PRIVATE).getInt("channel_order", 0)) {
+        1 -> matches.sortedBy { it.name.lowercase(Locale.ROOT) }
+        2 -> matches.sortedByDescending { it.name.lowercase(Locale.ROOT) }
+        else -> matches
+    }
     val sourceName = when (filter) {
         "M3U" -> playlistStore.active()?.name ?: "My playlist"
         "Favs" -> "Favorites"
@@ -359,6 +366,10 @@ internal fun MainActivity.channelRow(channel: Channel): View {
         elevation = dp(3).toFloat()
         setOnFocusChangeListener { _, hasFocus -> animateFocusScale(this, hasFocus) }
         setOnClickListener { play(channel) }
+        setOnLongClickListener {
+            toggleFavoriteFor(channel)
+            true
+        }
         // TV D-pad: RIGHT from a row goes onto the video's own
         // controls (play/pause, volume, fullscreen) — the target is
         // the first overlay control that is actually visible, and
